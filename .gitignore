@@ -1,0 +1,5 @@
+node_modules/
+nexus-data.json
+nexus.db
+dist/
+.env
