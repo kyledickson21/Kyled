@@ -1,5 +1,6 @@
 node_modules/
-nexus-data.json
-nexus.db
 dist/
 .env
+.env.local
+*.db
+nexus-data.json
