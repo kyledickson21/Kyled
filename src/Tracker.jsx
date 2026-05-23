@@ -8,6 +8,7 @@ const TODAY = new Date().toISOString().split("T")[0];
 const uid   = () => Math.random().toString(36).slice(2, 9);
 const $$    = n  => "$" + Math.round(Math.abs(n ?? 0)).toLocaleString();
 const $$s   = n  => { if (n==null) return "—"; const a=Math.round(Math.abs(n)).toLocaleString(); return n>=0?`+$${a}`:`-$${a}`; };
+const $$c   = n  => { const a=Math.round(Math.abs(n??0)); if(a>=1e6){const m=a/1e6;return "$"+(m>=10?m.toFixed(1):m.toFixed(2)).replace(/\.?0+$/,"")+"M";} if(a>=1e3)return "$"+Math.round(a/1e3)+"K"; return "$"+a; };
 const pct   = (a,b) => b>0 ? Math.min(100, Math.round(a/b*100)) : 0;
 
 const daysBetween = (d1, d2) => {
@@ -786,6 +787,7 @@ function PropertiesPage({ data, update }) {
 function LenderDashboard({ data }) {
   const [view,setView]=useState("loans");
   const [sort,setSort]=useState({col:null,dir:"asc"});
+  const [lenderSort,setLenderSort]=useState("name");
   const toggleSort = col => setSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const allActive=data.properties.flatMap(prop=>
     prop.loans.filter(l=>!l.endDate).map(l=>({...l,propAddress:prop.address,bal:calcBalance(l),intEarned:calcBalance(l)-(l.principal||0)}))
@@ -820,7 +822,7 @@ function LenderDashboard({ data }) {
         ].map(({label,val,num})=>(
           <div key={label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-4 text-center">
             <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{label}</div>
-            <div className={`text-xl font-bold tabular-nums truncate ${num}`}>{$$(val)}</div>
+            <div className={`text-xl font-bold tabular-nums ${num}`}>{$$c(val)}</div>
           </div>
         ))}
       </div>
@@ -858,15 +860,27 @@ function LenderDashboard({ data }) {
           switch(sort.col){
             case"Lender":   return d*a.lenderName.localeCompare(b.lenderName);
             case"Property": return d*a.propAddress.localeCompare(b.propAddress);
+            case"Type":     return d*a.loanType.localeCompare(b.loanType);
             case"Principal":return d*(a.principal-b.principal);
             case"Rate":     return d*((a.interestRate||0)-(b.interestRate||0));
             case"Balance":  return d*(a.bal-b.bal);
             case"Interest": return d*(a.intEarned-b.intEarned);
+            case"Started":  return d*(a.startDate||"").localeCompare(b.startDate||"");
+            case"Note":     return d*((a.promissoryNote?1:0)-(b.promissoryNote?1:0));
             default:        return 0;
           }
         });
-        const sortable=["Lender","Property","Principal","Rate","Balance","Interest"];
-        const leftAlign=["Lender","Property","Type","Note"];
+        const COLS=[
+          {h:"Lender",   left:true,  sort:true},
+          {h:"Type",     left:true,  sort:true},
+          {h:"Property", left:true,  sort:true},
+          {h:"Principal",left:false, sort:true},
+          {h:"Rate",     left:false, sort:true},
+          {h:"Balance",  left:false, sort:true},
+          {h:"Interest", left:false, sort:true},
+          {h:"Started",  left:false, sort:true},
+          {h:"Note",     left:false, sort:true},
+        ];
         return (
           <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
             {allActive.length===0&&<div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">No active loans on properties.</div>}
@@ -874,18 +888,17 @@ function LenderDashboard({ data }) {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-slate-50 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">
-                    {["Lender","Type","Property","Principal","Rate","Balance","Interest","Note"].map(h=>{
-                      const canSort=sortable.includes(h);
+                    {COLS.map(({h,left,sort:canSort})=>{
                       const isActive=sort.col===h;
                       return (
                         <th key={h}
                           onClick={canSort?()=>toggleSort(h):undefined}
-                          className={`py-3 px-3 ${leftAlign.includes(h)?"text-left":"text-right"} ${canSort?"cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors":""} ${isActive?"text-slate-700 dark:text-zinc-200":""}`}>
-                          <span className="inline-flex items-center gap-1 justify-inherit">
+                          className={`py-3 px-3 ${left?"text-left":"text-right"} ${canSort?"cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors":""} ${isActive?"text-slate-700 dark:text-zinc-200":""}`}>
+                          <span className={`inline-flex items-center gap-0.5 ${left?"":"justify-end w-full"}`}>
                             {h}
                             {canSort&&(isActive
-                              ? <span className="text-blue-500">{sort.dir==="asc"?"↑":"↓"}</span>
-                              : <span className="opacity-30">↕</span>
+                              ? <span className="text-blue-500 ml-0.5">{sort.dir==="asc"?"↑":"↓"}</span>
+                              : <span className="opacity-25 ml-0.5">↕</span>
                             )}
                           </span>
                         </th>
@@ -896,14 +909,15 @@ function LenderDashboard({ data }) {
                 <tbody className="bg-white dark:bg-zinc-900 divide-y divide-slate-50 dark:divide-zinc-800">
                   {sortedLoans.map(l=>(
                     <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
-                      <td className="py-3.5 px-3 font-bold text-slate-900 dark:text-zinc-100 whitespace-nowrap">{l.lenderName}</td>
-                      <td className="py-3.5 px-3"><TypeBadge type={l.loanType} sm/></td>
-                      <td className="py-3.5 px-3 text-slate-500 dark:text-zinc-400 max-w-[140px] truncate">{l.propAddress}</td>
-                      <td className="py-3.5 px-3 text-right text-slate-700 dark:text-zinc-200 tabular-nums">{$$(l.principal)}</td>
-                      <td className="py-3.5 px-3 text-right text-slate-500 dark:text-zinc-400 whitespace-nowrap">{fmtRate(l)}</td>
-                      <td className="py-3.5 px-3 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{$$(l.bal)}</td>
-                      <td className="py-3.5 px-3 text-right text-emerald-600 dark:text-emerald-400 tabular-nums">{$$(l.intEarned)}</td>
-                      <td className="py-3.5 px-3 text-right">
+                      <td className="py-3 px-3 font-bold text-slate-900 dark:text-zinc-100 whitespace-nowrap">{l.lenderName}</td>
+                      <td className="py-3 px-3"><TypeBadge type={l.loanType} sm/></td>
+                      <td className="py-3 px-3 text-slate-500 dark:text-zinc-400 max-w-[130px] truncate">{l.propAddress}</td>
+                      <td className="py-3 px-3 text-right text-slate-700 dark:text-zinc-200 tabular-nums">{$$(l.principal)}</td>
+                      <td className="py-3 px-3 text-right text-slate-500 dark:text-zinc-400 whitespace-nowrap">{fmtRate(l)}</td>
+                      <td className="py-3 px-3 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{$$(l.bal)}</td>
+                      <td className="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400 tabular-nums">{$$(l.intEarned)}</td>
+                      <td className="py-3 px-3 text-right text-slate-500 dark:text-zinc-400 whitespace-nowrap tabular-nums">{l.startDate||"—"}</td>
+                      <td className="py-3 px-3 text-right">
                         {l.promissoryNote ? <span className="text-emerald-500 font-bold">✓</span> : <span className="text-red-400 font-bold">✗</span>}
                       </td>
                     </tr>
@@ -916,9 +930,27 @@ function LenderDashboard({ data }) {
       })()}
 
       {view==="lenders"&&(
-        <div className="space-y-3">
+        <div>
+          {lenders.length>0&&(
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
+              <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
+                {[["name","A–Z"],["high","High → Low"],["low","Low → High"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setLenderSort(v)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${lenderSort===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="space-y-3">
           {lenders.length===0&&<div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">No active lenders.</div>}
-          {lenders.map(ld=>(
+          {[...lenders].sort((a,b)=>{
+            if(lenderSort==="high")return b.totalBal-a.totalBal;
+            if(lenderSort==="low")return a.totalBal-b.totalBal;
+            return a.name.localeCompare(b.name);
+          }).map(ld=>(
             <div key={ld.name} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-md dark:shadow-none transition-shadow">
               <div className="px-5 py-4 flex justify-between items-start">
                 <div>
@@ -941,6 +973,7 @@ function LenderDashboard({ data }) {
               </div>
             </div>
           ))}
+          </div>
         </div>
       )}
     </div>
@@ -978,17 +1011,17 @@ function PropertyDashboard({ data }) {
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="bg-slate-900 dark:bg-zinc-800 rounded-2xl p-4 text-white text-center">
           <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Under Mgmt</div>
-          <div className="text-xl font-bold tabular-nums truncate">{$$(haveNow)}</div>
+          <div className="text-xl font-bold tabular-nums">{$$c(haveNow)}</div>
           <div className="text-[10px] text-slate-500 mt-1">deployed + ready</div>
         </div>
         <div className="bg-blue-600 rounded-2xl p-4 text-white text-center">
           <div className="text-[9px] font-semibold text-blue-200 uppercase tracking-widest mb-2">On Deals</div>
-          <div className="text-xl font-bold tabular-nums truncate">{$$(totalDeployed)}</div>
+          <div className="text-xl font-bold tabular-nums">{$$c(totalDeployed)}</div>
           <div className="text-[10px] text-blue-200 mt-1">{rows.length} propert{rows.length===1?"y":"ies"}</div>
         </div>
         <div className="bg-violet-600 rounded-2xl p-4 text-white text-center">
           <div className="text-[9px] font-semibold text-violet-200 uppercase tracking-widest mb-2">Ready</div>
-          <div className="text-xl font-bold tabular-nums truncate">{$$(unassignedTotal)}</div>
+          <div className="text-xl font-bold tabular-nums">{$$c(unassignedTotal)}</div>
           <div className="text-[10px] text-violet-200 mt-1">{data.unassigned.length} unassigned</div>
         </div>
       </div>
