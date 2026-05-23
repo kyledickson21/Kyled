@@ -609,6 +609,8 @@ function PropertiesPage({ data, update }) {
   const visible=data.properties.filter(p=>showSold||!p.dateSold);
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
+  const allExpanded=visible.length>0&&visible.every(p=>expanded[p.id]);
+  const toggleAll=()=>allExpanded?setExpanded({}):setExpanded(Object.fromEntries(visible.map(p=>[p.id,true])));
 
   return (
     <div>
@@ -624,6 +626,9 @@ function PropertiesPage({ data, update }) {
           <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-zinc-400 cursor-pointer select-none">
             <input type="checkbox" checked={showSold} onChange={e=>setShowSold(e.target.checked)} className="rounded"/> Show Sold
           </label>
+          <button onClick={toggleAll} className="text-xs font-semibold text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200 border border-slate-200 dark:border-zinc-700 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800">
+            {allExpanded?"⊖ Collapse":"⊕ Expand"}
+          </button>
           <Btn onClick={()=>setModal("addProp")} color="ghost" sm>+ Property</Btn>
         </div>
       </div>
