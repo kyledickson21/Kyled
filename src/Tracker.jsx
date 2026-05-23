@@ -606,11 +606,10 @@ function PropertiesPage({ data, update }) {
     setModal(null);
   };
 
+  const [viewMode,setViewMode]=useState("expanded");
   const visible=data.properties.filter(p=>showSold||!p.dateSold);
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
-  const allExpanded=visible.length>0&&visible.every(p=>expanded[p.id]);
-  const toggleAll=()=>allExpanded?setExpanded({}):setExpanded(Object.fromEntries(visible.map(p=>[p.id,true])));
 
   return (
     <div>
@@ -626,9 +625,14 @@ function PropertiesPage({ data, update }) {
           <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-zinc-400 cursor-pointer select-none">
             <input type="checkbox" checked={showSold} onChange={e=>setShowSold(e.target.checked)} className="rounded"/> Show Sold
           </label>
-          <button onClick={toggleAll} className="text-xs font-semibold text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200 border border-slate-200 dark:border-zinc-700 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800">
-            {allExpanded?"⊖ Collapse":"⊕ Expand"}
-          </button>
+          <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-lg p-0.5 gap-0.5">
+            {[["condensed","≡"],["expanded","⊞"]].map(([v,icon])=>(
+              <button key={v} onClick={()=>setViewMode(v)} title={v==="condensed"?"Condensed view":"Expanded view"}
+                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${viewMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
+                {icon}
+              </button>
+            ))}
+          </div>
           <Btn onClick={()=>setModal("addProp")} color="ghost" sm>+ Property</Btn>
         </div>
       </div>
@@ -656,7 +660,59 @@ function PropertiesPage({ data, update }) {
         </div>
       )}
 
-      <div className="space-y-3">
+      {viewMode==="condensed"&&visible.length>0&&(
+        <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">
+                  <th className="py-2.5 px-4 text-left w-6">#</th>
+                  <th className="py-2.5 px-4 text-left">Address</th>
+                  <th className="py-2.5 px-4 text-right">Loans</th>
+                  <th className="py-2.5 px-4 text-right">Funded</th>
+                  <th className="py-2.5 px-4 text-right">Needed</th>
+                  <th className="py-2.5 px-4 text-right">Status</th>
+                  <th className="py-2.5 px-2 text-right"></th>
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-zinc-900 divide-y divide-slate-50 dark:divide-zinc-800">
+                {visible.map((prop,i)=>{
+                  const active=prop.loans.filter(l=>!l.endDate);
+                  const funded=active.reduce((s,l)=>s+(l.principal||0),0);
+                  const needed=prop.fundingNeeded||0;
+                  const short=Math.max(0,needed-funded);
+                  const under=!prop.dateSold&&short>0;
+                  const full=!prop.dateSold&&funded>0&&short===0;
+                  return (
+                    <tr key={prop.id} className={`hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors ${under?"bg-red-50/40 dark:bg-red-950/10":""}`}>
+                      <td className="py-2.5 px-4 text-slate-300 dark:text-zinc-600 tabular-nums font-semibold">{i+1}</td>
+                      <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">{prop.address||"Unnamed"}</td>
+                      <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">{active.length}</td>
+                      <td className="py-2.5 px-4 text-right tabular-nums text-slate-700 dark:text-zinc-200 font-medium">{funded>0?$$(funded):"—"}</td>
+                      <td className="py-2.5 px-4 text-right tabular-nums text-slate-400 dark:text-zinc-500">{needed>0?$$(needed):"—"}</td>
+                      <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                        {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 font-semibold">Sold</span>}
+                        {full&&<span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Full</span>}
+                        {under&&<span className="text-red-500 dark:text-red-400 font-bold tabular-nums">−{$$(short)}</span>}
+                        {!prop.dateSold&&!full&&!under&&funded===0&&<span className="text-slate-300 dark:text-zinc-600">—</span>}
+                      </td>
+                      <td className="py-2.5 px-2 text-right">
+                        <div className="flex gap-0.5 justify-end">
+                          {!prop.dateSold&&<button onClick={()=>setModal({type:"markSold",prop})} className="p-1 text-slate-300 dark:text-zinc-600 hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors text-[11px] font-bold" title="Mark Sold">$</button>}
+                          <button onClick={()=>setModal({type:"editProp",prop})} className="p-1 text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors">✏️</button>
+                          <button onClick={()=>delProp(prop.id)} className="p-1 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors">🗑</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {viewMode==="expanded"&&<div className="space-y-3">
         {visible.map(prop=>{
           const active=prop.loans.filter(l=>!l.endDate);
           const funded=active.reduce((s,l)=>s+(l.principal||0),0);
@@ -761,7 +817,7 @@ function PropertiesPage({ data, update }) {
             </div>
           );
         })}
-      </div>
+      </div>}
 
       {modal==="addMoney"&&<Modal title="Add Lender Money" onClose={()=>setModal(null)}><LenderMoneyForm properties={data.properties} onSave={saveMoneyForm} onClose={()=>setModal(null)}/></Modal>}
       {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
