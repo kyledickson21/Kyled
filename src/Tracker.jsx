@@ -789,9 +789,12 @@ function LenderDashboard({ data }) {
   const [sort,setSort]=useState({col:null,dir:"asc"});
   const [lenderSort,setLenderSort]=useState("name");
   const toggleSort = col => setSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
-  const allActive=data.properties.flatMap(prop=>
-    prop.loans.filter(l=>!l.endDate).map(l=>({...l,propAddress:prop.address,bal:calcBalance(l),intEarned:calcBalance(l)-(l.principal||0)}))
-  ).sort((a,b)=>a.lenderName.localeCompare(b.lenderName));
+  const allActive=[
+    ...data.properties.flatMap(prop=>
+      prop.loans.filter(l=>!l.endDate).map(l=>({...l,propAddress:prop.address,bal:calcBalance(l),intEarned:calcBalance(l)-(l.principal||0)}))
+    ),
+    ...data.unassigned.map(u=>{const p=u.principal||u.amount||0;const b=calcBalance({...u,principal:p});return{...u,principal:p,propAddress:"Unassigned",bal:b,intEarned:b-p};}),
+  ].sort((a,b)=>a.lenderName.localeCompare(b.lenderName));
 
   const byLender={};
   allActive.forEach(l=>{
@@ -805,7 +808,6 @@ function LenderDashboard({ data }) {
   const privPrin=allActive.filter(l=>l.loanType==="private").reduce((s,l)=>s+l.principal,0);
   const hardPrin=allActive.filter(l=>l.loanType==="hard").reduce((s,l)=>s+l.principal,0);
   const totalBal=allActive.reduce((s,l)=>s+l.bal,0);
-  const unassigned=data.unassigned;
 
   return (
     <div>
@@ -826,25 +828,6 @@ function LenderDashboard({ data }) {
           </div>
         ))}
       </div>
-
-      {unassigned.length>0&&(
-        <div className="mb-5 rounded-2xl border border-violet-200 dark:border-violet-800 overflow-hidden">
-          <div className="bg-violet-50 dark:bg-violet-950 px-5 py-3 border-b border-violet-100 dark:border-violet-800 flex justify-between items-center">
-            <span className="text-xs font-semibold text-violet-700 dark:text-violet-400 uppercase tracking-widest">💼 Unassigned</span>
-            <span className="font-bold text-violet-700 dark:text-violet-300 tabular-nums">{$$(unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0))}</span>
-          </div>
-          {unassigned.map(u=>(
-            <div key={u.id} className="px-5 py-3 flex justify-between items-center text-sm bg-white dark:bg-zinc-900 border-b border-slate-50 dark:border-zinc-800 last:border-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-slate-900 dark:text-zinc-100">{u.lenderName}</span>
-                <TypeBadge type={u.loanType} sm/>
-                <span className="text-slate-400 dark:text-zinc-500 text-xs">{fmtRate(u)}</span>
-              </div>
-              <span className="font-bold text-violet-700 dark:text-violet-300 tabular-nums">{$$(u.principal||u.amount||0)}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 mb-4 gap-1">
         {[["loans","All Active Loans"],["lenders","By Lender"]].map(([v,l])=>(
