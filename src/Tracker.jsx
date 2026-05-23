@@ -542,7 +542,10 @@ function PropertiesPage({ data, update }) {
   const [modal,setModal]=useState(null);
   const [expanded,setExpanded]=useState({});
   const [showSold,setShowSold]=useState(false);
+  const [viewMode,setViewMode]=useState("expanded");
+  const [propSort,setPropSort]=useState({col:null,dir:"asc"});
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
+  const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const unassignedTotal = data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
 
   const saveMoneyForm = f => {
@@ -606,7 +609,6 @@ function PropertiesPage({ data, update }) {
     setModal(null);
   };
 
-  const [viewMode,setViewMode]=useState("expanded");
   const visible=data.properties.filter(p=>showSold||!p.dateSold);
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
@@ -660,30 +662,60 @@ function PropertiesPage({ data, update }) {
         </div>
       )}
 
-      {viewMode==="condensed"&&visible.length>0&&(
-        <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-slate-50 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">
-                  <th className="py-2.5 px-4 text-left w-6">#</th>
-                  <th className="py-2.5 px-4 text-left">Address</th>
-                  <th className="py-2.5 px-4 text-right">Loans</th>
-                  <th className="py-2.5 px-4 text-right">Funded</th>
-                  <th className="py-2.5 px-4 text-right">Needed</th>
-                  <th className="py-2.5 px-4 text-right">Status</th>
-                  <th className="py-2.5 px-2 text-right"></th>
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-zinc-900 divide-y divide-slate-50 dark:divide-zinc-800">
-                {visible.map((prop,i)=>{
-                  const active=prop.loans.filter(l=>!l.endDate);
-                  const funded=active.reduce((s,l)=>s+(l.principal||0),0);
-                  const needed=prop.fundingNeeded||0;
-                  const short=Math.max(0,needed-funded);
-                  const under=!prop.dateSold&&short>0;
-                  const full=!prop.dateSold&&funded>0&&short===0;
-                  return (
+      {viewMode==="condensed"&&visible.length>0&&(()=>{
+        const rows=visible.map(prop=>{
+          const active=prop.loans.filter(l=>!l.endDate);
+          const funded=active.reduce((s,l)=>s+(l.principal||0),0);
+          const needed=prop.fundingNeeded||0;
+          const short=Math.max(0,needed-funded);
+          return{prop,active,funded,needed,short,under:!prop.dateSold&&short>0,full:!prop.dateSold&&funded>0&&short===0};
+        });
+        const sorted=[...rows].sort((a,b)=>{
+          if(!propSort.col)return 0;
+          const d=propSort.dir==="asc"?1:-1;
+          switch(propSort.col){
+            case"Address": return d*(a.prop.address||"").localeCompare(b.prop.address||"");
+            case"Loans":   return d*(a.active.length-b.active.length);
+            case"Funded":  return d*(a.funded-b.funded);
+            case"Needed":  return d*(a.needed-b.needed);
+            case"Status":  return d*(a.short-b.short);
+            default:       return 0;
+          }
+        });
+        const COLS=[
+          {h:"Address",left:true},
+          {h:"Loans",  left:false},
+          {h:"Funded", left:false},
+          {h:"Needed", left:false},
+          {h:"Status", left:false},
+        ];
+        return (
+          <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">
+                    <th className="py-2.5 px-4 text-left w-6">#</th>
+                    {COLS.map(({h,left})=>{
+                      const isActive=propSort.col===h;
+                      return (
+                        <th key={h} onClick={()=>togglePropSort(h)}
+                          className={`py-2.5 px-4 ${left?"text-left":"text-right"} cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors ${isActive?"text-slate-700 dark:text-zinc-200":""}`}>
+                          <span className={`inline-flex items-center gap-0.5 ${left?"":"justify-end w-full"}`}>
+                            {h}
+                            {isActive
+                              ? <span className="text-blue-500 ml-0.5">{propSort.dir==="asc"?"↑":"↓"}</span>
+                              : <span className="opacity-25 ml-0.5">↕</span>
+                            }
+                          </span>
+                        </th>
+                      );
+                    })}
+                    <th className="py-2.5 px-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-zinc-900 divide-y divide-slate-50 dark:divide-zinc-800">
+                  {sorted.map(({prop,active,funded,needed,short,under,full},i)=>(
                     <tr key={prop.id} className={`hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors ${under?"bg-red-50/40 dark:bg-red-950/10":""}`}>
                       <td className="py-2.5 px-4 text-slate-300 dark:text-zinc-600 tabular-nums font-semibold">{i+1}</td>
                       <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">{prop.address||"Unnamed"}</td>
@@ -704,13 +736,13 @@ function PropertiesPage({ data, update }) {
                         </div>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {viewMode==="expanded"&&<div className="space-y-3">
         {visible.map(prop=>{
