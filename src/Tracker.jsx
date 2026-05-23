@@ -813,7 +813,10 @@ function LenderDashboard({ data }) {
     <div>
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Lender Dashboard</h2>
-        <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Active capital by lender</p>
+        <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
+          <span className="font-semibold text-slate-600 dark:text-zinc-300">{lenders.length} lender{lenders.length!==1?"s":""}</span>
+          <span> · {allActive.length} loan{allActive.length!==1?"s":""}</span>
+        </p>
       </div>
 
       <div className="grid grid-cols-3 gap-3 mb-6">
