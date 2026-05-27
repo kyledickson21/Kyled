@@ -14,14 +14,34 @@ jobs:
           ref: property-lookup-app
 
       - name: Install Vercel CLI
-        run: npm install -g vercel
+        run: npm install -g vercel@latest
 
-      - name: Deploy to Vercel
+      - name: Link or create Vercel project
+        run: |
+          # Fetch project from Vercel API (GitHub Actions has full internet)
+          RESP=$(curl -sf "https://api.vercel.com/v9/projects/nexus-property-lookup" \
+            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" || echo "{}")
+          PROJECT_ID=$(echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || echo "")
+          ORG_ID=$(echo "$RESP"     | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('accountId',''))" 2>/dev/null || echo "")
+          if [ -n "$PROJECT_ID" ] && [ -n "$ORG_ID" ]; then
+            mkdir -p .vercel
+            echo "{\"projectId\":\"$PROJECT_ID\",\"orgId\":\"$ORG_ID\"}" > .vercel/project.json
+            echo "Linked to existing project: $PROJECT_ID (org: $ORG_ID)"
+          else
+            echo "Project not found — will be created on first deploy"
+          fi
+
+      - name: Deploy to Vercel (production)
         id: deploy
         run: |
-          URL=$(vercel --token ${{ secrets.VERCEL_TOKEN }} --yes --prod --name nexus-property-lookup 2>&1 | grep -o 'https://[^ ]*\.vercel\.app' | tail -1)
+          OUTPUT=$(vercel --token ${{ secrets.VERCEL_TOKEN }} --yes --prod --name nexus-property-lookup 2>&1)
+          echo "$OUTPUT"
+          URL=$(echo "$OUTPUT" | grep -oE 'https://[^ ]+\.vercel\.app' | grep -v 'inspect' | tail -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "Deployed to: $URL"
+          echo "::notice title=Live URL::$URL"
+          echo "--- DEPLOYMENT URL: $URL ---"
 
-      - name: Print URL
-        run: echo "App is live at ${{ steps.deploy.outputs.url }}"
+      - name: Summary
+        run: |
+          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
