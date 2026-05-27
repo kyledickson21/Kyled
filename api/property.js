@@ -3,7 +3,7 @@ function slugify(s) {
 }
 
 const AUDITOR_BASE   = 'https://property.franklincountyauditor.com';
-const AUDITOR_SEARCH = `${AUDITOR_BASE}/_web/search/commonsearch.aspx?mode=address`;
+const AUDITOR_SEARCH = `${AUDITOR_BASE}/_web/search/CommonSearch.aspx?mode=ADDRESS`;
 
 const NAV_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -53,31 +53,38 @@ async function getFranklinCountyData(address) {
       : (r1.headers.get('set-cookie') || '').split(/,(?=[^;]+=)/).map(s => s.trim());
     const cookie = rawCookies.map(c => c.split(';')[0]).join('; ');
 
-    // Extract every <input> name/value pair
+    // Extract all <input> fields — capture name, value, and type
     const inputs = [];
-    const inputRe = /<input[^>]+name="([^"]+)"(?:[^>]+value="([^"]*)")?/gi;
+    const inputRe = /<input([^>]+?)(?:\/?>)/gi;
     let im;
-    while ((im = inputRe.exec(html1)) !== null) inputs.push({ name: im[1], value: im[2] || '' });
+    while ((im = inputRe.exec(html1)) !== null) {
+      const attrs  = im[1];
+      const nameM  = attrs.match(/\bname="([^"]+)"/i);
+      const valueM = attrs.match(/\bvalue="([^"]*)"/i);
+      const typeM  = attrs.match(/\btype="([^"]+)"/i);
+      if (nameM) inputs.push({
+        name:  nameM[1],
+        value: valueM ? valueM[1] : '',
+        type:  typeM  ? typeM[1].toLowerCase() : 'text',
+      });
+    }
 
-    // Locate house-number and street-name fields by common naming patterns
-    const find = (re, skip) => inputs.find(f => re.test(f.name) && (!skip || !skip.test(f.name)));
-    const houseField  = find(/house|num|situs.?n|hse/i,           /view|event|gen|btn|submit/i);
-    const streetField = find(/street|situs.?s|str.?name|road/i,   /num|dir|type|suf|view|event|btn/i);
-    if (!houseField || !streetField) return fallback;
-
-    // Build form POST body
+    // Build POST body — hidden infrastructure fields first (VIEWSTATE, EVENTVALIDATION, etc.)
     const body = new URLSearchParams();
-    inputs.filter(f => /VIEW|EVENT|GEN/i.test(f.name)).forEach(f => body.set(f.name, f.value));
-    body.set(houseField.name,  houseNum);
-    body.set(streetField.name, streetName);
+    inputs.filter(f => f.type === 'hidden').forEach(f => body.set(f.name, f.value));
 
-    const dirField  = find(/situs.?dir|str.?dir|direction/i, /view|event|gen/i);
-    const typeField = find(/situs.?type|str.?type|suffix/i,  /view|event|gen/i);
-    if (dirField  && dir)        body.set(dirField.name,  dir);
-    if (typeField && streetType) body.set(typeField.name, streetType);
-
-    const btnField = find(/btn.?search|search.?btn/i);
-    if (btnField) body.set(btnField.name, btnField.value || 'Search');
+    // Exact Franklin County field names (confirmed from Python scraper)
+    body.set('__EVENTTARGET',   '');
+    body.set('__EVENTARGUMENT', '');
+    body.set('inpNumber',   houseNum);
+    body.set('Select1',     dir);
+    body.set('inpStreet',   streetName);
+    body.set('inpSuffix1',  streetType);
+    body.set('inpUnit',     '');
+    body.set('selSortBy',   'PARID');
+    body.set('selSortDir',  'ASC');
+    body.set('selPageSize', '15');
+    body.set('btSearch',    'Search');
 
     // Step 2: POST the address — simulates typing and clicking Search
     const r2 = await fetch(AUDITOR_SEARCH, {
@@ -96,39 +103,51 @@ async function getFranklinCountyData(address) {
     if (!r2.ok) return fallback;
     const html2 = await r2.text();
 
-    // If POST redirected straight to a datalet (single-result search), use html2 directly
-    const redirectedToDatalet = r2.url.includes('Datalet.aspx');
     let html3, parcelUrl, pin;
 
-    if (redirectedToDatalet) {
-      html3      = html2;
-      parcelUrl  = r2.url;
-      pin        = (r2.url.match(/[?&]pin=([^&]+)/i) || [])[1]?.replace(/-/g, '') || '';
+    // Single result: POST redirected straight to datalet, or datalet content returned inline
+    if (r2.url.includes('Datalet.aspx') || html2.includes('DataletHeaderTopFC')) {
+      html3     = html2;
+      parcelUrl = r2.url;
+      pin       = (r2.url.match(/[?&]pin=([^&]+)/i) || [])[1]?.replace(/-/g, '') || '';
     } else {
-      // Multiple results — find the PIN link and fetch the property page
-      const pinMatch = html2.match(/Datalet\.aspx[^"']*pin=([^"'&\s]+)/i)
-                    || html2.match(/[?&]pin=(\d{9,})/i);
-      if (!pinMatch) return fallback;
+      // Multiple results — pick first row with selectSearchRow onclick
+      const srMatch = html2.match(/selectSearchRow\(\s*['"]([^'"]+)['"]\s*\)/i);
+      if (!srMatch) return fallback;
 
-      pin        = pinMatch[1].replace(/-/g, '');
-      parcelUrl  = `${AUDITOR_BASE}/_web/Datalets/Datalet.aspx?mode=&UseSearch=no&jur=025&pin=${pin}`;
+      const relPath   = srMatch[1];
+      const dataletUrl = relPath.startsWith('http') ? relPath : `${AUDITOR_BASE}${relPath.startsWith('/') ? '' : '/'}${relPath}`;
+      pin       = (dataletUrl.match(/[?&]pin=([^&]+)/i) || [])[1]?.replace(/-/g, '') || '';
+      parcelUrl = dataletUrl;
 
       // Step 3: GET the property detail page
-      const r3 = await fetch(parcelUrl, {
+      const r3 = await fetch(dataletUrl, {
         headers: {
           ...NAV_HEADERS,
-          'Referer': r2.url || AUDITOR_SEARCH,
+          'Referer': AUDITOR_SEARCH,
           'Cookie': cookie,
           'Sec-Fetch-Site': 'same-origin',
         },
         redirect: 'follow',
         signal: AbortSignal.timeout(3000),
       });
-      if (!r3.ok) return { source: 'Franklin County Auditor', url: parcelUrl, dataSource: 'link_only' };
+      if (!r3.ok) return { source: 'Franklin County Auditor', url: dataletUrl, dataSource: 'link_only' };
       html3 = await r3.text();
     }
 
-    // Parse data from datalet HTML using label→value proximity matching
+    // Extract parcel ID from header text if not yet found from URL
+    if (!pin) {
+      const pidM = html3.match(/Parcel\s*(?:ID|No\.?)[:\s]+([0-9]{3}-[0-9]+-[0-9]+-[0-9]+)/i)
+                || html3.match(/Parcel\s*(?:ID|No\.?)[:\s]+([0-9]{9,})/i);
+      if (pidM) pin = pidM[1].replace(/-/g, '');
+    }
+
+    // Prefer the canonical permalink from the page if available
+    const plinkM = html3.match(/href="([^"]*redir\/Link\/Parcel\/[^"]+)"/i);
+    if (plinkM) parcelUrl = plinkM[1];
+
+    // ── Parse property data ──────────────────────────────────────────────────
+
     function grabDollar(labelRe) {
       const re = new RegExp(labelRe.source + '[\\s\\S]{0,400}?\\$([\\d,]+)', 'i');
       const m  = html3.match(re);
@@ -137,35 +156,69 @@ async function getFranklinCountyData(address) {
       return n > 0 ? n : null;
     }
     function grabNum(labelRe) {
-      const re = new RegExp(labelRe.source + '[\\s\\S]{0,200}?>\\s*([\\d\\.]+)\\s*<', 'i');
+      const re = new RegExp(labelRe.source + '[\\s\\S]{0,300}?>\\s*([\\d,\\.]+)\\s*<', 'i');
       const m  = html3.match(re);
       if (!m) return null;
-      const n = Number(m[1]);
+      const n = Number(m[1].replace(/,/g, ''));
       return !isNaN(n) && n > 0 ? n : null;
     }
     function grabText(labelRe) {
-      const re = new RegExp(labelRe.source + '[\\s\\S]{0,200}?>([^<]{2,80})<', 'i');
+      const re = new RegExp(labelRe.source + '[\\s\\S]{0,300}?>([^<]{2,80})<', 'i');
       const m  = html3.match(re);
       return m ? m[1].trim().replace(/\s+/g, ' ') : null;
     }
 
-    const appraisedValue = grabDollar(/total\s*(?:market\s*)?value|market\s*value|appraised\s*value/i)
-                        || grabDollar(/total\s*value/i);
-    const landValue      = grabDollar(/land\s*value/i);
-    const buildingValue  = grabDollar(/building\s*value|improvement/i);
-    const sqft           = grabNum(/living\s*area|floor\s*area|sq(?:uare)?\s*f(?:ee)?t/i);
-    const beds           = grabNum(/bedrooms?\b/i);
-    const baths          = grabNum(/full\s*baths?|bathrooms?\b/i);
-    const halfBaths      = grabNum(/half\s*baths?/i);
-    const yearBuilt      = grabNum(/year\s*built/i);
-    const ownerName      = grabText(/(?:primary\s*)?owner(?:\s*name)?/i);
-    const salePrice      = grabDollar(/(?:last\s*)?sale\s*price|transfer\s*amount/i);
-    const saleDate       = grabText(/(?:last\s*)?sale\s*date|transfer\s*date/i);
+    // Franklin County Appraised Value table: find "Base" row → land / improvement / total
+    let landValue = null, buildingValue = null, appraisedValue = null;
+    const avIdx = html3.search(/Appraised\s*Value/i);
+    if (avIdx !== -1) {
+      const avSection = html3.slice(avIdx, avIdx + 4000);
+      const baseRowM  = avSection.match(/Base[\s\S]{0,800}?\$([\d,]+)[\s\S]{0,300}?\$([\d,]+)[\s\S]{0,300}?\$([\d,]+)/i);
+      if (baseRowM) {
+        landValue      = Number(baseRowM[1].replace(/,/g, '')) || null;
+        buildingValue  = Number(baseRowM[2].replace(/,/g, '')) || null;
+        appraisedValue = Number(baseRowM[3].replace(/,/g, '')) || null;
+      }
+    }
+    if (!appraisedValue) {
+      appraisedValue = grabDollar(/total\s*(?:market\s*)?value|appraised\s*value/i) || grabDollar(/total\s*value/i);
+      if (!landValue)     landValue     = grabDollar(/land/i);
+      if (!buildingValue) buildingValue = grabDollar(/improvement|building/i);
+    }
+
+    // Building characteristics: header row "Yr Built / Tot Fin Area / Bedrooms / Full Baths / Half Baths"
+    // followed immediately by the data row
+    let yearBuilt = null, sqft = null, beds = null, baths = null, halfBaths = null;
+    const bldgHdrM = html3.match(/Yr\s*Built[\s\S]{0,150}?Tot\s*Fin\s*Area[\s\S]{0,150}?Bedroo/i);
+    if (bldgHdrM) {
+      const afterHdr = html3.slice(html3.indexOf(bldgHdrM[0]) + bldgHdrM[0].length);
+      const cells    = [];
+      const cellRe   = /<td[^>]*>\s*([^<\s][^<]{0,30}?)\s*<\/td>/gi;
+      let cm;
+      while ((cm = cellRe.exec(afterHdr)) !== null && cells.length < 8) {
+        const v = cm[1].trim();
+        if (v && /\d/.test(v)) cells.push(v);
+      }
+      if (cells[0]) yearBuilt = Number(cells[0]) || null;
+      if (cells[1]) sqft      = Number(cells[1].replace(/,/g, '')) || null;
+      if (cells[2]) beds      = Number(cells[2]) || null;
+      if (cells[3]) baths     = Number(cells[3]) || null;
+      if (cells[4]) halfBaths = Number(cells[4]) || null;
+    }
+    if (!yearBuilt) yearBuilt = grabNum(/yr\s*built|year\s*built/i);
+    if (!sqft)      sqft      = grabNum(/tot\s*fin\s*area|living\s*area|sq(?:uare)?\s*f(?:ee)?t/i);
+    if (!beds)      beds      = grabNum(/bedrooms?\b/i);
+    if (!baths)     baths     = grabNum(/full\s*baths?|bathrooms?\b/i);
+    if (!halfBaths) halfBaths = grabNum(/half\s*baths?/i);
+
+    const ownerName = grabText(/(?:primary\s*)?owner(?:\s*name)?/i);
+    const salePrice = grabDollar(/(?:last\s*)?sale\s*price|transfer\s*amount/i);
+    const saleDate  = grabText(/(?:last\s*)?sale\s*date|transfer\s*date/i);
 
     return {
-      source: 'Franklin County Auditor',
-      dataSource: appraisedValue ? 'live' : 'partial',
-      parcelId: pin,
+      source:        'Franklin County Auditor',
+      dataSource:    appraisedValue ? 'live' : 'partial',
+      parcelId:      pin || null,
       ownerName,
       appraisedValue,
       landValue,
