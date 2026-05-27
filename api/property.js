@@ -24,10 +24,9 @@ async function getFranklinCountyData(address) {
 
   const searchUrl = 'https://property.franklincountyauditor.com/_web/search/commonsearch.aspx?mode=address';
 
-  // Try address search first, then full address string as fallback
   const wheres = [
+    `SITEADDRESS LIKE '${houseNum} ${streetRaw.substring(0, 20)}%'`,
     `SITEADDRESS LIKE '${houseNum} ${firstWord}%'`,
-    `SITEADDRESS LIKE '${houseNum} ${streetRaw.substring(0, 15)}%'`,
   ];
 
   for (const where of wheres) {
@@ -206,7 +205,7 @@ export default async function handler(req, res) {
 
   const isFranklin = !county || county.toLowerCase().includes('franklin');
   const street  = (address.split(',')[0] || '').trim();
-  const cityRaw = (address.split(',')[1] || 'Columbus').trim().split(' ')[0];
+  const cityRaw = (address.split(',')[1] || 'Columbus').trim();
 
   const [auditorResult, zillowResult, redfinResult] = await Promise.allSettled([
     isFranklin
@@ -221,11 +220,12 @@ export default async function handler(req, res) {
     getRedfinData(address),
   ]);
 
+  const searchFallback = { source: 'Franklin County Auditor', url: 'https://property.franklincountyauditor.com/_web/search/commonsearch.aspx?mode=address', dataSource: 'link_only' };
   const zillowUrl  = `https://www.zillow.com/homes/${slugify(address)}_rb/`;
-  const realtorUrl = `https://www.realtor.com/realestateandhomes-search/${encodeURIComponent(cityRaw)}_OH?q=${encodeURIComponent(street)}`;
+  const realtorUrl = `https://www.realtor.com/realestateandhomes-search/${cityRaw.replace(/\s+/g, '-')}_OH?q=${encodeURIComponent(street)}`;
 
   return res.json({
-    auditor: auditorResult.status === 'fulfilled' ? auditorResult.value : { source: 'Franklin County Auditor', url: 'https://www.franklincountyauditor.com/real-estate/search', dataSource: 'link_only' },
+    auditor: (auditorResult.status === 'fulfilled' && auditorResult.value) ? auditorResult.value : searchFallback,
     zillow:  zillowResult.status  === 'fulfilled' ? zillowResult.value  : { url: zillowUrl, estimate: null, dataSource: 'link_only' },
     redfin:  redfinResult.status  === 'fulfilled' ? redfinResult.value  : { url: `https://www.redfin.com/search?q=${encodeURIComponent(address)}`, estimate: null, dataSource: 'link_only' },
     realtor: { url: realtorUrl, estimate: null, dataSource: 'link_only' },
