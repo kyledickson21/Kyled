@@ -41,7 +41,7 @@ async function getFranklinCountyData(address) {
       });
       const r = await fetch(`${FC_ARCGIS_URL}/query?${qs}`, {
         headers: ARCGIS_HEADERS,
-        signal: AbortSignal.timeout(9000),
+        signal: AbortSignal.timeout(4000),
       });
       if (!r.ok) {
         if (r.status === 403) break; // IP blocked — no point retrying
@@ -91,7 +91,7 @@ async function getZillowData(address) {
   };
 
   try {
-    const r = await fetch(defaultUrl, { headers: HEADERS, redirect: 'follow', signal: AbortSignal.timeout(10000) });
+    const r = await fetch(defaultUrl, { headers: HEADERS, redirect: 'follow', signal: AbortSignal.timeout(5000) });
     if (!r.ok) return { ...fallback, url: r.url || defaultUrl };
     const html = await r.text();
 
@@ -137,7 +137,7 @@ async function getRedfinData(address) {
   try {
     const r1 = await fetch(
       `https://www.redfin.com/stingray/do/location-autocomplete?location=${encodeURIComponent(address)}&v=2&iss=false`,
-      { headers: HEADERS, signal: AbortSignal.timeout(7000) }
+      { headers: HEADERS, signal: AbortSignal.timeout(3500) }
     );
     const text = await r1.text();
     if (!text.trim().startsWith('{') && !text.trim().startsWith('{}&&')) return fallback;
@@ -155,8 +155,8 @@ async function getRedfinData(address) {
       const qs = `propertyId=${propertyId}&listingId=${listingId}&pageType=0&accessLevel=3`;
       const refHdr = { ...HEADERS, Referer: propertyUrl };
       const [avmRes, detailRes] = await Promise.allSettled([
-        fetch(`https://www.redfin.com/stingray/api/home/details/avm?${qs}`, { headers: refHdr, signal: AbortSignal.timeout(6000) }),
-        fetch(`https://www.redfin.com/stingray/api/home/details/aboveTheFold?${qs}`, { headers: refHdr, signal: AbortSignal.timeout(6000) }),
+        fetch(`https://www.redfin.com/stingray/api/home/details/avm?${qs}`, { headers: refHdr, signal: AbortSignal.timeout(3500) }),
+        fetch(`https://www.redfin.com/stingray/api/home/details/aboveTheFold?${qs}`, { headers: refHdr, signal: AbortSignal.timeout(3500) }),
       ]);
       if (avmRes.status === 'fulfilled') {
         try {

@@ -1,5 +1,8 @@
 {
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
+  "functions": {
+    "api/*.js": { "maxDuration": 10 }
+  },
   "headers": [
     {
       "source": "/(.*)",
