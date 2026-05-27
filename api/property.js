@@ -98,18 +98,19 @@ async function getFranklinCountyData(address) {
 
     // If POST redirected straight to a datalet (single-result search), use html2 directly
     const redirectedToDatalet = r2.url.includes('Datalet.aspx');
-    let html3, parcelUrl;
+    let html3, parcelUrl, pin;
 
     if (redirectedToDatalet) {
       html3      = html2;
       parcelUrl  = r2.url;
+      pin        = (r2.url.match(/[?&]pin=([^&]+)/i) || [])[1]?.replace(/-/g, '') || '';
     } else {
       // Multiple results — find the PIN link and fetch the property page
       const pinMatch = html2.match(/Datalet\.aspx[^"']*pin=([^"'&\s]+)/i)
                     || html2.match(/[?&]pin=(\d{9,})/i);
       if (!pinMatch) return fallback;
 
-      const pin = pinMatch[1].replace(/-/g, '');
+      pin        = pinMatch[1].replace(/-/g, '');
       parcelUrl  = `${AUDITOR_BASE}/_web/Datalets/Datalet.aspx?mode=&UseSearch=no&jur=025&pin=${pin}`;
 
       // Step 3: GET the property detail page
