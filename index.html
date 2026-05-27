@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Property Lookup — Nexus Homes v2</title>
+  <title>Property Lookup — Nexus Homes</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -28,20 +28,12 @@
 
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #09090b;
-        --surface: #18181b;
-        --border: #27272a;
-        --text: #fafafa;
-        --text-2: #a1a1aa;
-        --text-3: #52525b;
-        --accent: #3b82f6;
-        --accent-light: rgba(59,130,246,.12);
-        --green-light: rgba(22,163,74,.12);
-        --red-light: rgba(220,38,38,.1);
-        --amber-light: rgba(217,119,6,.1);
-        --amber: #f59e0b;
-        --shadow: 0 1px 3px rgba(0,0,0,.4);
-        --shadow-lg: 0 4px 20px rgba(0,0,0,.5);
+        --bg: #09090b; --surface: #18181b; --border: #27272a;
+        --text: #fafafa; --text-2: #a1a1aa; --text-3: #52525b;
+        --accent: #3b82f6; --accent-light: rgba(59,130,246,.12);
+        --green-light: rgba(22,163,74,.12); --red-light: rgba(220,38,38,.1);
+        --amber-light: rgba(217,119,6,.1); --amber: #f59e0b;
+        --shadow: 0 1px 3px rgba(0,0,0,.4); --shadow-lg: 0 4px 20px rgba(0,0,0,.5);
       }
     }
 
@@ -89,8 +81,8 @@
     .value-unavail { font-size: 13px; color: var(--text-3); font-style: italic; margin-bottom: 14px; }
 
     .stats-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-    .stat-chip { display: flex; align-items: center; gap: 4px; background: var(--accent-light); color: var(--accent); border-radius: 20px; padding: 4px 11px; font-size: 12px; font-weight: 700; }
-    .stat-chip svg { width: 13px; height: 13px; flex-shrink: 0; }
+    .stat-chip { display: flex; align-items: center; gap: 5px; background: var(--accent-light); color: var(--accent); border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 700; }
+    .stat-chip svg { width: 12px; height: 12px; flex-shrink: 0; }
 
     .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-bottom: 14px; }
     .detail-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); margin-bottom: 2px; }
@@ -134,7 +126,7 @@
 
 <main class="main">
   <div class="section-title">Property Lookup</div>
-  <p class="section-sub">Search any Columbus-area address to see county auditor data, Redfin estimate, Zillow, and Realtor.com.</p>
+  <p class="section-sub">Search any Columbus-area address to see live county auditor data, Zillow, Redfin, and Realtor.com.</p>
 
   <div class="search-wrap" id="searchWrap">
     <svg class="search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -152,7 +144,7 @@
   <div id="resultsArea" style="display:none">
     <div class="results-label" id="resultsLabel"></div>
     <div class="cards" id="cardsContainer"></div>
-    <p class="footer-note">Auditor and Redfin data is fetched live. Zillow and Realtor.com estimates require visiting their site.</p>
+    <p class="footer-note">Auditor data is pulled live from the county's GIS database. Zillow and Redfin estimates require visiting their site.</p>
   </div>
 
   <div class="empty-state" id="emptyState">
@@ -183,13 +175,12 @@ function fmtAddr(item) {
 
 function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmt$(n) { const v = Math.round(Number(n)); return v ? '$' + v.toLocaleString() : null; }
+function slugify(s) { return s.toLowerCase().replace(/[,#]+/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,''); }
 
-// ── Autocomplete (Nominatim — no CORS issue) ──────────────────────────────────
+// ── Autocomplete ──────────────────────────────────────────────────────────────
 async function fetchSuggestions(q) {
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=8&countrycodes=us`;
-  const r = await fetch(url, { headers: { 'Accept-Language': 'en-US,en' } });
-  const data = await r.json();
-  return data.filter(d => d.address?.house_number);
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=8&countrycodes=us`, { headers: { 'Accept-Language': 'en-US,en' } });
+  return (await r.json()).filter(d => d.address?.house_number);
 }
 
 function renderDropdown() {
@@ -228,24 +219,133 @@ searchInput.addEventListener('keydown', e => {
 
 dropdown.addEventListener('mousedown', e => {
   const btn = e.target.closest('.suggestion');
-  if (!btn) return;
-  e.preventDefault();
+  if (!btn) return; e.preventDefault();
   selectSuggestion(suggestions[parseInt(btn.dataset.idx)]);
 });
 
 searchClear.addEventListener('click', () => { searchInput.value=''; searchClear.style.display='none'; closeDropdown(); showEmpty(); });
 document.addEventListener('mousedown', e => { if (!$('searchWrap').contains(e.target)) closeDropdown(); });
 
-// ── Property data via serverless API (server-side, no CORS) ──────────────────
-async function getPropertyData(address, county) {
-  const params = new URLSearchParams({ address });
-  if (county) params.set('county', county);
-  const r = await fetch(`/api/property?${params}`, { signal: AbortSignal.timeout(18000) });
-  if (!r.ok) throw new Error('API error');
-  return r.json();
+// ── Franklin County ArcGIS — called from browser (real IP, no cloud block) ───
+const FC_ARCGIS = [
+  'https://gis.franklincountyauditor.com/arcgis/rest/services/TAXMAP/FeatureServer/0',
+  'https://maps.fcauditor.org/arcgis/rest/services/TAXMAP/FeatureServer/0',
+  'https://gis.franklincountyauditor.com/server/rest/services/TAXMAP/FeatureServer/0',
+];
+
+function parseStreetLocal(address) {
+  const street = (address.split(',')[0] || '').trim();
+  const houseNum = (street.match(/^(\d+)/) || [])[1] || '';
+  const streetName = street.replace(/^\d+\s*/, '').trim().toUpperCase();
+  return { houseNum, streetName };
 }
 
-// ── Property lookup trigger ───────────────────────────────────────────────────
+async function getFranklinDataBrowser(address) {
+  const { houseNum, streetName } = parseStreetLocal(address);
+  if (!houseNum || !streetName) return null;
+  const firstWord = streetName.split(' ')[0];
+  const houseInt = parseInt(houseNum, 10);
+
+  const wheres = [
+    `HOUSE_NO = ${houseInt} AND STREET_NAME LIKE '${firstWord}%'`,
+    `HOUSE_NO = '${houseNum}' AND STREET_NAME LIKE '${firstWord}%'`,
+    `SITEADDR LIKE '${houseNum} ${firstWord}%'`,
+    `SITEADDRESS LIKE '${houseNum} ${firstWord}%'`,
+    `ADDRESS LIKE '${houseNum} ${firstWord}%'`,
+    `ADDR LIKE '${houseNum} ${firstWord}%'`,
+    `PROP_ADDR LIKE '${houseNum} ${firstWord}%'`,
+    `ADDR_NUM = ${houseInt} AND ADDR_STREET LIKE '${firstWord}%'`,
+  ];
+
+  const toNum = v => v == null ? null : (typeof v === 'number' ? v : parseFloat(String(v).replace(/[,$]/g,'')) || null);
+
+  for (const base of FC_ARCGIS) {
+    for (const where of wheres) {
+      try {
+        const url = `${base}/query?${new URLSearchParams({ where, outFields:'*', returnGeometry:'false', resultRecordCount:'3', f:'json' })}`;
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        const j = await r.json();
+        if (j.error || !j.features?.length) continue;
+
+        const attrs = j.features[0].attributes;
+        const get = (...keys) => {
+          for (const k of keys) {
+            const hit = Object.keys(attrs).find(a => a.toLowerCase() === k.toLowerCase());
+            const v = hit != null ? attrs[hit] : undefined;
+            if (v != null && v !== '' && v !== 0) return v;
+          }
+          return null;
+        };
+
+        const parcelId = get('PARCELID','PARCEL_ID','PARCEL','PIN','APN','PARID','PARCELNUMBER','TAXPARCELID');
+        if (!parcelId) continue;
+
+        const appraisedValue = get(
+          'APPRTOTVALUE','APPR_VALUE','TOTALVALUE','TOTVALUE','MARKETVALUE',
+          'APPRVALUE','TOTALAPPRVALUE','APPRAISED_VALUE','FAIR_MARKET_VALUE',
+          'FAIRMARKVALUE','ASSESSED_VALUE','TOTALASSESSED','ASSMT_VALUE'
+        );
+
+        return {
+          source: 'Franklin County Auditor',
+          dataSource: appraisedValue ? 'live' : 'partial',
+          parcelId: String(parcelId),
+          ownerName: get('OWNER_NAME','OWNERNAME','OWNER1','GRANTEE','OWNER'),
+          appraisedValue: toNum(appraisedValue),
+          landValue: toNum(get('APPRLANDVALUE','LAND_VALUE','LANDVALUE','APPR_LAND','LAND')),
+          buildingValue: toNum(get('APPRBLDGVALUE','BLDG_VALUE','BUILDINGVALUE','APPR_BLDG','IMPR_VALUE','BLDG')),
+          salePrice: toNum(get('SALEPRICE','SALE_PRICE','LAST_SALE_PRICE','LASTSALEPRICE')),
+          saleDate: get('SALEDATE','SALE_DATE','LAST_SALE_DATE','LASTSALEDATE'),
+          yearBuilt: get('YEARBUILT','YEAR_BUILT','YR_BUILT','YRBUILT'),
+          sqft: toNum(get('LIVINGSQFT','SQFT','BLDG_SQFT','GRSTLIVINGSQFT','FINISHED_SQFT','LIVINGAREA','GBA')),
+          beds: toNum(get('BEDRMS','BEDROOMS','BDRMS','NBR_BDRM','BEDS','NBR_BEDRMS','NO_BDRMS')),
+          baths: toNum(get('BATHS','BATHROOMS','FULL_BATHS','NBR_FULL_BATH','NBR_BATH','FULL_BATH','NUMBATHS')),
+          halfBaths: toNum(get('HALFBATH','HALF_BATH','HALF_BATHS','HALFBATHS','NBR_HALF_BATH')),
+          url: `https://www.franklincountyauditor.com/real-estate/parcelid/${encodeURIComponent(String(parcelId))}`,
+        };
+      } catch { /* CORS or network error — try next */ }
+    }
+  }
+  return null;
+}
+
+const COUNTY_AUDITOR_LINKS = {
+  'Franklin County':  { name:'Franklin County Auditor',  url:'https://www.franklincountyauditor.com/real-estate/search' },
+  'Delaware County':  { name:'Delaware County Auditor',  url:'https://ags.co.delaware.oh.us/assessor/search' },
+  'Licking County':   { name:'Licking County Auditor',   url:'https://www.lickingcountyauditor.org/real-estate/' },
+  'Fairfield County': { name:'Fairfield County Auditor', url:'https://auditor.co.fairfield.oh.us/' },
+  'Union County':     { name:'Union County Auditor',     url:'https://www.co.union.oh.us/auditor/' },
+  'Madison County':   { name:'Madison County Auditor',   url:'https://madison.oh.us/auditor/' },
+  'Pickaway County':  { name:'Pickaway County Auditor',  url:'https://www.co.pickaway.oh.us/Auditor/RealEstate' },
+};
+
+// ── Property data ─────────────────────────────────────────────────────────────
+async function getPropertyData(address, county) {
+  const isFranklin = !county || county.toLowerCase().includes('franklin');
+
+  // Run browser-side ArcGIS (for Franklin) and server-side Zillow/Redfin in parallel
+  const [browserAud, serverData] = await Promise.allSettled([
+    isFranklin ? getFranklinDataBrowser(address) : Promise.resolve(null),
+    fetch(`/api/property?${new URLSearchParams({ address, county: county || '' })}`, { signal: AbortSignal.timeout(20000) }).then(r => r.json()),
+  ]);
+
+  const data = serverData.status === 'fulfilled' ? serverData.value : null;
+  if (!data) throw new Error('API error');
+
+  // Prefer browser ArcGIS result (real IP, not blocked) over server fallback
+  const bAud = browserAud.status === 'fulfilled' ? browserAud.value : null;
+  if (bAud && (bAud.dataSource === 'live' || bAud.dataSource === 'partial')) {
+    data.auditor = bAud;
+  } else if (!isFranklin) {
+    // Non-Franklin: show link to the right county
+    const info = COUNTY_AUDITOR_LINKS[county];
+    if (info) data.auditor = { source: info.name, url: info.url, dataSource: 'link_only' };
+  }
+
+  return data;
+}
+
+// ── Select suggestion ─────────────────────────────────────────────────────────
 async function selectSuggestion(item) {
   const addr = fmtAddr(item);
   searchInput.value = addr;
@@ -262,40 +362,33 @@ async function selectSuggestion(item) {
   }
 }
 
-// ── Render helpers ────────────────────────────────────────────────────────────
+// ── Render ────────────────────────────────────────────────────────────────────
 function extLink(href, label) {
   return `<a class="ext-link" href="${escH(href)}" target="_blank" rel="noopener noreferrer">${escH(label)}<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14 21 3"/></svg></a>`;
 }
 
-// Bed icon
-const BED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20v-8a2 2 0 012-2h16a2 2 0 012 2v8"/><path d="M2 12V6a2 2 0 012-2h16a2 2 0 012 2v6"/><path d="M6 12h12"/></svg>`;
-// Bath icon
-const BATH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6 6.5 3.5a1.5 1.5 0 0 0-1-.5C4.683 3 4 3.683 4 4.5V17a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><line x1="10" y1="5" x2="8" y2="7"/><line x1="2" y1="12" x2="22" y2="12"/></svg>`;
-// Sqft icon
-const SQFT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>`;
+const BED_SVG  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20v-8a2 2 0 012-2h16a2 2 0 012 2v8"/><path d="M2 12V6a2 2 0 012-2h16a2 2 0 012 2v6"/><path d="M6 12h12"/></svg>`;
+const BATH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6 6.5 3.5a1.5 1.5 0 0 0-1-.5C4.683 3 4 3.683 4 4.5V17a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><line x1="10" y1="5" x2="8" y2="7"/><line x1="2" y1="12" x2="22" y2="12"/></svg>`;
+const SQFT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>`;
 
 function statsRow(beds, baths, halfBaths, sqft) {
   const chips = [];
-  if (beds != null && beds > 0)
-    chips.push(`<div class="stat-chip">${BED_ICON}${beds} bed${beds !== 1 ? 's' : ''}</div>`);
-  if (baths != null && baths > 0) {
-    const total = halfBaths ? `${baths} + ${halfBaths}½` : baths;
-    chips.push(`<div class="stat-chip">${BATH_ICON}${total} bath${baths !== 1 ? 's' : ''}</div>`);
+  if (beds  > 0) chips.push(`<div class="stat-chip">${BED_SVG}${beds} bed${beds!==1?'s':''}</div>`);
+  if (baths > 0) {
+    const label = halfBaths > 0 ? `${baths}½` : baths;
+    chips.push(`<div class="stat-chip">${BATH_SVG}${label} bath${baths!==1?'s':''}</div>`);
   }
-  if (sqft != null && sqft > 0)
-    chips.push(`<div class="stat-chip">${SQFT_ICON}${Math.round(sqft).toLocaleString()} sq ft</div>`);
+  if (sqft > 0) chips.push(`<div class="stat-chip">${SQFT_SVG}${Math.round(sqft).toLocaleString()} sq ft</div>`);
   return chips.length ? `<div class="stats-row">${chips.join('')}</div>` : '';
 }
 
 function auditorCard(d) {
   const val = fmt$(d?.appraisedValue);
   const live = d?.dataSource === 'live';
-  const partial = d?.dataSource === 'partial'; // found property but no value
-  const hasProperty = live || partial;
-
+  const partial = d?.dataSource === 'partial';
   const rows = [];
   if (d?.ownerName)     rows.push(`<div class="detail-full"><div class="detail-label">Owner</div><div class="detail-value">${escH(d.ownerName)}</div></div>`);
-  if (d?.yearBuilt)     rows.push(`<div><div class="detail-label">Year Built</div><div class="detail-value">${escH(d.yearBuilt)}</div></div>`);
+  if (d?.yearBuilt)     rows.push(`<div><div class="detail-label">Year Built</div><div class="detail-value">${escH(String(d.yearBuilt))}</div></div>`);
   if (d?.landValue)     rows.push(`<div><div class="detail-label">Land Value</div><div class="detail-value">${escH(fmt$(d.landValue))}</div></div>`);
   if (d?.buildingValue) rows.push(`<div><div class="detail-label">Building Value</div><div class="detail-value">${escH(fmt$(d.buildingValue))}</div></div>`);
   if (d?.salePrice)     rows.push(`<div><div class="detail-label">Last Sale Price</div><div class="detail-value">${escH(fmt$(d.salePrice))}</div></div>`);
@@ -305,18 +398,18 @@ function auditorCard(d) {
   return `<div class="card">
     <div class="card-header">
       <div class="card-icon" style="background:#fef3c7">🏗️</div>
-      <div><div class="card-title">${escH(d?.source || 'County Auditor')}</div><div class="card-subtitle">Public Record</div></div>
-      ${live ? '<span class="badge-live">Live</span>' : ''}
+      <div><div class="card-title">${escH(d?.source||'County Auditor')}</div><div class="card-subtitle">Public Record</div></div>
+      ${live?'<span class="badge-live">Live</span>':''}
     </div>
-    ${live && val
+    ${live&&val
       ? `<div class="value-big">${escH(val)}</div><div class="value-label">Appraised / Market Value</div>`
-      : hasProperty
-        ? '<div class="notice-box">Property found — click below to see full value on the auditor\'s site.</div>'
-        : '<div class="notice-box">Property not found in ArcGIS — click below to search the auditor\'s site manually.</div>'
+      : partial
+        ? `<div class="notice-box">Property found — appraised value not in this GIS layer. Click below for full details.</div>`
+        : `<div class="notice-box">Could not load live data. Click below to search on the auditor's site.</div>`
     }
     ${statsRow(d?.beds, d?.baths, d?.halfBaths, d?.sqft)}
     ${rows.length ? `<div class="details-grid">${rows.join('')}</div>` : ''}
-    ${extLink(d?.url || '#', 'View on Auditor Site')}
+    ${extLink(d?.url||'#', 'View on Auditor Site')}
   </div>`;
 }
 
@@ -328,14 +421,14 @@ function estimateCard({ platform, icon, iconBg, sublabel, data, showStats }) {
     <div class="card-header">
       <div class="card-icon" style="background:${escH(iconBg)}">${icon}</div>
       <div><div class="card-title">${escH(platform)}</div><div class="card-subtitle">${escH(sublabel)}</div></div>
-      ${live ? '<span class="badge-live">Live</span>' : ''}
+      ${live?'<span class="badge-live">Live</span>':''}
     </div>
     ${live
       ? `<div class="value-big">${escH(val)}</div><div class="value-label">${escH(sublabel)}</div>`
       : `<div class="value-unavail">Visit site to see ${escH(sublabel)}</div>`
     }
     ${stats}
-    ${extLink(data?.url || '#', `View on ${platform}`)}
+    ${extLink(data?.url||'#', `View on ${platform}`)}
   </div>`;
 }
 
@@ -345,16 +438,16 @@ function showResults(addr, data) {
   resultsLabel.textContent = `Results for ${addr}`;
   cardsContainer.innerHTML = [
     auditorCard(data.auditor),
-    estimateCard({ platform: 'Zillow',        icon: '🏠', iconBg: '#dbeafe', sublabel: 'Zestimate',            data: data.zillow,   showStats: true }),
-    estimateCard({ platform: 'Redfin',        icon: '🔴', iconBg: '#fee2e2', sublabel: 'Redfin Estimate',      data: data.redfin,   showStats: true }),
-    estimateCard({ platform: 'Realtor.com',   icon: '🏡', iconBg: '#dcfce7', sublabel: 'Realtor.com Estimate', data: data.realtor,  showStats: false }),
+    estimateCard({ platform:'Zillow',       icon:'🏠', iconBg:'#dbeafe', sublabel:'Zestimate',            data:data.zillow,  showStats:true }),
+    estimateCard({ platform:'Redfin',       icon:'🔴', iconBg:'#fee2e2', sublabel:'Redfin Estimate',      data:data.redfin,  showStats:true }),
+    estimateCard({ platform:'Realtor.com',  icon:'🏡', iconBg:'#dcfce7', sublabel:'Realtor.com Estimate', data:data.realtor, showStats:false }),
   ].join('');
   resultsArea.style.display = 'block';
 }
 
-function showLoading() { emptyState.style.display = 'none'; resultsArea.style.display = 'none'; loadingState.classList.add('show'); }
-function showEmpty()   { loadingState.classList.remove('show'); resultsArea.style.display = 'none'; emptyState.style.display = 'flex'; }
-function showError(msg){ errorBox.textContent = msg; errorBox.classList.add('show'); }
+function showLoading() { emptyState.style.display='none'; resultsArea.style.display='none'; loadingState.classList.add('show'); }
+function showEmpty()   { loadingState.classList.remove('show'); resultsArea.style.display='none'; emptyState.style.display='flex'; }
+function showError(msg){ errorBox.textContent=msg; errorBox.classList.add('show'); }
 </script>
 </body>
 </html>
