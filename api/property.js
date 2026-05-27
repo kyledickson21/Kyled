@@ -42,11 +42,16 @@ async function getFranklinCountyData(address) {
     const r1 = await fetch(AUDITOR_SEARCH, {
       headers: NAV_HEADERS,
       redirect: 'follow',
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(3000),
     });
     if (!r1.ok) return fallback;
-    const html1  = await r1.text();
-    const cookie = (r1.headers.get('set-cookie') || '').split(';')[0];
+    const html1 = await r1.text();
+
+    // Collect all Set-Cookie values (server may set multiple)
+    const rawCookies = typeof r1.headers.getSetCookie === 'function'
+      ? r1.headers.getSetCookie()
+      : (r1.headers.get('set-cookie') || '').split(/,(?=[^;]+=)/).map(s => s.trim());
+    const cookie = rawCookies.map(c => c.split(';')[0]).join('; ');
 
     // Extract every <input> name/value pair
     const inputs = [];
@@ -86,33 +91,41 @@ async function getFranklinCountyData(address) {
       },
       body: body.toString(),
       redirect: 'follow',
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(3000),
     });
     if (!r2.ok) return fallback;
     const html2 = await r2.text();
 
-    // Find the parcel PIN in the results page (Datalet link or pin= param)
-    const pinMatch = html2.match(/Datalet\.aspx[^"']*pin=([^"'&\s]+)/i)
-                  || html2.match(/[?&]pin=(\d{9,})/i);
-    if (!pinMatch) return fallback;
+    // If POST redirected straight to a datalet (single-result search), use html2 directly
+    const redirectedToDatalet = r2.url.includes('Datalet.aspx');
+    let html3, parcelUrl;
 
-    const pin       = pinMatch[1].replace(/-/g, '');
-    const parcelUrl = `${AUDITOR_BASE}/_web/Datalets/Datalet.aspx?mode=&UseSearch=no&jur=025&pin=${pin}`;
+    if (redirectedToDatalet) {
+      html3      = html2;
+      parcelUrl  = r2.url;
+    } else {
+      // Multiple results — find the PIN link and fetch the property page
+      const pinMatch = html2.match(/Datalet\.aspx[^"']*pin=([^"'&\s]+)/i)
+                    || html2.match(/[?&]pin=(\d{9,})/i);
+      if (!pinMatch) return fallback;
 
-    // Step 3: GET the property detail page
-    const r3 = await fetch(parcelUrl, {
-      headers: {
-        ...NAV_HEADERS,
-        'Referer': r2.url || AUDITOR_SEARCH,
-        'Cookie': cookie,
-        'Sec-Fetch-Site': 'same-origin',
-      },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(6000),
-    });
-    const parcelFallback = { source: 'Franklin County Auditor', url: parcelUrl, dataSource: 'link_only' };
-    if (!r3.ok) return parcelFallback;
-    const html3 = await r3.text();
+      const pin = pinMatch[1].replace(/-/g, '');
+      parcelUrl  = `${AUDITOR_BASE}/_web/Datalets/Datalet.aspx?mode=&UseSearch=no&jur=025&pin=${pin}`;
+
+      // Step 3: GET the property detail page
+      const r3 = await fetch(parcelUrl, {
+        headers: {
+          ...NAV_HEADERS,
+          'Referer': r2.url || AUDITOR_SEARCH,
+          'Cookie': cookie,
+          'Sec-Fetch-Site': 'same-origin',
+        },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!r3.ok) return { source: 'Franklin County Auditor', url: parcelUrl, dataSource: 'link_only' };
+      html3 = await r3.text();
+    }
 
     // Parse data from datalet HTML using label→value proximity matching
     function grabDollar(labelRe) {

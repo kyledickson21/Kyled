@@ -29,7 +29,10 @@ export default async function handler(req, res) {
     });
     result.step1_status = r1.status;
     result.step1_url    = r1.url;
-    result.step1_cookie = (r1.headers.get('set-cookie') || '').split(';')[0];
+    const rawCookies = typeof r1.headers.getSetCookie === 'function'
+      ? r1.headers.getSetCookie()
+      : (r1.headers.get('set-cookie') || '').split(/,(?=[^;]+=)/).map(s => s.trim());
+    result.step1_cookie = rawCookies.map(c => c.split(';')[0]).join('; ');
 
     if (!r1.ok) return res.json(result);
     const html1 = await r1.text();
