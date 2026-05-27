@@ -288,14 +288,18 @@ function statsRow(beds, baths, halfBaths, sqft) {
 }
 
 function auditorCard(d) {
-  const val = fmt$(d?.appraisedValue), live = d?.dataSource === 'live';
+  const val = fmt$(d?.appraisedValue);
+  const live = d?.dataSource === 'live';
+  const partial = d?.dataSource === 'partial'; // found property but no value
+  const hasProperty = live || partial;
+
   const rows = [];
   if (d?.ownerName)     rows.push(`<div class="detail-full"><div class="detail-label">Owner</div><div class="detail-value">${escH(d.ownerName)}</div></div>`);
   if (d?.yearBuilt)     rows.push(`<div><div class="detail-label">Year Built</div><div class="detail-value">${escH(d.yearBuilt)}</div></div>`);
   if (d?.landValue)     rows.push(`<div><div class="detail-label">Land Value</div><div class="detail-value">${escH(fmt$(d.landValue))}</div></div>`);
   if (d?.buildingValue) rows.push(`<div><div class="detail-label">Building Value</div><div class="detail-value">${escH(fmt$(d.buildingValue))}</div></div>`);
   if (d?.salePrice)     rows.push(`<div><div class="detail-label">Last Sale Price</div><div class="detail-value">${escH(fmt$(d.salePrice))}</div></div>`);
-  if (d?.saleDate)      rows.push(`<div><div class="detail-label">Sale Date</div><div class="detail-value">${escH(d.saleDate)}</div></div>`);
+  if (d?.saleDate)      rows.push(`<div><div class="detail-label">Sale Date</div><div class="detail-value">${escH(String(d.saleDate))}</div></div>`);
   if (d?.parcelId)      rows.push(`<div class="detail-full"><div class="detail-label">Parcel ID</div><div class="detail-value mono">${escH(d.parcelId)}</div></div>`);
 
   return `<div class="card">
@@ -306,7 +310,9 @@ function auditorCard(d) {
     </div>
     ${live && val
       ? `<div class="value-big">${escH(val)}</div><div class="value-label">Appraised / Market Value</div>`
-      : '<div class="notice-box">Live data not available — click below to look up this property directly on the auditor\'s site.</div>'
+      : hasProperty
+        ? '<div class="notice-box">Property found — click below to see full value on the auditor\'s site.</div>'
+        : '<div class="notice-box">Property not found in ArcGIS — click below to search the auditor\'s site manually.</div>'
     }
     ${statsRow(d?.beds, d?.baths, d?.halfBaths, d?.sqft)}
     ${rows.length ? `<div class="details-grid">${rows.join('')}</div>` : ''}
@@ -339,8 +345,8 @@ function showResults(addr, data) {
   resultsLabel.textContent = `Results for ${addr}`;
   cardsContainer.innerHTML = [
     auditorCard(data.auditor),
-    estimateCard({ platform: 'Redfin',       icon: '🔴', iconBg: '#fee2e2', sublabel: 'Redfin Estimate',      data: data.redfin,   showStats: true }),
-    estimateCard({ platform: 'Zillow',        icon: '🏠', iconBg: '#dbeafe', sublabel: 'Zestimate',            data: data.zillow,   showStats: false }),
+    estimateCard({ platform: 'Zillow',        icon: '🏠', iconBg: '#dbeafe', sublabel: 'Zestimate',            data: data.zillow,   showStats: true }),
+    estimateCard({ platform: 'Redfin',        icon: '🔴', iconBg: '#fee2e2', sublabel: 'Redfin Estimate',      data: data.redfin,   showStats: true }),
     estimateCard({ platform: 'Realtor.com',   icon: '🏡', iconBg: '#dcfce7', sublabel: 'Realtor.com Estimate', data: data.realtor,  showStats: false }),
   ].join('');
   resultsArea.style.display = 'block';
