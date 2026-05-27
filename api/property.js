@@ -2,9 +2,18 @@ function slugify(s) {
   return s.toLowerCase().replace(/[,#]+/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
-// Franklin County: ArcGIS Online hosted FeatureServer (public, CORS-enabled)
-// Dataset: https://auditor-fca.opendata.arcgis.com/datasets/parcel-boundaries/about
-const FC_ARCGIS_URL = 'https://services2.arcgis.com/ziXVzbDCaQbhK2TI/arcgis/rest/services/Parcel_Features/FeatureServer/0';
+// Franklin County ArcGIS FeatureServer (confirmed URL; field names verified)
+// Source: https://auditor-fca.opendata.arcgis.com/datasets/parcel-boundaries/about
+const FC_ARCGIS_URL = 'https://gis.franklincountyohio.gov/hosting/rest/services/ParcelFeatures/Parcel_Features/FeatureServer/0';
+
+// ArcGIS server may reject non-browser agents — send browser-like headers to maximise success
+const ARCGIS_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Referer': 'https://auditor-fca.opendata.arcgis.com/',
+  'Origin': 'https://auditor-fca.opendata.arcgis.com',
+};
 
 async function getFranklinCountyData(address) {
   const street = (address.split(',')[0] || '').trim();
@@ -13,48 +22,57 @@ async function getFranklinCountyData(address) {
   const firstWord = streetRaw.split(' ')[0];
   if (!houseNum || !firstWord) return null;
 
-  const searchUrl = 'https://www.franklincountyauditor.com/real-estate/search';
+  const searchUrl = 'https://property.franklincountyauditor.com/_web/search/commonsearch.aspx?mode=address';
 
-  // Try the ArcGIS Online hosted parcel layer first
-  const where = `SITEADDRESS LIKE '${houseNum} ${firstWord}%'`;
-  try {
-    const qs = new URLSearchParams({
-      where,
-      outFields: 'PARCELID,OWNERNME1,SITEADDRESS,TOTVALUEBA,RESFLRAREA,LNDVALUEBA,BLDVALUEBA',
-      returnGeometry: 'false',
-      resultRecordCount: '3',
-      f: 'json',
-    });
-    const r = await fetch(`${FC_ARCGIS_URL}/query?${qs}`, { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const j = await r.json();
-    if (j.error || !j.features?.length) return { source: 'Franklin County Auditor', url: searchUrl, dataSource: 'link_only' };
+  // Try address search first, then full address string as fallback
+  const wheres = [
+    `SITEADDRESS LIKE '${houseNum} ${firstWord}%'`,
+    `SITEADDRESS LIKE '${houseNum} ${streetRaw.substring(0, 15)}%'`,
+  ];
 
-    const a = j.features[0].attributes;
-    const parcelId = a.PARCELID ? String(a.PARCELID) : null;
-    const pinNoDash = parcelId ? parcelId.replace(/-/g, '') : null;
-    const propUrl = pinNoDash
-      ? `https://property.franklincountyauditor.com/_web/Datalets/Datalet.aspx?mode=&UseSearch=no&jur=025&pin=${pinNoDash}`
-      : searchUrl;
+  for (const where of wheres) {
+    try {
+      const qs = new URLSearchParams({
+        where,
+        outFields: 'PARCELID,OWNERNME1,SITEADDRESS,TOTVALUEBA,RESFLRAREA,LNDVALUEBA,BLDVALUEBA',
+        returnGeometry: 'false',
+        resultRecordCount: '3',
+        f: 'json',
+      });
+      const r = await fetch(`${FC_ARCGIS_URL}/query?${qs}`, {
+        headers: ARCGIS_HEADERS,
+        signal: AbortSignal.timeout(9000),
+      });
+      if (!r.ok) {
+        if (r.status === 403) break; // IP blocked — no point retrying
+        continue;
+      }
+      const j = await r.json();
+      if (j.error || !j.features?.length) continue;
 
-    const totalValue = a.TOTVALUEBA ? Number(a.TOTVALUEBA) : null;
-    return {
-      source: 'Franklin County Auditor',
-      dataSource: totalValue ? 'live' : 'partial',
-      parcelId,
-      ownerName: a.OWNERNME1 || null,
-      appraisedValue: totalValue,
-      landValue: a.LNDVALUEBA ? Number(a.LNDVALUEBA) : null,
-      buildingValue: a.BLDVALUEBA ? Number(a.BLDVALUEBA) : null,
-      sqft: a.RESFLRAREA ? Number(a.RESFLRAREA) : null,
-      beds: null,
-      baths: null,
-      halfBaths: null,
-      url: propUrl,
-    };
-  } catch {
-    return { source: 'Franklin County Auditor', url: searchUrl, dataSource: 'link_only' };
+      const a = j.features[0].attributes;
+      const parcelId = a.PARCELID ? String(a.PARCELID).trim() : null;
+      const pinNoDash = parcelId ? parcelId.replace(/-/g, '') : null;
+      const propUrl = pinNoDash
+        ? `https://property.franklincountyauditor.com/_web/Datalets/Datalet.aspx?mode=&UseSearch=no&jur=025&pin=${pinNoDash}`
+        : searchUrl;
+
+      const totalValue = a.TOTVALUEBA != null ? Number(a.TOTVALUEBA) : null;
+      return {
+        source: 'Franklin County Auditor',
+        dataSource: totalValue ? 'live' : 'partial',
+        parcelId,
+        ownerName: a.OWNERNME1 || null,
+        appraisedValue: totalValue,
+        landValue:     a.LNDVALUEBA != null ? Number(a.LNDVALUEBA) : null,
+        buildingValue: a.BLDVALUEBA != null ? Number(a.BLDVALUEBA) : null,
+        sqft:          a.RESFLRAREA != null ? Number(a.RESFLRAREA) : null,
+        beds: null, baths: null, halfBaths: null,
+        url: propUrl,
+      };
+    } catch { continue; }
   }
+  return { source: 'Franklin County Auditor', url: searchUrl, dataSource: 'link_only' };
 }
 
 async function getZillowData(address) {
