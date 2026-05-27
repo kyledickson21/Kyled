@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { loadData, saveData, subscribeToChanges } from './supabase'
-import PropertyLookup from './PropertyLookup'
 
 const load = loadData
 const save = saveData
@@ -1282,7 +1281,7 @@ function HistoryPage({ data }) {
 }
 
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
-const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"History",label:"📋",full:"History"},{id:"Lookup",label:"🔍",full:"Lookup"}];
+const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"History",label:"📋",full:"History"}];
 
 export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
@@ -1351,7 +1350,6 @@ export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
         {tab==="LenderDash"&&<LenderDashboard data={data}/>}
         {tab==="PropDash"  &&<PropertyDashboard data={data}/>}
         {tab==="History"   &&<HistoryPage data={data}/>}
-        {tab==="Lookup"    &&<PropertyLookup/>}
       </div>
     </div>
   );
