@@ -17,22 +17,23 @@ const FC_ARCGIS_CANDIDATES = [
 
 async function queryArcGIS(base, where) {
   const url = `${base}/query?${new URLSearchParams({ where, outFields: '*', returnGeometry: 'false', resultRecordCount: '3', f: 'json' })}`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
   const json = await r.json();
   if (!Array.isArray(json.features) || json.features.length === 0) return null;
   return json.features[0].attributes;
 }
 
 async function getFranklinCountyData(address) {
-  const base = { source: 'Franklin County Auditor', county: 'Franklin', url: 'https://www.franklincountyauditor.com/real-estate/search', dataSource: 'link_only' };
+  const base = { source: 'Franklin County Auditor', url: 'https://www.franklincountyauditor.com/real-estate/search', dataSource: 'link_only' };
   const { houseNum, streetName } = parseStreet(address);
   if (!houseNum || !streetName) return base;
 
+  const firstWord = streetName.split(' ')[0];
   const wherePatterns = [
-    `HOUSE_NO='${houseNum}' AND STREET_NAME LIKE '${streetName.split(' ')[0]}%'`,
-    `ADDR_NUM='${houseNum}' AND ADDR_STREET LIKE '${streetName.split(' ')[0]}%'`,
-    `SITEADDRESS LIKE '${houseNum} ${streetName.split(' ')[0]}%'`,
-    `ADDRESS LIKE '${houseNum} ${streetName.split(' ')[0]}%'`,
+    `HOUSE_NO='${houseNum}' AND STREET_NAME LIKE '${firstWord}%'`,
+    `ADDR_NUM='${houseNum}' AND ADDR_STREET LIKE '${firstWord}%'`,
+    `SITEADDRESS LIKE '${houseNum} ${firstWord}%'`,
+    `ADDRESS LIKE '${houseNum} ${firstWord}%'`,
   ];
 
   for (const arcBase of FC_ARCGIS_CANDIDATES) {
@@ -40,20 +41,34 @@ async function getFranklinCountyData(address) {
       try {
         const attrs = await queryArcGIS(arcBase, where);
         if (!attrs) continue;
-        const get = (...keys) => { for (const k of keys) { const hit = Object.keys(attrs).find(a => a.toLowerCase() === k.toLowerCase()); if (hit != null && attrs[hit] != null) return attrs[hit]; } return null; };
+        const get = (...keys) => {
+          for (const k of keys) {
+            const hit = Object.keys(attrs).find(a => a.toLowerCase() === k.toLowerCase());
+            if (hit != null && attrs[hit] != null && attrs[hit] !== '') return attrs[hit];
+          }
+          return null;
+        };
         const appraisedValue = get('APPR_VALUE', 'APPRTOTVALUE', 'APPRAISED_VALUE', 'TOTALVALUE', 'MARKET_VALUE');
         if (!appraisedValue) continue;
+        const toNum = v => v == null ? null : (typeof v === 'number' ? v : parseFloat(v) || null);
         const parcelId = get('PARCEL_ID', 'PARCELID', 'PARCEL', 'PIN', 'APN');
         return {
           ...base,
           parcelId,
           ownerName: get('OWNER_NAME', 'OWNERNAME', 'OWNER1', 'GRANTEE'),
-          appraisedValue: typeof appraisedValue === 'number' ? appraisedValue : parseFloat(appraisedValue) || null,
-          salePrice: (() => { const v = get('SALE_PRICE', 'SALEPRICE', 'LAST_SALE_PRICE'); return v ? (typeof v === 'number' ? v : parseFloat(v) || null) : null; })(),
+          appraisedValue: toNum(appraisedValue),
+          landValue: toNum(get('LAND_VALUE', 'LANDVALUE', 'APPR_LAND')),
+          buildingValue: toNum(get('BLDG_VALUE', 'BUILDINGVALUE', 'APPR_BLDG', 'IMPR_VALUE')),
+          salePrice: toNum(get('SALE_PRICE', 'SALEPRICE', 'LAST_SALE_PRICE')),
           saleDate: get('SALE_DATE', 'SALEDATE', 'LAST_SALE_DATE'),
           yearBuilt: get('YEAR_BUILT', 'YEARBUILT', 'YR_BUILT'),
-          sqft: get('SQFT', 'BLDG_SQFT', 'LIVINGSQFT', 'FINISHED_SQFT'),
-          url: parcelId ? `https://www.franklincountyauditor.com/real-estate/parcelid/${encodeURIComponent(parcelId)}` : base.url,
+          sqft: toNum(get('SQFT', 'BLDG_SQFT', 'LIVINGSQFT', 'FINISHED_SQFT', 'LIVING_AREA', 'TOTAL_SQFT', 'GBA')),
+          beds: toNum(get('BEDROOMS', 'BDRMS', 'NBR_BDRM', 'BEDS', 'NBR_BEDRMS', 'NO_BDRMS', 'BEDRMS')),
+          baths: toNum(get('FULL_BATHS', 'BATHROOMS', 'BATHS', 'NBR_FULL_BATH', 'NBR_BATH', 'FULL_BATH', 'BATH')),
+          halfBaths: toNum(get('HALF_BATHS', 'HALF_BATH', 'HALFBATH', 'NBR_HALF_BATH', 'HALFBATHS')),
+          url: parcelId
+            ? `https://www.franklincountyauditor.com/real-estate/parcelid/${encodeURIComponent(parcelId)}`
+            : base.url,
           dataSource: 'live',
         };
       } catch { /* try next */ }
@@ -63,28 +78,55 @@ async function getFranklinCountyData(address) {
 }
 
 async function getRedfinData(address) {
-  const fallback = { url: 'https://www.redfin.com/city/9949/OH/Columbus', estimate: null, dataSource: 'link_only' };
+  const fallback = { url: 'https://www.redfin.com/city/9949/OH/Columbus', estimate: null, beds: null, baths: null, sqft: null, dataSource: 'link_only' };
   const HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     Accept: 'application/json, text/plain, */*',
     Referer: 'https://www.redfin.com/',
   };
   try {
-    const r1 = await fetch(`https://www.redfin.com/stingray/do/location-autocomplete?location=${encodeURIComponent(address)}&v=2&iss=false`, { headers: HEADERS, signal: AbortSignal.timeout(6000) });
+    const r1 = await fetch(
+      `https://www.redfin.com/stingray/do/location-autocomplete?location=${encodeURIComponent(address)}&v=2&iss=false`,
+      { headers: HEADERS, signal: AbortSignal.timeout(7000) }
+    );
     const json1 = JSON.parse((await r1.text()).replace(/^\{\}&&/, ''));
     const match = json1?.payload?.exactMatch || json1?.payload?.sections?.[0]?.rows?.[0];
     if (!match?.url) return fallback;
     const propertyUrl = `https://www.redfin.com${match.url}`;
     const propertyId = match.id?.split('/').at(-1) || match.propertyId || match.id;
-    let estimate = null;
+    const listingId = match.listingId || '';
+
+    let estimate = null, beds = null, baths = null, sqft = null;
+
     if (propertyId) {
-      try {
-        const r2 = await fetch(`https://www.redfin.com/stingray/api/home/details/avm?propertyId=${propertyId}&listingId=${match.listingId || ''}&pageType=0&accessLevel=3`, { headers: { ...HEADERS, Referer: propertyUrl }, signal: AbortSignal.timeout(5000) });
-        const json2 = JSON.parse((await r2.text()).replace(/^\{\}&&/, ''));
-        estimate = json2?.payload?.predictedValue ?? null;
-      } catch { /* optional */ }
+      const qs = `propertyId=${propertyId}&listingId=${listingId}&pageType=0&accessLevel=3`;
+      const refHdr = { ...HEADERS, Referer: propertyUrl };
+      const [avmRes, detailRes] = await Promise.allSettled([
+        fetch(`https://www.redfin.com/stingray/api/home/details/avm?${qs}`, { headers: refHdr, signal: AbortSignal.timeout(6000) }),
+        fetch(`https://www.redfin.com/stingray/api/home/details/aboveTheFold?${qs}`, { headers: refHdr, signal: AbortSignal.timeout(6000) }),
+      ]);
+
+      if (avmRes.status === 'fulfilled') {
+        try {
+          const j = JSON.parse((await avmRes.value.text()).replace(/^\{\}&&/, ''));
+          estimate = j?.payload?.predictedValue ?? null;
+        } catch {}
+      }
+
+      if (detailRes.status === 'fulfilled') {
+        try {
+          const j = JSON.parse((await detailRes.value.text()).replace(/^\{\}&&/, ''));
+          const p = j?.payload;
+          const info = p?.mainHouseInfo || p?.propertyOverview || p?.propertyDetailsHeader || {};
+          beds  = info.beds  ?? p?.beds  ?? null;
+          baths = info.baths ?? p?.baths ?? null;
+          const sqftRaw = info.sqFt ?? info.sqft ?? p?.sqFt ?? p?.sqft ?? null;
+          sqft = sqftRaw?.value ?? (typeof sqftRaw === 'number' ? sqftRaw : null);
+        } catch {}
+      }
     }
-    return { url: propertyUrl, estimate, dataSource: estimate != null ? 'live' : 'link_only' };
+
+    return { url: propertyUrl, estimate, beds, baths, sqft, dataSource: estimate != null ? 'live' : 'link_only' };
   } catch { return fallback; }
 }
 
@@ -107,7 +149,11 @@ export default async function handler(req, res) {
   const isFranklin = !county || county.toLowerCase().includes('franklin');
   const auditorFallback = (() => {
     const info = COUNTY_AUDITOR[county] || null;
-    return { source: info?.name || `${county || 'County'} Auditor`, url: info?.url || 'https://www.franklincountyauditor.com/real-estate/search', dataSource: 'link_only' };
+    return {
+      source: info?.name || `${county || 'County'} Auditor`,
+      url: info?.url || 'https://www.franklincountyauditor.com/real-estate/search',
+      dataSource: 'link_only',
+    };
   })();
 
   const [auditorResult, redfinResult] = await Promise.allSettled([
@@ -115,10 +161,14 @@ export default async function handler(req, res) {
     getRedfinData(address),
   ]);
 
+  const slugAddr   = slugify(address);
+  const slugStreet = slugify((address.split(',')[0] || '').trim());
+  const slugCity   = slugify((address.split(',')[1] || 'Columbus').trim());
+
   return res.json({
     auditor: auditorResult.status === 'fulfilled' ? auditorResult.value : auditorFallback,
-    redfin: redfinResult.status === 'fulfilled' ? redfinResult.value : { url: 'https://www.redfin.com/city/9949/OH/Columbus', estimate: null, dataSource: 'link_only' },
-    zillow: { url: `https://www.zillow.com/homes/${slugify(address)}_rb/`, estimate: null, dataSource: 'link_only' },
-    realtor: { url: `https://www.realtor.com/realestateandhomes-detail/${slugify(address.split(',')[0])}_${slugify((address.split(',')[1] || 'Columbus').trim())}_OH`, estimate: null, dataSource: 'link_only' },
+    redfin:  redfinResult.status  === 'fulfilled' ? redfinResult.value  : { url: 'https://www.redfin.com/city/9949/OH/Columbus', estimate: null, beds: null, baths: null, sqft: null, dataSource: 'link_only' },
+    zillow:  { url: `https://www.zillow.com/homes/${slugAddr}_rb/`, estimate: null, dataSource: 'link_only' },
+    realtor: { url: `https://www.realtor.com/realestateandhomes-detail/${slugStreet}_${slugCity}_OH`, estimate: null, dataSource: 'link_only' },
   });
 }
