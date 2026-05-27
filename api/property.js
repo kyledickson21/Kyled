@@ -1,12 +1,60 @@
-function parseStreet(address) {
-  const street = (address.split(',')[0] || '').trim();
-  const houseNum = (street.match(/^(\d+)/) || [])[1] || '';
-  const streetName = street.replace(/^\d+\s*/, '').trim().toUpperCase();
-  return { houseNum, streetName };
-}
-
 function slugify(s) {
   return s.toLowerCase().replace(/[,#]+/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
+// Franklin County: ArcGIS Online hosted FeatureServer (public, CORS-enabled)
+// Dataset: https://auditor-fca.opendata.arcgis.com/datasets/parcel-boundaries/about
+const FC_ARCGIS_URL = 'https://services2.arcgis.com/ziXVzbDCaQbhK2TI/arcgis/rest/services/Parcel_Features/FeatureServer/0';
+
+async function getFranklinCountyData(address) {
+  const street = (address.split(',')[0] || '').trim();
+  const houseNum = (street.match(/^(\d+)/) || [])[1] || '';
+  const streetRaw = street.replace(/^\d+\s*/, '').trim().toUpperCase();
+  const firstWord = streetRaw.split(' ')[0];
+  if (!houseNum || !firstWord) return null;
+
+  const searchUrl = 'https://www.franklincountyauditor.com/real-estate/search';
+
+  // Try the ArcGIS Online hosted parcel layer first
+  const where = `SITEADDRESS LIKE '${houseNum} ${firstWord}%'`;
+  try {
+    const qs = new URLSearchParams({
+      where,
+      outFields: 'PARCELID,OWNERNME1,SITEADDRESS,TOTVALUEBA,RESFLRAREA,LNDVALUEBA,BLDVALUEBA',
+      returnGeometry: 'false',
+      resultRecordCount: '3',
+      f: 'json',
+    });
+    const r = await fetch(`${FC_ARCGIS_URL}/query?${qs}`, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    if (j.error || !j.features?.length) return { source: 'Franklin County Auditor', url: searchUrl, dataSource: 'link_only' };
+
+    const a = j.features[0].attributes;
+    const parcelId = a.PARCELID ? String(a.PARCELID) : null;
+    const pinNoDash = parcelId ? parcelId.replace(/-/g, '') : null;
+    const propUrl = pinNoDash
+      ? `https://property.franklincountyauditor.com/_web/Datalets/Datalet.aspx?mode=&UseSearch=no&jur=025&pin=${pinNoDash}`
+      : searchUrl;
+
+    const totalValue = a.TOTVALUEBA ? Number(a.TOTVALUEBA) : null;
+    return {
+      source: 'Franklin County Auditor',
+      dataSource: totalValue ? 'live' : 'partial',
+      parcelId,
+      ownerName: a.OWNERNME1 || null,
+      appraisedValue: totalValue,
+      landValue: a.LNDVALUEBA ? Number(a.LNDVALUEBA) : null,
+      buildingValue: a.BLDVALUEBA ? Number(a.BLDVALUEBA) : null,
+      sqft: a.RESFLRAREA ? Number(a.RESFLRAREA) : null,
+      beds: null,
+      baths: null,
+      halfBaths: null,
+      url: propUrl,
+    };
+  } catch {
+    return { source: 'Franklin County Auditor', url: searchUrl, dataSource: 'link_only' };
+  }
 }
 
 async function getZillowData(address) {
@@ -57,10 +105,7 @@ async function getZillowData(address) {
 }
 
 async function getRedfinData(address) {
-  // Build a good search URL so the link is always useful
-  const street = (address.split(',')[0] || '').trim();
-  const city   = (address.split(',')[1] || 'Columbus').trim();
-  const searchUrl = `https://www.redfin.com/city/9949/OH/Columbus/filter/property-type=house?q=${encodeURIComponent(street)}`;
+  const searchUrl = `https://www.redfin.com/search?q=${encodeURIComponent(address)}`;
   const fallback = { url: searchUrl, estimate: null, beds: null, baths: null, sqft: null, dataSource: 'link_only' };
 
   const HEADERS = {
@@ -127,7 +172,6 @@ async function getRedfinData(address) {
 }
 
 const COUNTY_AUDITOR = {
-  'Franklin County':  { name: 'Franklin County Auditor',  url: 'https://www.franklincountyauditor.com/real-estate/search' },
   'Delaware County':  { name: 'Delaware County Auditor',  url: 'https://ags.co.delaware.oh.us/assessor/search' },
   'Licking County':   { name: 'Licking County Auditor',   url: 'https://www.lickingcountyauditor.org/real-estate/' },
   'Fairfield County': { name: 'Fairfield County Auditor', url: 'https://auditor.co.fairfield.oh.us/' },
@@ -138,37 +182,34 @@ const COUNTY_AUDITOR = {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
+  res.setHeader('Cache-Control', 'no-store');
   const { address, county } = req.query;
   if (!address) return res.status(400).json({ error: 'address required' });
 
-  // Auditor fallback — ArcGIS is now called from the browser (real IP, not cloud-blocked)
-  const auditorFallback = (() => {
-    const info = COUNTY_AUDITOR[county] || null;
-    return {
-      source: info?.name || `${county || 'Franklin County'} Auditor`,
-      url: info?.url || 'https://www.franklincountyauditor.com/real-estate/search',
-      dataSource: 'link_only',
-    };
-  })();
+  const isFranklin = !county || county.toLowerCase().includes('franklin');
+  const street  = (address.split(',')[0] || '').trim();
+  const cityRaw = (address.split(',')[1] || 'Columbus').trim().split(' ')[0];
 
-  const [zillowResult, redfinResult] = await Promise.allSettled([
+  const [auditorResult, zillowResult, redfinResult] = await Promise.allSettled([
+    isFranklin
+      ? getFranklinCountyData(address)
+      : Promise.resolve((() => {
+          const info = COUNTY_AUDITOR[county];
+          return info
+            ? { source: info.name, url: info.url, dataSource: 'link_only' }
+            : { source: `${county} Auditor`, url: 'https://www.franklincountyauditor.com/real-estate/search', dataSource: 'link_only' };
+        })()),
     getZillowData(address),
     getRedfinData(address),
   ]);
 
-  // Good search URLs so every link opens something useful
-  const street   = (address.split(',')[0] || '').trim();
-  const cityRaw  = (address.split(',')[1] || 'Columbus').trim().split(' ')[0];
-  const slugCity = slugify(cityRaw);
-
-  const realtorUrl = `https://www.realtor.com/realestateandhomes-search/${encodeURIComponent(cityRaw)}_OH?q=${encodeURIComponent(street)}`;
   const zillowUrl  = `https://www.zillow.com/homes/${slugify(address)}_rb/`;
+  const realtorUrl = `https://www.realtor.com/realestateandhomes-search/${encodeURIComponent(cityRaw)}_OH?q=${encodeURIComponent(street)}`;
 
   return res.json({
-    auditor: auditorFallback,
+    auditor: auditorResult.status === 'fulfilled' ? auditorResult.value : { source: 'Franklin County Auditor', url: 'https://www.franklincountyauditor.com/real-estate/search', dataSource: 'link_only' },
     zillow:  zillowResult.status  === 'fulfilled' ? zillowResult.value  : { url: zillowUrl, estimate: null, dataSource: 'link_only' },
-    redfin:  redfinResult.status  === 'fulfilled' ? redfinResult.value  : { url: `https://www.redfin.com/city/9949/OH/Columbus/filter/property-type=house?q=${encodeURIComponent(street)}`, estimate: null, dataSource: 'link_only' },
+    redfin:  redfinResult.status  === 'fulfilled' ? redfinResult.value  : { url: `https://www.redfin.com/search?q=${encodeURIComponent(address)}`, estimate: null, dataSource: 'link_only' },
     realtor: { url: realtorUrl, estimate: null, dataSource: 'link_only' },
   });
 }
