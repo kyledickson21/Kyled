@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { loadData, saveData, subscribeToChanges } from './supabase'
+import DealAnalyzer from './DealAnalyzer'
 
 const load = loadData
 const save = saveData
@@ -1281,7 +1282,7 @@ function HistoryPage({ data }) {
 }
 
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
-const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"History",label:"📋",full:"History"}];
+const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"History",label:"📋",full:"History"},{id:"DealAnalyzer",label:"🧮",full:"Deal Analyzer"}];
 
 export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
@@ -1346,10 +1347,11 @@ export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
 
       {/* Page content */}
       <div className="p-4 max-w-2xl mx-auto pb-16">
-        {tab==="Properties" &&<PropertiesPage data={data} update={update}/>}
-        {tab==="LenderDash"&&<LenderDashboard data={data}/>}
-        {tab==="PropDash"  &&<PropertyDashboard data={data}/>}
-        {tab==="History"   &&<HistoryPage data={data}/>}
+        {tab==="Properties"   &&<PropertiesPage data={data} update={update}/>}
+        {tab==="LenderDash"  &&<LenderDashboard data={data}/>}
+        {tab==="PropDash"    &&<PropertyDashboard data={data}/>}
+        {tab==="History"     &&<HistoryPage data={data}/>}
+        {tab==="DealAnalyzer"&&<DealAnalyzer/>}
       </div>
     </div>
   );
