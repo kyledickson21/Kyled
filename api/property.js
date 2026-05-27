@@ -18,7 +18,7 @@ const ARCGIS_HEADERS = {
 async function getFranklinCountyData(address) {
   const street = (address.split(',')[0] || '').trim();
   const houseNum = (street.match(/^(\d+)/) || [])[1] || '';
-  const streetRaw = street.replace(/^\d+\s*/, '').trim().toUpperCase();
+  const streetRaw = street.replace(/^\d+\s*/, '').trim().toUpperCase().replace(/'/g, "''");
   const firstWord = streetRaw.split(' ')[0];
   if (!houseNum || !firstWord) return null;
 
@@ -205,7 +205,8 @@ export default async function handler(req, res) {
 
   const isFranklin = !county || county.toLowerCase().includes('franklin');
   const street  = (address.split(',')[0] || '').trim();
-  const cityRaw = (address.split(',')[1] || 'Columbus').trim();
+  const _citySegment = (address.split(',')[1] || '').trim().replace(/\s+[A-Z]{2}\b.*$/, '').trim();
+  const cityRaw = (_citySegment && !/^[A-Z]{2}[\s\d]*$/.test(_citySegment)) ? _citySegment : 'Columbus';
 
   const [auditorResult, zillowResult, redfinResult] = await Promise.allSettled([
     isFranklin

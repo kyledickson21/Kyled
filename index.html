@@ -180,7 +180,7 @@ function slugify(s) { return s.toLowerCase().replace(/[,#]+/g,'').replace(/\s+/g
 
 // ── Autocomplete ──────────────────────────────────────────────────────────────
 async function fetchSuggestions(q) {
-  const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=8&countrycodes=us`, { headers: { 'Accept-Language': 'en-US,en' } });
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=8&countrycodes=us`, { headers: { 'Accept-Language': 'en-US,en' }, signal: AbortSignal.timeout(6000) });
   return (await r.json()).filter(d => d.address?.house_number);
 }
 
