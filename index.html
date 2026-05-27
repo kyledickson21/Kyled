@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Property Lookup — Nexus Homes</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-2: #64748b;
+      --text-3: #94a3b8;
+      --accent: #2563eb;
+      --accent-light: #eff6ff;
+      --green: #16a34a;
+      --green-light: #f0fdf4;
+      --red-light: #fef2f2;
+      --amber-light: #fffbeb;
+      --amber: #d97706;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 8px rgba(0,0,0,.05);
+      --shadow-lg: 0 4px 20px rgba(0,0,0,.12);
+      --radius: 14px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #09090b;
+        --surface: #18181b;
+        --border: #27272a;
+        --text: #fafafa;
+        --text-2: #a1a1aa;
+        --text-3: #52525b;
+        --accent: #3b82f6;
+        --accent-light: #1e3a5f22;
+        --green-light: #14532d22;
+        --red-light: #450a0a22;
+        --amber-light: #451a0322;
+        --amber: #f59e0b;
+        --shadow: 0 1px 3px rgba(0,0,0,.4);
+        --shadow-lg: 0 4px 20px rgba(0,0,0,.5);
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+    }
+
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: var(--shadow);
+    }
+
+    .header-inner {
+      max-width: 600px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      color: #fff;
+      font-weight: 900;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .header-title { font-weight: 800; font-size: 15px; line-height: 1.1; }
+    .header-sub { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: .08em; margin-top: 2px; }
+
+    .main {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px 16px 60px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: -.02em;
+      margin-bottom: 4px;
+    }
+
+    .section-sub {
+      font-size: 13px;
+      color: var(--text-2);
+      margin-bottom: 18px;
+      line-height: 1.5;
+    }
+
+    /* ── Search ── */
+    .search-wrap {
+      position: relative;
+      margin-bottom: 24px;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-3);
+      pointer-events: none;
+      width: 16px;
+      height: 16px;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 13px 42px 13px 40px;
+      border-radius: var(--radius);
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      box-shadow: var(--shadow);
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+    }
+
+    .search-input::placeholder { color: var(--text-3); }
+
+    .search-clear {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--text-3);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .search-clear:hover { color: var(--text-2); background: var(--border); }
+
+    .search-spinner {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
+
+    .dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0; right: 0;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      z-index: 100;
+      display: none;
+    }
+
+    .dropdown.open { display: block; }
+
+    .suggestion {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 11px 14px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+      color: var(--text);
+      transition: background .1s;
+    }
+
+    .suggestion:not(:last-child) { border-bottom: 1px solid var(--border); }
+    .suggestion:hover, .suggestion.active { background: var(--accent-light); }
+
+    .suggestion-pin {
+      color: var(--text-3);
+      margin-top: 2px;
+      flex-shrink: 0;
+      width: 14px;
+      height: 14px;
+    }
+
+    .suggestion-addr { font-size: 14px; font-weight: 600; line-height: 1.3; }
+    .suggestion-county { font-size: 12px; color: var(--text-2); margin-top: 1px; }
+
+    /* ── Cards ── */
+    .cards { display: flex; flex-direction: column; gap: 12px; }
+
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1.5px solid var(--border);
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .card-icon {
+      width: 32px; height: 32px;
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .card-title { font-weight: 800; font-size: 14px; line-height: 1.1; }
+    .card-subtitle { font-size: 11px; color: var(--text-2); margin-top: 2px; text-transform: uppercase; letter-spacing: .06em; }
+
+    .badge-live {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--green);
+      background: var(--green-light);
+      padding: 3px 8px;
+      border-radius: 20px;
+    }
+
+    .value-big {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: -.03em;
+      line-height: 1;
+      margin-bottom: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .value-label { font-size: 12px; color: var(--text-2); margin-bottom: 14px; }
+    .value-unavail { font-size: 13px; color: var(--text-3); font-style: italic; margin-bottom: 14px; }
+
+    .details-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 16px;
+      margin-bottom: 14px;
+    }
+
+    .detail-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); margin-bottom: 2px; }
+    .detail-value { font-size: 13px; font-weight: 600; color: var(--text); }
+    .detail-value.mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+
+    .detail-full { grid-column: 1 / -1; }
+
+    .notice-box {
+      background: var(--amber-light);
+      border-radius: 10px;
+      padding: 11px 13px;
+      font-size: 13px;
+      color: var(--amber);
+      margin-bottom: 14px;
+      line-height: 1.45;
+    }
+
+    .ext-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      text-decoration: none;
+      padding: 8px 14px;
+      border-radius: 9px;
+      background: var(--accent-light);
+      transition: opacity .15s;
+    }
+
+    .ext-link:hover { opacity: .8; }
+    .ext-link svg { width: 13px; height: 13px; }
+
+    /* ── Loading ── */
+    .loading-state {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 0;
+      gap: 12px;
+    }
+
+    .loading-state.show { display: flex; }
+
+    .big-spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    .loading-text { font-size: 14px; color: var(--text-2); }
+
+    /* ── Empty ── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 0;
+      gap: 8px;
+      text-align: center;
+    }
+
+    .empty-emoji { font-size: 48px; margin-bottom: 4px; }
+    .empty-title { font-size: 15px; font-weight: 700; color: var(--text-2); }
+    .empty-sub { font-size: 13px; color: var(--text-3); max-width: 260px; line-height: 1.5; }
+
+    /* ── Error ── */
+    .error-box {
+      display: none;
+      background: var(--red-light);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      font-size: 14px;
+      color: #dc2626;
+    }
+
+    .error-box.show { display: block; }
+
+    .results-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--text-3);
+      margin-bottom: 10px;
+    }
+
+    .footer-note {
+      font-size: 11px;
+      color: var(--text-3);
+      text-align: center;
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">N</div>
+    <div>
+      <div class="header-title">Nexus Homes</div>
+      <div class="header-sub">Property Lookup</div>
+    </div>
+  </div>
+</header>
+
+<main class="main">
+  <div class="section-title">Property Lookup</div>
+  <p class="section-sub">Search any Columbus-area address to see the county auditor value, Zillow, Redfin, and Realtor.com estimates.</p>
+
+  <!-- Search -->
+  <div class="search-wrap" id="searchWrap">
+    <svg class="search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input
+      id="searchInput"
+      class="search-input"
+      type="text"
+      placeholder="Start typing an address…"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <div class="search-spinner" id="searchSpinner"></div>
+    <button class="search-clear" id="searchClear" aria-label="Clear">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path d="M18 6 6 18M6 6l12 12"/>
+      </svg>
+    </button>
+    <div class="dropdown" id="dropdown"></div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-box" id="errorBox"></div>
+
+  <!-- Loading -->
+  <div class="loading-state" id="loadingState">
+    <div class="big-spinner"></div>
+    <div class="loading-text">Looking up property data…</div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsArea" style="display:none">
+    <div class="results-label" id="resultsLabel"></div>
+    <div class="cards" id="cardsContainer"></div>
+    <p class="footer-note">
+      Zillow and Realtor.com estimates are shown directly on their sites — click the buttons above to view them.<br>
+      Redfin estimate is fetched live when available.
+    </p>
+  </div>
+
+  <!-- Empty state -->
+  <div class="empty-state" id="emptyState">
+    <div class="empty-emoji">🔍</div>
+    <div class="empty-title">Start typing an address above</div>
+    <div class="empty-sub">Covers Franklin, Delaware, Licking, Fairfield, and surrounding Columbus-area counties</div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const searchInput = $('searchInput');
+const searchSpinner = $('searchSpinner');
+const searchClear = $('searchClear');
+const dropdown = $('dropdown');
+const errorBox = $('errorBox');
+const loadingState = $('loadingState');
+const resultsArea = $('resultsArea');
+const resultsLabel = $('resultsLabel');
+const cardsContainer = $('cardsContainer');
+const emptyState = $('emptyState');
+
+let debounceTimer = null;
+let suggestions = [];
+let activeIdx = -1;
+let selectedItem = null;
+
+// ── Nominatim address format ─────────────────────────────────────────────────
+
+const STATE_ABBR = {Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY'};
+
+function formatAddress(item) {
+  const a = item.address || {};
+  const street = [a.house_number, a.road || a.pedestrian || a.path].filter(Boolean).join(' ');
+  const city = a.city || a.town || a.village || a.hamlet || a.suburb || '';
+  const state = STATE_ABBR[a.state] || a.state || '';
+  const zip = (a.postcode || '').split('-')[0];
+  return [street, city, [state, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+}
+
+// ── Autocomplete ─────────────────────────────────────────────────────────────
+
+async function fetchSuggestions(q) {
+  const r = await fetch(`/api/autocomplete?q=${encodeURIComponent(q)}`);
+  return r.json();
+}
+
+function renderDropdown() {
+  if (suggestions.length === 0) { dropdown.classList.remove('open'); return; }
+  dropdown.innerHTML = suggestions.map((item, i) => {
+    const addr = formatAddress(item);
+    const county = item.address?.county || '';
+    return `<button class="suggestion${i === activeIdx ? ' active' : ''}" data-idx="${i}">
+      <svg class="suggestion-pin" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M9.69 18.933l.003.001C9.89 19.02 10 19 10 19s.11.02.308-.066l.002-.001.006-.003.018-.008a5.741 5.741 0 00.281-.14c.186-.096.446-.24.757-.433.62-.384 1.445-.966 2.274-1.765C15.302 14.988 17 12.493 17 9A7 7 0 103 9c0 3.492 1.698 5.988 3.355 7.584a13.731 13.731 0 002.273 1.765 11.842 11.842 0 00.757.433 5.741 5.741 0 00.28.14l.018.008.006.003zM10 11.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" clip-rule="evenodd"/>
+      </svg>
+      <div>
+        <div class="suggestion-addr">${escHtml(addr)}</div>
+        ${county ? `<div class="suggestion-county">${escHtml(county)}</div>` : ''}
+      </div>
+    </button>`;
+  }).join('');
+  dropdown.classList.add('open');
+}
+
+function closeDropdown() { dropdown.classList.remove('open'); suggestions = []; activeIdx = -1; }
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim();
+  searchClear.style.display = q ? 'flex' : 'none';
+  clearTimeout(debounceTimer);
+  if (q.length < 3) { closeDropdown(); return; }
+  debounceTimer = setTimeout(async () => {
+    searchSpinner.style.display = 'block';
+    try {
+      suggestions = await fetchSuggestions(q);
+      activeIdx = -1;
+      renderDropdown();
+    } catch {}
+    searchSpinner.style.display = 'none';
+  }, 300);
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (!dropdown.classList.contains('open')) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, suggestions.length - 1); renderDropdown(); }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); renderDropdown(); }
+  if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); selectSuggestion(suggestions[activeIdx]); }
+  if (e.key === 'Escape') closeDropdown();
+});
+
+dropdown.addEventListener('mousedown', e => {
+  const btn = e.target.closest('.suggestion');
+  if (!btn) return;
+  e.preventDefault();
+  selectSuggestion(suggestions[parseInt(btn.dataset.idx)]);
+});
+
+searchClear.addEventListener('click', () => {
+  searchInput.value = '';
+  searchClear.style.display = 'none';
+  closeDropdown();
+  showEmpty();
+});
+
+document.addEventListener('mousedown', e => {
+  if (!$('searchWrap').contains(e.target)) closeDropdown();
+});
+
+// ── Property lookup ───────────────────────────────────────────────────────────
+
+async function selectSuggestion(item) {
+  const addr = formatAddress(item);
+  searchInput.value = addr;
+  searchClear.style.display = 'flex';
+  closeDropdown();
+  selectedItem = item;
+
+  showLoading();
+  errorBox.classList.remove('show');
+
+  try {
+    const params = new URLSearchParams({ address: addr, lat: item.lat || '', lon: item.lon || '', county: item.address?.county || '' });
+    const r = await fetch(`/api/property?${params}`);
+    if (!r.ok) throw new Error('Server error');
+    const data = await r.json();
+    showResults(addr, data);
+  } catch {
+    showError('Could not fetch property data — please try again.');
+    showEmpty();
+  }
+}
+
+// ── Render results ─────────────────────────────────────────────────────────────
+
+function fmt$(n) {
+  if (n == null) return null;
+  const v = Math.round(Number(n));
+  return v ? '$' + v.toLocaleString() : null;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function extLinkHtml(href, label) {
+  return `<a class="ext-link" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer">
+    ${escHtml(label)}
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14 21 3"/>
+    </svg>
+  </a>`;
+}
+
+function auditorCardHtml(d) {
+  const val = fmt$(d?.appraisedValue);
+  const isLive = d?.dataSource === 'live';
+
+  const detailRows = [];
+  if (d?.ownerName) detailRows.push(`<div class="detail-full"><div class="detail-label">Owner</div><div class="detail-value">${escHtml(d.ownerName)}</div></div>`);
+  if (d?.yearBuilt) detailRows.push(`<div><div class="detail-label">Year Built</div><div class="detail-value">${escHtml(d.yearBuilt)}</div></div>`);
+  if (d?.sqft)      detailRows.push(`<div><div class="detail-label">Sq Ft</div><div class="detail-value">${Number(d.sqft).toLocaleString()}</div></div>`);
+  if (d?.salePrice) detailRows.push(`<div><div class="detail-label">Last Sale</div><div class="detail-value">${escHtml(fmt$(d.salePrice))}</div></div>`);
+  if (d?.saleDate)  detailRows.push(`<div><div class="detail-label">Sale Date</div><div class="detail-value">${escHtml(d.saleDate)}</div></div>`);
+  if (d?.parcelId)  detailRows.push(`<div class="detail-full"><div class="detail-label">Parcel ID</div><div class="detail-value mono">${escHtml(d.parcelId)}</div></div>`);
+
+  return `<div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:#fef3c7">🏛️</div>
+      <div>
+        <div class="card-title">${escHtml(d?.source || 'County Auditor')}</div>
+        <div class="card-subtitle">Public Record</div>
+      </div>
+      ${isLive ? '<span class="badge-live">Live</span>' : ''}
+    </div>
+    ${isLive && val
+      ? `<div class="value-big">${escHtml(val)}</div><div class="value-label">Appraised / Market Value</div>`
+      : `<div class="notice-box">Live data unavailable for this county — click below to view full details on the auditor's site.</div>`
+    }
+    ${detailRows.length ? `<div class="details-grid">${detailRows.join('')}</div>` : ''}
+    ${extLinkHtml(d?.url || '#', 'View on Auditor Site')}
+  </div>`;
+}
+
+function estimateCardHtml({ platform, icon, iconBg, sublabel, data }) {
+  const val = fmt$(data?.estimate);
+  const isLive = data?.dataSource === 'live' && val;
+  return `<div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:${iconBg}">${icon}</div>
+      <div>
+        <div class="card-title">${escHtml(platform)}</div>
+        <div class="card-subtitle">${escHtml(sublabel)}</div>
+      </div>
+      ${isLive ? '<span class="badge-live">Live</span>' : ''}
+    </div>
+    ${isLive
+      ? `<div class="value-big">${escHtml(val)}</div><div class="value-label">${escHtml(sublabel)}</div>`
+      : `<div class="value-unavail">Visit site to see estimate</div>`
+    }
+    ${extLinkHtml(data?.url || '#', `View on ${platform}`)}
+  </div>`;
+}
+
+function showResults(addr, data) {
+  loadingState.classList.remove('show');
+  emptyState.style.display = 'none';
+  resultsLabel.textContent = `Results for ${addr}`;
+  cardsContainer.innerHTML = [
+    auditorCardHtml(data.auditor),
+    estimateCardHtml({ platform: 'Zillow',       icon: '🏠', iconBg: '#dbeafe', sublabel: 'Zestimate',           data: data.zillow }),
+    estimateCardHtml({ platform: 'Redfin',        icon: '🔴', iconBg: '#fee2e2', sublabel: 'Redfin Estimate',     data: data.redfin }),
+    estimateCardHtml({ platform: 'Realtor.com',   icon: '🏡', iconBg: '#dcfce7', sublabel: 'Realtor.com Estimate', data: data.realtor }),
+  ].join('');
+  resultsArea.style.display = 'block';
+}
+
+// ── State helpers ─────────────────────────────────────────────────────────────
+
+function showLoading() {
+  emptyState.style.display = 'none';
+  resultsArea.style.display = 'none';
+  loadingState.classList.add('show');
+}
+
+function showEmpty() {
+  loadingState.classList.remove('show');
+  resultsArea.style.display = 'none';
+  emptyState.style.display = 'flex';
+}
+
+function showError(msg) {
+  errorBox.textContent = msg;
+  errorBox.classList.add('show');
+}
+</script>
+
+</body>
+</html>
