@@ -35,26 +35,25 @@ jobs:
           URL=$(echo "$OUTPUT" | grep -oE 'https://[^ ]+\.vercel\.app' | grep -v 'inspect' | tail -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-      - name: Test connectivity and create issue
+      - name: Test and post results
         run: |
-          FC=$(curl -si \
+          curl -si \
             "https://property.franklincountyauditor.com/_web/search/CommonSearch.aspx?mode=ADDRESS" \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
             -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
-            --max-time 15 2>&1 | head -c 2000) || FC="curl failed"
-          DBG=$(curl -s \
+            --max-time 15 > /tmp/fc.txt 2>&1 || echo "curl error" > /tmp/fc.txt
+          curl -s \
             "https://nexus-property-lookup.vercel.app/api/debug?address=1234+E+Broad+St+Columbus+OH" \
-            --max-time 25 2>&1 | head -c 3000) || DBG="curl failed"
-          python3 - <<'PYEOF'
-import json, os, subprocess, sys
-fc = subprocess.run(['bash','-c','echo "$FC"'], capture_output=True, text=True, env={**os.environ}).stdout
-dbg = subprocess.run(['bash','-c','echo "$DBG"'], capture_output=True, text=True, env={**os.environ}).stdout
-body = f"## Connectivity Test\n\n### Franklin County Auditor (direct from cloud)\n```\n{fc[:1500]}\n```\n\n### /api/debug endpoint\n```json\n{dbg[:2000]}\n```"
-payload = json.dumps({"title": "Scraper test results", "body": body})
-with open('/tmp/issue.json','w') as f:
-    f.write(payload)
-PYEOF
+            --max-time 25 > /tmp/dbg.txt 2>&1 || echo "curl error" > /tmp/dbg.txt
+          jq -n \
+            --rawfile fc /tmp/fc.txt \
+            --rawfile dbg /tmp/dbg.txt \
+            --arg title "Scraper test $(date -u +%Y%m%dT%H%M%S)" \
+            '{"title": $title, "body": ("## FC Auditor (direct)\n```\n" + $fc[0:1500] + "\n```\n\n## Debug endpoint\n```json\n" + $dbg[0:2500] + "\n```")}' \
+            > /tmp/payload.json
+          echo "Payload size: $(wc -c < /tmp/payload.json)"
           curl -s -X POST "https://api.github.com/repos/kyledickson21/Kyled/issues" \
             -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
             -H "Content-Type: application/json" \
-            -d @/tmp/issue.json
+            --data-binary @/tmp/payload.json \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print('Issue created:', d.get('number'), d.get('html_url','ERROR:'+str(d)))"
