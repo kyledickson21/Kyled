@@ -12,13 +12,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: property-lookup-app
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
       - name: Link or create Vercel project
         run: |
-          # Fetch project from Vercel API (GitHub Actions has full internet)
           RESP=$(curl -sf "https://api.vercel.com/v9/projects/nexus-property-lookup" \
             -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" || echo "{}")
           PROJECT_ID=$(echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || echo "")
@@ -26,9 +26,6 @@ jobs:
           if [ -n "$PROJECT_ID" ] && [ -n "$ORG_ID" ]; then
             mkdir -p .vercel
             echo "{\"projectId\":\"$PROJECT_ID\",\"orgId\":\"$ORG_ID\"}" > .vercel/project.json
-            echo "Linked to existing project: $PROJECT_ID (org: $ORG_ID)"
-          else
-            echo "Project not found — will be created on first deploy"
           fi
 
       - name: Deploy to Vercel (production)
@@ -38,30 +35,35 @@ jobs:
           echo "$OUTPUT"
           URL=$(echo "$OUTPUT" | grep -oE 'https://[^ ]+\.vercel\.app' | grep -v 'inspect' | tail -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "::notice title=Live URL::$URL"
-          echo "--- DEPLOYMENT URL: $URL ---"
 
-      - name: Summary
+      - name: Test connectivity and commit results
         run: |
-          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
-
-      - name: Test Franklin County auditor connectivity
-        run: |
-          echo "=== Testing Franklin County Auditor site from GitHub Actions runner ==="
-          echo "Runner IP:"
-          curl -s https://api.ipify.org || true
-          echo ""
-          echo "--- GET Franklin County search form ---"
-          curl -si \
+          echo "=== Franklin County Auditor site test ==="
+          FC_RESULT=$(curl -si \
             "https://property.franklincountyauditor.com/_web/search/CommonSearch.aspx?mode=ADDRESS" \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
             -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
             -H "Accept-Language: en-US,en;q=0.9" \
-            --max-time 15 2>&1 | head -c 2000 | tee /tmp/fc_test.txt
-          echo "--- First 5 hidden input fields ---"
-          grep -oE 'name="__[^"]*"[^>]{0,100}value="[^"]{0,40}' /tmp/fc_test.txt | head -5 || true
-          echo ""
-          echo "=== Testing live debug endpoint ==="
-          curl -s "https://nexus-property-lookup.vercel.app/api/debug?address=1234+E+Broad+St+Columbus+OH" \
-            --max-time 25 2>&1 | head -c 3000
+            --max-time 15 2>&1 | head -c 4000)
+
+          echo "=== Debug endpoint test ==="
+          DEBUG_RESULT=$(curl -s "https://nexus-property-lookup.vercel.app/api/debug?address=1234+E+Broad+St+Columbus+OH" \
+            --max-time 25 2>&1 | head -c 4000)
+
+          cat > test-results.txt << 'RESULTS_EOF'
+          RESULTS_EOF
+          echo "FC_HTTP_HEADERS:" > test-results.txt
+          echo "$FC_RESULT" | head -20 >> test-results.txt
+          echo "---" >> test-results.txt
+          echo "FC_BODY_START (first 500 chars after headers):" >> test-results.txt
+          echo "$FC_RESULT" | grep -v "^HTTP\|^Date\|^Content\|^Server\|^Set-Cookie\|^Cache\|^Pragma\|^x-\|^Vary\|^Location\|^Transfer\|^Connection" | head -c 500 >> test-results.txt
+          echo "" >> test-results.txt
+          echo "---" >> test-results.txt
+          echo "DEBUG_ENDPOINT_RESULT:" >> test-results.txt
+          echo "$DEBUG_RESULT" >> test-results.txt
+
+          git config user.email "ci@test.com"
+          git config user.name "CI Bot"
+          git add test-results.txt
+          git diff --cached --quiet || git commit -m "test-results: connectivity $(date -u +%Y%m%dT%H%M%S)"
+          git push origin property-lookup-app
