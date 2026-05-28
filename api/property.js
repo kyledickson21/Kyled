@@ -1,3 +1,5 @@
+export const config = { runtime: 'edge' };
+
 function slugify(s) {
   return s.toLowerCase().replace(/[,#]+/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
@@ -22,9 +24,8 @@ function parseStreetParts(streetFull) {
   const TYPE_RE = /\s+(ST|AVE|BLVD|DR|RD|LN|CT|PL|WAY|PKWY|CIR|TRL|TERR?|PLACE|TRAIL)\.?$/i;
   const dir     = (streetFull.match(DIR_RE)  || [])[1] || '';
   const noDir   = streetFull.replace(DIR_RE,  '');
-  const type    = (noDir.match(TYPE_RE)      || [])[1] || '';
   const name    = noDir.replace(TYPE_RE, '').trim();
-  return { dir: dir.toUpperCase(), name, type: type.toUpperCase() };
+  return { dir: dir.toUpperCase(), name };
 }
 
 async function getFranklinCountyData(address) {
@@ -35,25 +36,25 @@ async function getFranklinCountyData(address) {
   if (!houseNum) return fallback;
 
   const streetFull = street.replace(/^\d+\s*/, '').trim();
-  const { dir, name: streetName, type: streetType } = parseStreetParts(streetFull);
+  const { dir, name: streetName } = parseStreetParts(streetFull);
 
   try {
     // Step 1: GET the search form — capture session cookie + ASP.NET hidden tokens
     const r1 = await fetch(AUDITOR_SEARCH, {
       headers: NAV_HEADERS,
       redirect: 'follow',
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(5000),
     });
     if (!r1.ok) return fallback;
     const html1 = await r1.text();
 
-    // Collect all Set-Cookie values (server may set multiple)
+    // Collect session cookies
     const rawCookies = typeof r1.headers.getSetCookie === 'function'
       ? r1.headers.getSetCookie()
       : (r1.headers.get('set-cookie') || '').split(/,(?=[^;]+=)/).map(s => s.trim());
     const cookie = rawCookies.map(c => c.split(';')[0]).join('; ');
 
-    // Extract all <input> fields — capture name, value, and type
+    // Extract all hidden <input> fields (VIEWSTATE, EVENTVALIDATION, etc.)
     const inputs = [];
     const inputRe = /<input([^>]+?)(?:\/?>)/gi;
     let im;
@@ -69,24 +70,22 @@ async function getFranklinCountyData(address) {
       });
     }
 
-    // Build POST body — hidden infrastructure fields first (VIEWSTATE, EVENTVALIDATION, etc.)
+    // Build POST body — exact field names confirmed from working Python scraper
     const body = new URLSearchParams();
     inputs.filter(f => f.type === 'hidden').forEach(f => body.set(f.name, f.value));
-
-    // Exact Franklin County field names (confirmed from Python scraper)
     body.set('__EVENTTARGET',   '');
     body.set('__EVENTARGUMENT', '');
     body.set('inpNumber',   houseNum);
-    body.set('Select1',     dir);
+    body.set('Select1',     dir);       // direction: N, S, E, W, etc.
     body.set('inpStreet',   streetName);
-    body.set('inpSuffix1',  streetType);
+    body.set('inpSuffix1',  '');        // leave blank for broader match (Python scraper always sends "")
     body.set('inpUnit',     '');
     body.set('selSortBy',   'PARID');
     body.set('selSortDir',  'ASC');
     body.set('selPageSize', '15');
     body.set('btSearch',    'Search');
 
-    // Step 2: POST the address — simulates typing and clicking Search
+    // Step 2: POST — simulates clicking Search on the auditor's address form
     const r2 = await fetch(AUDITOR_SEARCH, {
       method: 'POST',
       headers: {
@@ -98,29 +97,31 @@ async function getFranklinCountyData(address) {
       },
       body: body.toString(),
       redirect: 'follow',
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(5000),
     });
     if (!r2.ok) return fallback;
     const html2 = await r2.text();
 
     let html3, parcelUrl, pin;
 
-    // Single result: POST redirected straight to datalet, or datalet content returned inline
+    // Single result: either the POST redirected to the datalet page, or it returned it inline
     if (r2.url.includes('Datalet.aspx') || html2.includes('DataletHeaderTopFC')) {
       html3     = html2;
       parcelUrl = r2.url;
       pin       = (r2.url.match(/[?&]pin=([^&]+)/i) || [])[1]?.replace(/-/g, '') || '';
     } else {
-      // Multiple results — pick first row with selectSearchRow onclick
+      // Multiple results — pick the first SearchResults row
       const srMatch = html2.match(/selectSearchRow\(\s*['"]([^'"]+)['"]\s*\)/i);
       if (!srMatch) return fallback;
 
-      const relPath   = srMatch[1];
-      const dataletUrl = relPath.startsWith('http') ? relPath : `${AUDITOR_BASE}${relPath.startsWith('/') ? '' : '/'}${relPath}`;
+      const relPath    = srMatch[1];
+      const dataletUrl = relPath.startsWith('http')
+        ? relPath
+        : `${AUDITOR_BASE}${relPath.startsWith('/') ? '' : '/'}${relPath}`;
       pin       = (dataletUrl.match(/[?&]pin=([^&]+)/i) || [])[1]?.replace(/-/g, '') || '';
       parcelUrl = dataletUrl;
 
-      // Step 3: GET the property detail page
+      // Step 3: GET the property detail (datalet) page
       const r3 = await fetch(dataletUrl, {
         headers: {
           ...NAV_HEADERS,
@@ -129,24 +130,24 @@ async function getFranklinCountyData(address) {
           'Sec-Fetch-Site': 'same-origin',
         },
         redirect: 'follow',
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(5000),
       });
       if (!r3.ok) return { source: 'Franklin County Auditor', url: dataletUrl, dataSource: 'link_only' };
       html3 = await r3.text();
     }
 
-    // Extract parcel ID from header text if not yet found from URL
+    // Extract parcel ID from page text if not in URL
     if (!pin) {
       const pidM = html3.match(/Parcel\s*(?:ID|No\.?)[:\s]+([0-9]{3}-[0-9]+-[0-9]+-[0-9]+)/i)
                 || html3.match(/Parcel\s*(?:ID|No\.?)[:\s]+([0-9]{9,})/i);
       if (pidM) pin = pidM[1].replace(/-/g, '');
     }
 
-    // Prefer the canonical permalink from the page if available
+    // Use canonical permalink if available
     const plinkM = html3.match(/href="([^"]*redir\/Link\/Parcel\/[^"]+)"/i);
     if (plinkM) parcelUrl = plinkM[1];
 
-    // ── Parse property data ──────────────────────────────────────────────────
+    // ── Parse property data from Franklin County datalet HTML ──────────────────
 
     function grabDollar(labelRe) {
       const re = new RegExp(labelRe.source + '[\\s\\S]{0,400}?\\$([\\d,]+)', 'i');
@@ -168,7 +169,7 @@ async function getFranklinCountyData(address) {
       return m ? m[1].trim().replace(/\s+/g, ' ') : null;
     }
 
-    // Franklin County Appraised Value table: find "Base" row → land / improvement / total
+    // Appraised Value table: find "Base" row → land / improvement / total (in that column order)
     let landValue = null, buildingValue = null, appraisedValue = null;
     const avIdx = html3.search(/Appraised\s*Value/i);
     if (avIdx !== -1) {
@@ -186,14 +187,13 @@ async function getFranklinCountyData(address) {
       if (!buildingValue) buildingValue = grabDollar(/improvement|building/i);
     }
 
-    // Building characteristics: header row "Yr Built / Tot Fin Area / Bedrooms / Full Baths / Half Baths"
-    // followed immediately by the data row
+    // Building characteristics table — columns: Yr Built / Tot Fin Area / Bedrooms / Full Baths / Half Baths
     let yearBuilt = null, sqft = null, beds = null, baths = null, halfBaths = null;
     const bldgHdrM = html3.match(/Yr\s*Built[\s\S]{0,150}?Tot\s*Fin\s*Area[\s\S]{0,150}?Bedroo/i);
     if (bldgHdrM) {
       const afterHdr = html3.slice(html3.indexOf(bldgHdrM[0]) + bldgHdrM[0].length);
-      const cells    = [];
-      const cellRe   = /<td[^>]*>\s*([^<\s][^<]{0,30}?)\s*<\/td>/gi;
+      const cells = [];
+      const cellRe = /<td[^>]*>\s*([^<\s][^<]{0,30}?)\s*<\/td>/gi;
       let cm;
       while ((cm = cellRe.exec(afterHdr)) !== null && cells.length < 8) {
         const v = cm[1].trim();
@@ -299,7 +299,7 @@ async function getRedfinData(address) {
   try {
     const r1 = await fetch(
       `https://www.redfin.com/stingray/do/location-autocomplete?location=${encodeURIComponent(address)}&v=2&iss=false`,
-      { headers: HEADERS, signal: AbortSignal.timeout(3500) }
+      { headers: HEADERS, signal: AbortSignal.timeout(4000) }
     );
     const text = await r1.text();
     if (!text.trim().startsWith('{') && !text.trim().startsWith('{}&&')) return fallback;
@@ -317,8 +317,8 @@ async function getRedfinData(address) {
       const qs     = `propertyId=${propertyId}&listingId=${listingId}&pageType=0&accessLevel=3`;
       const refHdr = { ...HEADERS, Referer: propertyUrl };
       const [avmRes, detailRes] = await Promise.allSettled([
-        fetch(`https://www.redfin.com/stingray/api/home/details/avm?${qs}`,          { headers: refHdr, signal: AbortSignal.timeout(3500) }),
-        fetch(`https://www.redfin.com/stingray/api/home/details/aboveTheFold?${qs}`, { headers: refHdr, signal: AbortSignal.timeout(3500) }),
+        fetch(`https://www.redfin.com/stingray/api/home/details/avm?${qs}`,          { headers: refHdr, signal: AbortSignal.timeout(4000) }),
+        fetch(`https://www.redfin.com/stingray/api/home/details/aboveTheFold?${qs}`, { headers: refHdr, signal: AbortSignal.timeout(4000) }),
       ]);
       if (avmRes.status === 'fulfilled') {
         try {
@@ -360,16 +360,25 @@ const COUNTY_AUDITOR = {
   'Pickaway County':  { name: 'Pickaway County Auditor',  url: 'https://www.co.pickaway.oh.us/Auditor/RealEstate' },
 };
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store');
-  const { address, county } = req.query;
-  if (!address) return res.status(400).json({ error: 'address required' });
+export default async function handler(request) {
+  const { searchParams } = new URL(request.url);
+  const address = searchParams.get('address');
+  const county  = searchParams.get('county') || '';
 
-  const isFranklin = !county || county.toLowerCase().includes('franklin');
-  const street     = (address.split(',')[0] || '').trim();
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+  };
+
+  if (!address) {
+    return new Response(JSON.stringify({ error: 'address required' }), { status: 400, headers: corsHeaders });
+  }
+
+  const isFranklin   = !county || county.toLowerCase().includes('franklin');
+  const street       = (address.split(',')[0] || '').trim();
   const _citySegment = (address.split(',')[1] || '').trim().replace(/\s+[A-Z]{2}\b.*$/, '').trim();
-  const cityRaw    = (_citySegment && !/^[A-Z]{2}[\s\d]*$/.test(_citySegment)) ? _citySegment : 'Columbus';
+  const cityRaw      = (_citySegment && !/^[A-Z]{2}[\s\d]*$/.test(_citySegment)) ? _citySegment : 'Columbus';
 
   const [auditorResult, zillowResult, redfinResult] = await Promise.allSettled([
     isFranklin
@@ -385,13 +394,15 @@ export default async function handler(req, res) {
   ]);
 
   const searchFallback = { source: 'Franklin County Auditor', url: AUDITOR_SEARCH, dataSource: 'link_only' };
-  const zillowUrl   = `https://www.zillow.com/homes/${slugify(address)}_rb/`;
-  const realtorUrl  = `https://www.realtor.com/realestateandhomes-search/${cityRaw.replace(/\s+/g, '-')}_OH?q=${encodeURIComponent(street)}`;
+  const zillowUrl      = `https://www.zillow.com/homes/${slugify(address)}_rb/`;
+  const realtorUrl     = `https://www.realtor.com/realestateandhomes-search/${cityRaw.replace(/\s+/g, '-')}_OH?q=${encodeURIComponent(street)}`;
 
-  return res.json({
+  const result = {
     auditor: (auditorResult.status === 'fulfilled' && auditorResult.value) ? auditorResult.value : searchFallback,
     zillow:  zillowResult.status  === 'fulfilled' ? zillowResult.value  : { url: zillowUrl,  estimate: null, dataSource: 'link_only' },
     redfin:  redfinResult.status  === 'fulfilled' ? redfinResult.value  : { url: `https://www.redfin.com/search?q=${encodeURIComponent(address)}`, estimate: null, dataSource: 'link_only' },
     realtor: { url: realtorUrl, estimate: null, dataSource: 'link_only' },
-  });
+  };
+
+  return new Response(JSON.stringify(result), { headers: corsHeaders });
 }
