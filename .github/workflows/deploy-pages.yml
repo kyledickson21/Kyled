@@ -45,3 +45,23 @@ jobs:
         run: |
           echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "**URL:** ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Test Franklin County auditor connectivity
+        run: |
+          echo "=== Testing Franklin County Auditor site from GitHub Actions runner ==="
+          echo "Runner IP:"
+          curl -s https://api.ipify.org || true
+          echo ""
+          echo "--- GET Franklin County search form ---"
+          curl -si \
+            "https://property.franklincountyauditor.com/_web/search/CommonSearch.aspx?mode=ADDRESS" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+            -H "Accept-Language: en-US,en;q=0.9" \
+            --max-time 15 2>&1 | head -c 2000 | tee /tmp/fc_test.txt
+          echo "--- First 5 hidden input fields ---"
+          grep -oE 'name="__[^"]*"[^>]{0,100}value="[^"]{0,40}' /tmp/fc_test.txt | head -5 || true
+          echo ""
+          echo "=== Testing live debug endpoint ==="
+          curl -s "https://nexus-property-lookup.vercel.app/api/debug?address=1234+E+Broad+St+Columbus+OH" \
+            --max-time 25 2>&1 | head -c 3000
