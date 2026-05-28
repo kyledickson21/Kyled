@@ -36,34 +36,20 @@ jobs:
           URL=$(echo "$OUTPUT" | grep -oE 'https://[^ ]+\.vercel\.app' | grep -v 'inspect' | tail -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-      - name: Test connectivity and commit results
+      - name: Test connectivity and save results
         run: |
-          echo "=== Franklin County Auditor site test ==="
-          FC_RESULT=$(curl -si \
+          curl -si \
             "https://property.franklincountyauditor.com/_web/search/CommonSearch.aspx?mode=ADDRESS" \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
             -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
             -H "Accept-Language: en-US,en;q=0.9" \
-            --max-time 15 2>&1 | head -c 4000)
-
-          echo "=== Debug endpoint test ==="
-          DEBUG_RESULT=$(curl -s "https://nexus-property-lookup.vercel.app/api/debug?address=1234+E+Broad+St+Columbus+OH" \
-            --max-time 25 2>&1 | head -c 4000)
-
-          cat > test-results.txt << 'RESULTS_EOF'
-          RESULTS_EOF
-          echo "FC_HTTP_HEADERS:" > test-results.txt
-          echo "$FC_RESULT" | head -20 >> test-results.txt
-          echo "---" >> test-results.txt
-          echo "FC_BODY_START (first 500 chars after headers):" >> test-results.txt
-          echo "$FC_RESULT" | grep -v "^HTTP\|^Date\|^Content\|^Server\|^Set-Cookie\|^Cache\|^Pragma\|^x-\|^Vary\|^Location\|^Transfer\|^Connection" | head -c 500 >> test-results.txt
-          echo "" >> test-results.txt
-          echo "---" >> test-results.txt
-          echo "DEBUG_ENDPOINT_RESULT:" >> test-results.txt
-          echo "$DEBUG_RESULT" >> test-results.txt
-
+            --max-time 15 2>&1 | head -c 4000 > test-fc.txt
+          curl -s \
+            "https://nexus-property-lookup.vercel.app/api/debug?address=1234+E+Broad+St+Columbus+OH" \
+            --max-time 25 2>&1 | head -c 4000 > test-debug.json
           git config user.email "ci@test.com"
           git config user.name "CI Bot"
-          git add test-results.txt
-          git diff --cached --quiet || git commit -m "test-results: connectivity $(date -u +%Y%m%dT%H%M%S)"
-          git push origin property-lookup-app
+          git fetch origin property-lookup-app
+          git reset --hard origin/property-lookup-app
+          git add test-fc.txt test-debug.json
+          git diff --cached --quiet && echo "no changes" || (git commit -m "test-results: connectivity check" && git push origin property-lookup-app)
