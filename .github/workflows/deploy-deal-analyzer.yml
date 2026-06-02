@@ -3,48 +3,28 @@ name: Deploy Deal Analyzer
 on:
   push:
     branches: ['claude/charming-sagan-pMuYS']
-    paths: ['deal-analyzer/**']
+    paths: ['deal-analyzer/**', '.github/workflows/deploy-deal-analyzer.yml']
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: claude/charming-sagan-pMuYS
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: deal-analyzer/package-lock.json
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          OUTPUT=$(vercel --token ${{ secrets.VERCEL_TOKEN }} --yes --prod --name nexus-deal-analyzer 2>&1)
+          echo "$OUTPUT"
+          URL=$(echo "$OUTPUT" | grep -oE 'https://[^ ]+\.vercel\.app' | grep -v 'inspect' | tail -1)
+          echo "url=$URL" >> $GITHUB_OUTPUT
         working-directory: deal-analyzer
 
-      - name: Build
-        run: npm run build
-        working-directory: deal-analyzer
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: deal-analyzer/dist
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Print deployment URL
+        run: echo "Live at ${{ steps.deploy.outputs.url }}"
