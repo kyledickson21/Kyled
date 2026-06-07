@@ -1141,7 +1141,7 @@ function LenderDashboard({ data }) {
         {[
           {label:"Private",     val:privPrin, num:"text-sky-600 dark:text-sky-400"},
           {label:"Hard Money",  val:hardPrin, num:"text-amber-600 dark:text-amber-400"},
-          {label:"Total Bal",   val:totalBal, num:"text-blue-600 dark:text-blue-400"},
+          {label:"Total Payoff", val:totalBal, num:"text-blue-600 dark:text-blue-400"},
         ].map(({label,val,num})=>(
           <div key={label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-4 text-center">
             <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{label}</div>
@@ -1167,8 +1167,8 @@ function LenderDashboard({ data }) {
             case"Type":     return d*a.loanType.localeCompare(b.loanType);
             case"Principal":return d*(a.principal-b.principal);
             case"Rate":     return d*((a.interestRate||0)-(b.interestRate||0));
-            case"Balance":  return d*(a.bal-b.bal);
-            case"Interest": return d*(a.intEarned-b.intEarned);
+            case"Payoff Bal": return d*(a.bal-b.bal);
+            case"Int Paid":   return d*(a.intEarned-b.intEarned);
             case"Started":  return d*(a.startDate||"").localeCompare(b.startDate||"");
             case"Note":     return d*((a.promissoryNote?1:0)-(b.promissoryNote?1:0));
             default:        return 0;
@@ -1179,9 +1179,9 @@ function LenderDashboard({ data }) {
           {h:"Type",     left:true,  sort:true},
           {h:"Property", left:true,  sort:true},
           {h:"Principal",left:false, sort:true},
-          {h:"Rate",     left:false, sort:true},
-          {h:"Balance",  left:false, sort:true},
-          {h:"Interest", left:false, sort:true},
+          {h:"Rate",      left:false, sort:true},
+          {h:"Payoff Bal",left:false, sort:true},
+          {h:"Int Paid",  left:false, sort:true},
           {h:"Started",  left:false, sort:true},
           {h:"Note",     left:false, sort:true},
         ];
