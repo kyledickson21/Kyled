@@ -1023,8 +1023,8 @@ function PropertiesPage({ data, update }) {
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Rehab Draw Facility</div>
                                     {!loan.endDate&&(inlineDraw?.loanId===loan.id
-                                      ? <button type="button" onClick={()=>setInlineDraw(null)} className="text-[10px] text-slate-400 dark:text-zinc-500 hover:text-red-500 transition-colors">Cancel</button>
-                                      : <button type="button" onClick={()=>setInlineDraw({propId:prop.id,loanId:loan.id,date:TODAY,amt:""})} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors">+ Add Draw</button>
+                                      ? <button type="button" onClick={()=>setInlineDraw(null)} className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-slate-300 dark:border-zinc-600 text-slate-500 dark:text-zinc-400 hover:border-red-400 hover:text-red-500 transition-colors">Cancel</button>
+                                      : <button type="button" onClick={()=>setInlineDraw({propId:prop.id,loanId:loan.id,date:TODAY,amt:""})} className="text-[10px] font-semibold px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors">+ Add Draw</button>
                                     )}
                                   </div>
                                   <div className="grid grid-cols-3 gap-2 text-center text-xs mb-2">
@@ -1038,21 +1038,21 @@ function PropertiesPage({ data, update }) {
                                     </div>
                                   ))}
                                   {inlineDraw?.loanId===loan.id&&(
-                                    <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800/60 flex gap-2 items-end">
-                                      <div className="flex-1">
-                                        <div className="text-[9px] font-semibold text-blue-400 dark:text-blue-500 uppercase mb-1">Date</div>
+                                    <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800/60 space-y-2">
+                                      <div>
+                                        <div className="text-[9px] font-semibold text-blue-400 dark:text-blue-500 uppercase mb-1">Draw Date</div>
                                         <input type="date" value={inlineDraw.date} onChange={e=>setInlineDraw(p=>({...p,date:e.target.value}))}
-                                          className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                          className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
                                       </div>
-                                      <div className="flex-1">
+                                      <div>
                                         <div className="text-[9px] font-semibold text-blue-400 dark:text-blue-500 uppercase mb-1">Amount ($)</div>
                                         <input type="number" value={inlineDraw.amt} onChange={e=>setInlineDraw(p=>({...p,amt:e.target.value}))}
                                           placeholder="25000" onWheel={e=>e.target.blur()}
-                                          className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                          className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
                                       </div>
                                       <button type="button" onClick={commitInlineDraw}
-                                        className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold rounded-lg px-3 py-1.5 transition-colors">
-                                        Record
+                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg py-2 transition-colors">
+                                        Record Draw
                                       </button>
                                     </div>
                                   )}
