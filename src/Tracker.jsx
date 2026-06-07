@@ -1494,13 +1494,23 @@ export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
 
   useEffect(()=>{
     load().then(d=>{
-      const needsMigration = d.properties.some(p=>(!p.purchasePrice&&!p.rehabBudget)&&p.fundingNeeded>0);
-      if (needsMigration) {
-        const migrated={...d,properties:d.properties.map(p=>
-          (!p.purchasePrice&&!p.rehabBudget&&p.fundingNeeded>0)
-            ? {...p,purchasePrice:p.fundingNeeded,rehabBudget:0,monthlyHolding:p.monthlyHolding??500}
-            : p
-        )};
+      const migrateLoans = loans => loans.map(l=>
+        (!l.paymentType && l.loanType==="hard") ? {...l,paymentType:"monthly_rate"} : l
+      );
+      const needsPropMig = d.properties.some(p=>(!p.purchasePrice&&!p.rehabBudget)&&p.fundingNeeded>0);
+      const needsLoanMig = d.properties.some(p=>p.loans.some(l=>!l.paymentType&&l.loanType==="hard"))
+        || d.unassigned.some(l=>!l.paymentType&&l.loanType==="hard");
+      if (needsPropMig||needsLoanMig) {
+        const migrated={...d,
+          properties:d.properties.map(p=>({
+            ...p,
+            ...(needsPropMig&&!p.purchasePrice&&!p.rehabBudget&&p.fundingNeeded>0
+              ? {purchasePrice:p.fundingNeeded,rehabBudget:0,monthlyHolding:p.monthlyHolding??500}
+              : {}),
+            loans:migrateLoans(p.loans),
+          })),
+          unassigned:migrateLoans(d.unassigned),
+        };
         save(migrated);
         setData(migrated);
       } else {
