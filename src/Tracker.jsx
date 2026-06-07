@@ -355,10 +355,8 @@ function LenderMoneyForm({ properties, init, onSave, onClose }) {
               )}
               <div className="pt-1 border-t border-slate-200 dark:border-zinc-700">
                 <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Add Draw</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <DateInp label="Draw Date" value={drawDate} onChange={setDrawDate}/>
-                  <Inp label="Amount ($)" type="number" value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
-                </div>
+                <DateInp label="Draw Date" value={drawDate} onChange={setDrawDate}/>
+                <Inp label="Amount ($)" type="number" value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
                 <Btn onClick={addDraw} sm color="navy" full>+ Record Draw</Btn>
               </div>
             </div>
@@ -690,9 +688,22 @@ function PropertiesPage({ data, update }) {
   const [showSold,setShowSold]=useState(false);
   const [viewMode,setViewMode]=useState("expanded");
   const [propSort,setPropSort]=useState({col:null,dir:"asc"});
+  const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt}
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const unassignedTotal = data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
+
+  const commitInlineDraw = () => {
+    if (!inlineDraw) return;
+    const amount = parseFloat(inlineDraw.amt);
+    if (!amount || !inlineDraw.date) return;
+    update(d=>({...d,properties:d.properties.map(p=>p.id!==inlineDraw.propId?p:{...p,
+      loans:p.loans.map(l=>l.id!==inlineDraw.loanId?l:{...l,
+        drawFacility:{...l.drawFacility,draws:[...(l.drawFacility.draws||[]),{id:uid(),date:inlineDraw.date,amount}]}
+      })
+    })}));
+    setInlineDraw(null);
+  };
 
   const loanFields = f => ({
     lenderName:f.lenderName, loanType:f.loanType, principal:parseFloat(f.principal)||0,
@@ -1009,7 +1020,13 @@ function PropertiesPage({ data, update }) {
                               </div>
                               {loan.drawFacility&&(
                                 <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-100 dark:border-blue-900/50">
-                                  <div className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-2">Rehab Draw Facility</div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Rehab Draw Facility</div>
+                                    {!loan.endDate&&(inlineDraw?.loanId===loan.id
+                                      ? <button type="button" onClick={()=>setInlineDraw(null)} className="text-[10px] text-slate-400 dark:text-zinc-500 hover:text-red-500 transition-colors">Cancel</button>
+                                      : <button type="button" onClick={()=>setInlineDraw({propId:prop.id,loanId:loan.id,date:TODAY,amt:""})} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors">+ Add Draw</button>
+                                    )}
+                                  </div>
                                   <div className="grid grid-cols-3 gap-2 text-center text-xs mb-2">
                                     {[["Committed",$$(loan.drawFacility.committed),"text-blue-700 dark:text-blue-300"],["Drawn",$$(drawn),"text-slate-700 dark:text-zinc-200"],["Available",$$(drawRemaining(loan)),"text-emerald-600 dark:text-emerald-400"]].map(([l,v,c])=>(
                                       <div key={l}><div className="text-[9px] text-blue-400 dark:text-blue-500 uppercase mb-1">{l}</div><div className={`font-bold tabular-nums ${c}`}>{v}</div></div>
@@ -1020,6 +1037,25 @@ function PropertiesPage({ data, update }) {
                                       <span>{d.date}</span><span className="tabular-nums">{$$(d.amount)} drawn</span>
                                     </div>
                                   ))}
+                                  {inlineDraw?.loanId===loan.id&&(
+                                    <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800/60 flex gap-2 items-end">
+                                      <div className="flex-1">
+                                        <div className="text-[9px] font-semibold text-blue-400 dark:text-blue-500 uppercase mb-1">Date</div>
+                                        <input type="date" value={inlineDraw.date} onChange={e=>setInlineDraw(p=>({...p,date:e.target.value}))}
+                                          className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                      </div>
+                                      <div className="flex-1">
+                                        <div className="text-[9px] font-semibold text-blue-400 dark:text-blue-500 uppercase mb-1">Amount ($)</div>
+                                        <input type="number" value={inlineDraw.amt} onChange={e=>setInlineDraw(p=>({...p,amt:e.target.value}))}
+                                          placeholder="25000" onWheel={e=>e.target.blur()}
+                                          className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                      </div>
+                                      <button type="button" onClick={commitInlineDraw}
+                                        className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold rounded-lg px-3 py-1.5 transition-colors">
+                                        Record
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
