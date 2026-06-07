@@ -18,15 +18,58 @@ const daysBetween = (d1, d2) => {
 
 const calcBalance = (l, asOf=TODAY) => {
   if (!l?.startDate||!l?.principal) return l?.principal??0;
+  const pt = l.paymentType||"closing";
+  if (pt==="monthly_rate"||pt==="monthly_fixed") return l.principal; // payoff = principal only
   if (l.interestType === "fixed") return l.principal + (l.interestRate || 0);
   const end = l.endDate && l.endDate<=asOf ? l.endDate : asOf;
   if (l.startDate>end) return l.principal;
   return l.principal + l.principal*(l.interestRate||0)/100*(daysBetween(l.startDate,end)/365);
 };
 
+const calcIntEarned = (l, asOf=TODAY) => {
+  if (!l?.startDate||!l?.principal) return 0;
+  const pt = l.paymentType||"closing";
+  const end = l.endDate&&l.endDate<=asOf ? l.endDate : asOf;
+  const days = daysBetween(l.startDate, end);
+  if (pt==="monthly_rate") return Math.round((l.principal||0)*(l.interestRate||0)/100/365*days);
+  if (pt==="monthly_fixed") return Math.round((l.monthlyPayment||0)*days/30.44);
+  return Math.round(calcBalance(l,asOf)-(l.principal||0));
+};
+
+const effectiveMonths = prop => {
+  if (prop?.projectMonths!=null&&prop.projectMonths!=="") return Math.max(0.5,parseFloat(prop.projectMonths)||2);
+  const rehab = prop?.rehabBudget||0;
+  if (!rehab) return 2;
+  return Math.ceil((rehab/1000+60)/30);
+};
+
+const monthlyLoanPayment = loan => {
+  if (!loan||loan.endDate) return 0;
+  const pt = loan.paymentType||"closing";
+  if (pt==="monthly_rate") return Math.round((loan.principal||0)*(loan.interestRate||0)/100/12);
+  if (pt==="monthly_fixed") return Math.round(loan.monthlyPayment||0);
+  return 0;
+};
+
+const drawRemaining = loan => {
+  if (!loan?.drawFacility) return 0;
+  const drawn=(loan.drawFacility.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
+  return Math.max(0,(loan.drawFacility.committed||0)-drawn);
+};
+
+const propNeeded = (prop, activeLoans) => {
+  if (!prop?.purchasePrice&&!prop?.rehabBudget) return prop?.fundingNeeded||0;
+  const months = effectiveMonths(prop);
+  const monthlyInt = activeLoans.reduce((s,l)=>s+monthlyLoanPayment(l),0);
+  return (prop.purchasePrice||0)+(prop.rehabBudget||0)+(prop.monthlyHolding??500)*months+monthlyInt*months;
+};
+
 const fmtRate = (l) => {
   if (!l) return "";
+  const pt = l.paymentType||"closing";
   if (l.interestType === "fixed") return "$" + Math.round(l.interestRate||0).toLocaleString() + " fixed";
+  if (pt==="monthly_rate") return (l.interestRate||0) + "%/yr · monthly";
+  if (pt==="monthly_fixed") return "$" + Math.round(l.monthlyPayment||0).toLocaleString() + "/mo";
   return (l.interestRate||0) + "%/yr";
 };
 
@@ -220,17 +263,29 @@ function LenderAutocomplete({ value, onChange, properties }) {
 // ─── Lender Money Form ────────────────────────────────────────────────────────
 function LenderMoneyForm({ properties, init, onSave, onClose }) {
   const activeProps = properties.filter(p=>!p.dateSold);
-  const [f, sf] = useState(init ?? {
+  const [f, sf] = useState(()=>({
     lenderName:"", loanType:"private", principal:"",
     startDate:TODAY, interestType:"percentage", interestRate:"", specialTerms:"", endDate:"",
     destination:"unassigned", promissoryNote:false,
-  });
+    paymentType:"closing", monthlyPayment:"", drawFacility:null,
+    ...(init??{}),
+    paymentType: init?.paymentType || (init?.loanType==="hard" ? "monthly_rate" : "closing"),
+    monthlyPayment: String(init?.monthlyPayment||""),
+  }));
+  const [drawDate,setDrawDate]=useState(TODAY);
+  const [drawAmt,setDrawAmt]=useState("");
   const s = k => v => sf(p=>({...p,[k]:v}));
   const destOptions = [
     ["unassigned","💼  Unassigned — not yet placed on a property"],
     ...activeProps.map(p=>[p.id, `🏠  ${p.address}`]),
   ];
   const isFixed = (f.interestType || "percentage") === "fixed";
+  const addDraw = () => {
+    const amount = parseFloat(drawAmt);
+    if (!amount||!drawDate) return;
+    sf(p=>({...p,drawFacility:{...p.drawFacility,draws:[...(p.drawFacility?.draws||[]),{id:uid(),date:drawDate,amount}]}}));
+    setDrawAmt("");
+  };
   const handleSave = () => {
     if (!f.lenderName?.trim()) { alert("Please enter a lender name."); return; }
     if (!f.startDate) { alert("Please enter a start date."); return; }
@@ -261,8 +316,55 @@ function LenderMoneyForm({ properties, init, onSave, onClose }) {
           ? <Inp label="Fixed Interest Amount ($) *" type="number" value={f.interestRate} onChange={s("interestRate")} placeholder="5000" helpText="Total interest they receive — e.g. lend $100k, get back $105k → enter 5000."/>
           : <Inp label="Annual Interest Rate (%) *" type="number" value={f.interestRate} onChange={s("interestRate")} placeholder="10" helpText="Enter 0 for no interest."/>
         }
-        <Inp label="Special Terms (optional)" value={f.specialTerms} onChange={s("specialTerms")} placeholder="Monthly interest, balloon, etc."/>
+        <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"} onChange={s("paymentType")} options={[
+          ["closing",       "Pay at Closing — all interest owed when deal closes"],
+          ["monthly_rate",  "Monthly Interest-Only — pay rate monthly, principal at closing"],
+          ["monthly_fixed", "Monthly Fixed Amount — set dollar amount each month"],
+        ]}/>
+        {f.paymentType==="monthly_fixed"&&(
+          <Inp label="Monthly Payment Amount ($) *" type="number" value={f.monthlyPayment} onChange={s("monthlyPayment")} placeholder="500" helpText="Fixed dollar amount lender receives each month"/>
+        )}
+        <Inp label="Special Terms (optional)" value={f.specialTerms} onChange={s("specialTerms")} placeholder="Balloon, prepayment penalty, etc."/>
       </div>
+      {f.loanType==="hard"&&(
+        <div className="mt-2 mb-4 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
+          <label className="flex items-center gap-3 cursor-pointer mb-1">
+            <input type="checkbox" checked={!!f.drawFacility}
+              onChange={e=>sf(p=>({...p,drawFacility:e.target.checked?{committed:"",draws:[]}:null}))}
+              className="w-4 h-4 rounded border-slate-300 dark:border-zinc-600 accent-blue-600 cursor-pointer"/>
+            <div>
+              <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Rehab Draw Facility</div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Lender committed rehab funding, drawn in stages</div>
+            </div>
+          </label>
+          {f.drawFacility&&(
+            <div className="mt-3 space-y-3">
+              <Inp label="Total Committed ($)" type="number" value={String(f.drawFacility.committed||"")}
+                onChange={v=>sf(p=>({...p,drawFacility:{...p.drawFacility,committed:v}}))} placeholder="100000"/>
+              {(f.drawFacility.draws||[]).length>0&&(
+                <div>
+                  <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Draws Taken</div>
+                  {f.drawFacility.draws.map(d=>(
+                    <div key={d.id} className="flex items-center justify-between text-sm py-1.5 border-b border-slate-200 dark:border-zinc-700 last:border-0">
+                      <span className="text-slate-600 dark:text-zinc-300 tabular-nums">{d.date} · {$$(d.amount)}</span>
+                      <button type="button" onClick={()=>sf(p=>({...p,drawFacility:{...p.drawFacility,draws:p.drawFacility.draws.filter(x=>x.id!==d.id)}}))}
+                        className="text-red-400 hover:text-red-600 text-xs p-1 transition-colors">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="pt-1 border-t border-slate-200 dark:border-zinc-700">
+                <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Add Draw</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <DateInp label="Draw Date" value={drawDate} onChange={setDrawDate}/>
+                  <Inp label="Amount ($)" type="number" value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
+                </div>
+                <Btn onClick={addDraw} sm color="navy" full>+ Record Draw</Btn>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <div className="mt-1 mb-4 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
         <label className="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" checked={f.promissoryNote||false} onChange={e=>s("promissoryNote")(e.target.checked)}
@@ -471,12 +573,56 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 
 // ─── Property Form ────────────────────────────────────────────────────────────
 function PropertyForm({ init, onSave, onClose }) {
-  const [f,sf]=useState(init??{address:"",fundingNeeded:""});
+  const [f,sf]=useState(()=>({
+    address:init?.address||"",
+    purchasePrice:String(init?.purchasePrice||""),
+    rehabBudget:String(init?.rehabBudget||""),
+    projectMonths:init?.projectMonths!=null?String(init.projectMonths):"",
+    monthlyHolding:String(init?.monthlyHolding??500),
+  }));
   const s=k=>v=>sf(p=>({...p,[k]:v}));
+  const rehab=parseFloat(f.rehabBudget)||0;
+  const autoMonths=rehab?Math.ceil((rehab/1000+60)/30):2;
+  const months=f.projectMonths!==""?Math.max(0.5,parseFloat(f.projectMonths)||2):autoMonths;
+  const holding=parseFloat(f.monthlyHolding)||500;
+  const purchase=parseFloat(f.purchasePrice)||0;
+  const totalBase=purchase+rehab+holding*months;
   return (
     <div>
       <Inp label="Property Address" value={f.address} onChange={s("address")} placeholder="123 Oak Ave, Nashville, TN"/>
-      <Inp label="Estimated Funding Needed ($)" type="number" value={f.fundingNeeded} onChange={s("fundingNeeded")} placeholder="175000"/>
+      <div className="grid grid-cols-2 gap-3">
+        <Inp label="Purchase Price ($)" type="number" value={f.purchasePrice} onChange={s("purchasePrice")} placeholder="150000"/>
+        <Inp label="Rehab Budget ($)" type="number" value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
+      </div>
+      <div className="mb-3">
+        <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+          Project Length (months)
+          {f.projectMonths!==""&&parseFloat(f.projectMonths)!==autoMonths&&(
+            <button type="button" onClick={()=>s("projectMonths")("")}
+              className="text-blue-500 hover:text-blue-700 dark:text-blue-400 text-[10px] font-semibold transition-colors normal-case">
+              ↺ Reset ({autoMonths} mo)
+            </button>
+          )}
+        </label>
+        <input type="number" step="0.5" min="0.5" onWheel={e=>e.target.blur()}
+          value={f.projectMonths!==""?f.projectMonths:autoMonths}
+          onChange={e=>s("projectMonths")(e.target.value)}
+          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+        {rehab>0&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5">Formula: {Math.floor(rehab/1000)} rehab days + 60 listing days = {autoMonths} mo</p>}
+      </div>
+      <Inp label="Monthly Utilities & Insurance ($)" type="number" value={f.monthlyHolding} onChange={s("monthlyHolding")} helpText="Pre-filled at $500/mo — covers utilities, insurance, etc."/>
+      {totalBase>0&&(
+        <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs space-y-1">
+          <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Estimated Capital Need</div>
+          {[["Purchase",purchase],["Rehab",rehab],[`Holding (${months} mo × $${holding}/mo)`,holding*months]].filter(([,v])=>v>0).map(([l,v])=>(
+            <div key={l} className="flex justify-between text-slate-600 dark:text-zinc-300"><span>{l}</span><span className="tabular-nums">{$$(v)}</span></div>
+          ))}
+          <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-200 dark:border-zinc-700 pt-2 mt-1">
+            <span>Base Total</span><span className="tabular-nums">{$$(totalBase)}</span>
+          </div>
+          <p className="text-[10px] text-slate-400 dark:text-zinc-500 pt-1">+ monthly interest × {months} mo added once loans are entered</p>
+        </div>
+      )}
       <div className="flex gap-2 pt-2">
         <Btn onClick={()=>onSave(f)} full>Save Property</Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
@@ -548,9 +694,18 @@ function PropertiesPage({ data, update }) {
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const unassignedTotal = data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
 
+  const loanFields = f => ({
+    lenderName:f.lenderName, loanType:f.loanType, principal:parseFloat(f.principal)||0,
+    startDate:f.startDate, interestRate:parseFloat(f.interestRate)||0,
+    interestType:f.interestType||"percentage",
+    paymentType:f.paymentType||"closing",
+    monthlyPayment:parseFloat(f.monthlyPayment)||0,
+    drawFacility:f.drawFacility?{committed:parseFloat(f.drawFacility.committed)||0,draws:f.drawFacility.draws||[]}:null,
+    promissoryNote:f.promissoryNote||false, specialTerms:f.specialTerms||"", endDate:f.endDate||null,
+  });
+
   const saveMoneyForm = f => {
-    const amount=parseFloat(f.principal)||0;
-    const base={lenderName:f.lenderName,loanType:f.loanType,principal:amount,startDate:f.startDate,interestRate:parseFloat(f.interestRate)||0,interestType:f.interestType||"percentage",promissoryNote:f.promissoryNote||false,specialTerms:f.specialTerms||"",endDate:f.endDate||null};
+    const base=loanFields(f);
     if(f.destination==="unassigned"){
       update(d=>({...d,unassigned:[...d.unassigned,{id:uid(),...base}]}));
     } else {
@@ -560,19 +715,23 @@ function PropertiesPage({ data, update }) {
   };
 
   const saveProp = (f,existing) => {
-    const p={...(existing??{id:uid(),loans:[]}),address:f.address,fundingNeeded:parseFloat(f.fundingNeeded)||0,dateSold:existing?.dateSold??null};
+    const purchasePrice=parseFloat(f.purchasePrice)||0;
+    const rehabBudget=parseFloat(f.rehabBudget)||0;
+    const projectMonths=f.projectMonths!==""&&f.projectMonths!=null?parseFloat(f.projectMonths)||null:null;
+    const monthlyHolding=parseFloat(f.monthlyHolding)||500;
+    const p={...(existing??{id:uid(),loans:[]}),address:f.address,purchasePrice,rehabBudget,projectMonths,monthlyHolding,fundingNeeded:purchasePrice+rehabBudget,dateSold:existing?.dateSold??null};
     update(d=>({...d,properties:existing?d.properties.map(x=>x.id===p.id?p:x):[...d.properties,p]}));
     setModal(null);
   };
 
   const saveEditedLoan = (propId,f,existing) => {
-    const l={...existing,lenderName:f.lenderName,loanType:f.loanType,principal:parseFloat(f.principal)||0,startDate:f.startDate,interestRate:parseFloat(f.interestRate)||0,interestType:f.interestType||"percentage",promissoryNote:f.promissoryNote||false,specialTerms:f.specialTerms||"",endDate:f.endDate||null};
+    const l={...existing,...loanFields(f)};
     update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:p.loans.map(x=>x.id===l.id?l:x)})}));
     setModal(null);
   };
 
   const placeOnProperty = (fund,propId) => {
-    const loan={id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",promissoryNote:fund.promissoryNote||false,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null};
+    const loan={id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",paymentType:fund.paymentType||"closing",monthlyPayment:fund.monthlyPayment||0,drawFacility:fund.drawFacility||null,promissoryNote:fund.promissoryNote||false,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null};
     update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==fund.id),properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:[...p.loans,loan]})}));
     setExpanded(e=>({...e,[propId]:true}));
     setModal(null);
@@ -665,8 +824,8 @@ function PropertiesPage({ data, update }) {
       {viewMode==="condensed"&&visible.length>0&&(()=>{
         const rows=visible.map(prop=>{
           const active=prop.loans.filter(l=>!l.endDate);
-          const funded=active.reduce((s,l)=>s+(l.principal||0),0);
-          const needed=prop.fundingNeeded||0;
+          const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+          const needed=propNeeded(prop,active);
           const short=Math.max(0,needed-funded);
           return{prop,active,funded,needed,short,under:!prop.dateSold&&short>0,full:!prop.dateSold&&funded>0&&short===0};
         });
@@ -747,8 +906,8 @@ function PropertiesPage({ data, update }) {
       {viewMode==="expanded"&&<div className="space-y-3">
         {visible.map(prop=>{
           const active=prop.loans.filter(l=>!l.endDate);
-          const funded=active.reduce((s,l)=>s+(l.principal||0),0);
-          const needed=prop.fundingNeeded||0;
+          const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+          const needed=propNeeded(prop,active);
           const short=Math.max(0,needed-funded);
           const under=!prop.dateSold&&short>0;
           const full=!prop.dateSold&&funded>0&&short===0;
@@ -814,7 +973,10 @@ function PropertiesPage({ data, update }) {
                   {prop.loans.length===0&&<div className="text-center py-6 text-slate-400 dark:text-zinc-500 text-sm">No loans yet</div>}
                   <div className="space-y-2">
                     {prop.loans.map(loan=>{
-                      const bal=calcBalance(loan); const earned=bal-(loan.principal||0);
+                      const bal=calcBalance(loan);
+                      const earned=calcIntEarned(loan);
+                      const monthly=monthlyLoanPayment(loan);
+                      const drawn=(loan.drawFacility?.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
                       return (
                         <div key={loan.id} className={`rounded-xl p-4 border text-sm ${loan.endDate?"bg-white/40 dark:bg-zinc-900/40 border-slate-100 dark:border-zinc-800":"bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700"}`}>
                           <div className="flex justify-between items-start gap-2">
@@ -829,10 +991,26 @@ function PropertiesPage({ data, update }) {
                                 <span className="text-slate-500 dark:text-zinc-400">Principal <strong className="text-slate-800 dark:text-zinc-100 tabular-nums">{$$(loan.principal)}</strong></span>
                                 <span className="text-slate-500 dark:text-zinc-400">Rate <strong className="text-slate-800 dark:text-zinc-100">{fmtRate(loan)}</strong></span>
                                 <span className="text-slate-500 dark:text-zinc-400">Start <strong className="text-slate-800 dark:text-zinc-100">{loan.startDate}</strong></span>
-                                <span className="text-slate-500 dark:text-zinc-400">Balance <strong className="text-blue-700 dark:text-blue-400 tabular-nums">{$$(bal)}</strong></span>
-                                <span className="text-slate-500 dark:text-zinc-400">Interest <strong className="text-emerald-600 dark:text-emerald-400 tabular-nums">{$$(earned)}</strong></span>
+                                <span className="text-slate-500 dark:text-zinc-400">Payoff Bal <strong className="text-blue-700 dark:text-blue-400 tabular-nums">{$$(bal)}</strong></span>
+                                {monthly>0&&<span className="text-slate-500 dark:text-zinc-400">Monthly Pmt <strong className="text-orange-600 dark:text-orange-400 tabular-nums">{$$(monthly)}/mo</strong></span>}
+                                <span className="text-slate-500 dark:text-zinc-400">Int {monthly>0?"Paid":"Earned"} <strong className="text-emerald-600 dark:text-emerald-400 tabular-nums">{$$(earned)}</strong></span>
                                 {loan.specialTerms&&<span className="col-span-2 text-slate-400 dark:text-zinc-500 italic">{loan.specialTerms}</span>}
                               </div>
+                              {loan.drawFacility&&(
+                                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-100 dark:border-blue-900/50">
+                                  <div className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-2">Rehab Draw Facility</div>
+                                  <div className="grid grid-cols-3 gap-2 text-center text-xs mb-2">
+                                    {[["Committed",$$(loan.drawFacility.committed),"text-blue-700 dark:text-blue-300"],["Drawn",$$(drawn),"text-slate-700 dark:text-zinc-200"],["Available",$$(drawRemaining(loan)),"text-emerald-600 dark:text-emerald-400"]].map(([l,v,c])=>(
+                                      <div key={l}><div className="text-[9px] text-blue-400 dark:text-blue-500 uppercase mb-1">{l}</div><div className={`font-bold tabular-nums ${c}`}>{v}</div></div>
+                                    ))}
+                                  </div>
+                                  {(loan.drawFacility.draws||[]).map(d=>(
+                                    <div key={d.id} className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400 pt-1 border-t border-blue-100 dark:border-blue-900/40 first:border-0 mt-1">
+                                      <span>{d.date}</span><span className="tabular-nums">{$$(d.amount)} drawn</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                             <div className="flex gap-1 shrink-0">
                               <button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-violet-500 dark:hover:text-violet-400 transition-colors" title="Move">⇄</button>
@@ -855,7 +1033,7 @@ function PropertiesPage({ data, update }) {
       {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
       {modal?.type==="editProp"&&<Modal title="Edit Property" onClose={()=>setModal(null)}><PropertyForm init={modal.prop} onSave={f=>saveProp(f,modal.prop)} onClose={()=>setModal(null)}/></Modal>}
       {modal?.type==="editLoan"&&<Modal title="Edit Loan" onClose={()=>setModal(null)}>
-        <LenderMoneyForm properties={data.properties} init={{...modal.loan,destination:modal.propId,principal:String(modal.loan.principal),interestRate:String(modal.loan.interestRate||""),interestType:modal.loan.interestType||"percentage",promissoryNote:modal.loan.promissoryNote||false}}
+        <LenderMoneyForm properties={data.properties} init={{...modal.loan,destination:modal.propId,principal:String(modal.loan.principal),interestRate:String(modal.loan.interestRate||""),interestType:modal.loan.interestType||"percentage",paymentType:modal.loan.paymentType||"closing",monthlyPayment:String(modal.loan.monthlyPayment||""),drawFacility:modal.loan.drawFacility||null,promissoryNote:modal.loan.promissoryNote||false}}
           onSave={f=>saveEditedLoan(modal.propId,f,modal.loan)} onClose={()=>setModal(null)}/>
       </Modal>}
       {modal?.type==="editUnassigned"&&<Modal title="Edit Unassigned Fund" onClose={()=>setModal(null)}>
@@ -884,9 +1062,9 @@ function LenderDashboard({ data }) {
   const toggleSort = col => setSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const allActive=[
     ...data.properties.flatMap(prop=>
-      prop.loans.filter(l=>!l.endDate).map(l=>({...l,propAddress:prop.address,bal:calcBalance(l),intEarned:calcBalance(l)-(l.principal||0)}))
+      prop.loans.filter(l=>!l.endDate).map(l=>({...l,propAddress:prop.address,bal:calcBalance(l),intEarned:calcIntEarned(l)}))
     ),
-    ...data.unassigned.map(u=>{const p=u.principal||u.amount||0;const b=calcBalance({...u,principal:p});return{...u,principal:p,propAddress:"Unassigned",bal:b,intEarned:b-p};}),
+    ...data.unassigned.map(u=>{const p=u.principal||u.amount||0;const l={...u,principal:p};return{...l,propAddress:"Unassigned",bal:calcBalance(l),intEarned:calcIntEarned(l)};}),
   ].sort((a,b)=>a.lenderName.localeCompare(b.lenderName));
 
   const byLender={};
@@ -1065,8 +1243,8 @@ function PropertyDashboard({ data }) {
   const active=data.properties.filter(p=>!p.dateSold);
   const rows=active.map(prop=>{
     const loans=prop.loans.filter(l=>!l.endDate);
-    const funded=loans.reduce((s,l)=>s+(l.principal||0),0);
-    const needed=prop.fundingNeeded||0;
+    const funded=loans.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+    const needed=propNeeded(prop,loans);
     const short=Math.max(0,needed-funded);
     return{prop,loans,funded,needed,short,under:short>0};
   }).sort((a,b)=>b.under-a.under);
@@ -1078,6 +1256,10 @@ function PropertyDashboard({ data }) {
   const haveNow=totalDeployed+unassignedTotal;
   const goFindThis=Math.max(0,needNow-haveNow);
   const idleCapital=Math.max(0,haveNow-needNow);
+  const allActiveLoans=active.flatMap(p=>p.loans.filter(l=>!l.endDate));
+  const monthlyLenderBurn=allActiveLoans.reduce((s,l)=>s+monthlyLoanPayment(l),0);
+  const monthlyHoldingBurn=active.reduce((s,p)=>s+(p.monthlyHolding??500),0);
+  const totalMonthlyBurn=monthlyLenderBurn+monthlyHoldingBurn;
 
   return (
     <div>
@@ -1085,6 +1267,17 @@ function PropertyDashboard({ data }) {
         <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Property Dashboard</h2>
         <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Capital deployment overview</p>
       </div>
+
+      {/* Monthly burn banner */}
+      {totalMonthlyBurn>0&&(
+        <div className="mb-4 rounded-2xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 px-5 py-4 flex items-center justify-between">
+          <div>
+            <div className="text-[10px] font-semibold text-orange-500 dark:text-orange-400 uppercase tracking-widest mb-0.5">Monthly Cash Needed</div>
+            <div className="text-[11px] text-orange-400 dark:text-orange-500">{$$(monthlyLenderBurn)}/mo interest · {$$(monthlyHoldingBurn)}/mo holding</div>
+          </div>
+          <div className="text-2xl font-black text-orange-600 dark:text-orange-400 tabular-nums">{$$(totalMonthlyBurn)}<span className="text-sm font-semibold">/mo</span></div>
+        </div>
+      )}
 
       {/* Top 3 stat cards */}
       <div className="grid grid-cols-3 gap-2 mb-4">
