@@ -575,7 +575,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 function PropertyForm({ init, onSave, onClose }) {
   const [f,sf]=useState(()=>({
     address:init?.address||"",
-    purchasePrice:String(init?.purchasePrice||""),
+    purchasePrice:String(init?.purchasePrice||(!init?.rehabBudget&&init?.fundingNeeded?init.fundingNeeded:"")||""),
     rehabBudget:String(init?.rehabBudget||""),
     projectMonths:init?.projectMonths!=null?String(init.projectMonths):"",
     monthlyHolding:String(init?.monthlyHolding??500),
@@ -913,6 +913,9 @@ function PropertiesPage({ data, update }) {
           const full=!prop.dateSold&&funded>0&&short===0;
           const isOpen=!!expanded[prop.id];
           const allIdx=data.properties.findIndex(p=>p.id===prop.id);
+          const months=effectiveMonths(prop);
+          const monthlyInt=active.reduce((s,l)=>s+monthlyLoanPayment(l),0);
+          const holdingMo=prop.monthlyHolding??500;
 
           return (
             <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"border border-slate-200 dark:border-zinc-800 opacity-60":under?"border-l-4 border border-red-300 dark:border-red-700 border-l-red-500":"border border-slate-200 dark:border-zinc-800 shadow-sm hover:shadow-md dark:shadow-none transition-shadow"}`}>
@@ -938,6 +941,14 @@ function PropertiesPage({ data, update }) {
                           <span className={`font-semibold tabular-nums ${full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{$$(funded)} / {$$(needed)}</span>
                           <span className={`font-semibold ${under?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{pct(funded,needed)}%</span>
                         </div>
+                        {(prop.purchasePrice||prop.rehabBudget)&&(
+                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-400 dark:text-zinc-500">
+                            {prop.purchasePrice>0&&<span>Purchase <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(prop.purchasePrice)}</span></span>}
+                            {prop.rehabBudget>0&&<span>Rehab <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(prop.rehabBudget)}</span></span>}
+                            <span>Holding <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdingMo*months)}</span> <span className="opacity-70">({months}mo×${holdingMo}/mo)</span></span>
+                            {monthlyInt>0&&<span>Interest <span className="font-semibold text-orange-500 dark:text-orange-400 tabular-nums">{$$c(monthlyInt*months)}</span> <span className="opacity-70">({months}mo×{$$(monthlyInt)}/mo)</span></span>}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1482,7 +1493,21 @@ export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
-    load().then(d=>{setData(d);setLoading(false);})
+    load().then(d=>{
+      const needsMigration = d.properties.some(p=>(!p.purchasePrice&&!p.rehabBudget)&&p.fundingNeeded>0);
+      if (needsMigration) {
+        const migrated={...d,properties:d.properties.map(p=>
+          (!p.purchasePrice&&!p.rehabBudget&&p.fundingNeeded>0)
+            ? {...p,purchasePrice:p.fundingNeeded,rehabBudget:0,monthlyHolding:p.monthlyHolding??500}
+            : p
+        )};
+        save(migrated);
+        setData(migrated);
+      } else {
+        setData(d);
+      }
+      setLoading(false);
+    })
     const channel=subscribeToChanges(newData=>setData(newData))
     return()=>channel.unsubscribe()
   },[])
