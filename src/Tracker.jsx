@@ -15,6 +15,7 @@ const daysBetween = (d1, d2) => {
   if (!d1||!d2) return 0;
   return Math.max(0, Math.floor((new Date(d2)-new Date(d1))/864e5));
 };
+const yearDays = l => /phoenix/i.test(l?.lenderName||"") ? 360 : 365;
 
 const calcBalance = (l, asOf=TODAY) => {
   if (!l?.startDate||!l?.principal) return l?.principal??0;
@@ -23,7 +24,7 @@ const calcBalance = (l, asOf=TODAY) => {
   if (l.interestType === "fixed") return l.principal + (l.interestRate || 0);
   const end = l.endDate && l.endDate<=asOf ? l.endDate : asOf;
   if (l.startDate>end) return l.principal;
-  return l.principal + l.principal*(l.interestRate||0)/100*(daysBetween(l.startDate,end)/365);
+  return l.principal + l.principal*(l.interestRate||0)/100*(daysBetween(l.startDate,end)/yearDays(l));
 };
 
 const calcIntEarned = (l, asOf=TODAY) => {
@@ -31,7 +32,7 @@ const calcIntEarned = (l, asOf=TODAY) => {
   const pt = l.paymentType||"closing";
   const end = l.endDate&&l.endDate<=asOf ? l.endDate : asOf;
   const days = daysBetween(l.startDate, end);
-  if (pt==="monthly_rate") return Math.round((l.principal||0)*(l.interestRate||0)/100/365*days);
+  if (pt==="monthly_rate") return Math.round((l.principal||0)*(l.interestRate||0)/100/yearDays(l)*days);
   if (pt==="monthly_fixed") return Math.round((l.monthlyPayment||0)*days/30.44);
   return Math.round(calcBalance(l,asOf)-(l.principal||0));
 };
