@@ -446,122 +446,196 @@ function MoveModal({ item, properties, onMove, onClose }) {
   );
 }
 
-// ─── Loan Disposition Row ─────────────────────────────────────────────────────
-function LoanDispositionRow({ loan, soldDate, allProperties, currentPropId, disposition, onChange }) {
-  const payoff   = calcBalance(loan, soldDate);
-  const interest = payoff - (loan.principal || 0);
-  const isFixed  = loan.interestType === "fixed";
-  const otherProps = allProperties.filter(p => !p.dateSold && p.id !== currentPropId);
-  const destOptions = [
-    ["unassigned","💼  Unassigned — hold for next deal"],
-    ...otherProps.map(p => [p.id, `🏠  ${p.address}`]),
-  ];
-  const typeOptions = [
-    ["paidOut",      `💰  Paid Out — ${$$(payoff)} leaves Nexus`],
-    ["rollFull",     `🔄  Roll Full ${$$(payoff)} — keep everything in`],
-    ...(interest > 0.01 ? [["rollPrincipal",`🔄  Roll Principal ${$$(loan.principal)} — pocket ${$$(interest)} interest`]] : []),
-    ["custom",       "✏️  Custom Amount"],
-  ];
-  const rolling = disposition.type !== "paidOut";
-
-  return (
-    <div className="border border-slate-200 dark:border-zinc-700 rounded-xl p-4 mb-3 bg-white dark:bg-zinc-900">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="font-bold text-slate-900 dark:text-zinc-100">{loan.lenderName}</span>
-        <TypeBadge type={loan.loanType} sm/>
-      </div>
-      <div className="grid grid-cols-3 gap-1 text-center bg-slate-50 dark:bg-zinc-800 rounded-lg p-3 mb-3">
-        <div>
-          <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest font-semibold mb-1">Principal</div>
-          <div className="font-bold text-slate-800 dark:text-zinc-100 tabular-nums">{$$(loan.principal)}</div>
-        </div>
-        <div>
-          <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest font-semibold mb-1">Interest</div>
-          <div className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">+{$$(interest)}</div>
-        </div>
-        <div>
-          <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest font-semibold mb-1">Payoff</div>
-          <div className="font-bold text-blue-700 dark:text-blue-400 tabular-nums">{$$(payoff)}</div>
-        </div>
-      </div>
-      <Sel label="What happens to this money?" value={disposition.type}
-        onChange={v => onChange({ ...disposition, type: v, destination: destOptions[0]?.[0] ?? "unassigned" })}
-        options={typeOptions}/>
-      {disposition.type === "custom" && (
-        <Inp label="Amount Rolling Over ($)" type="number" value={disposition.customAmount}
-          onChange={v => onChange({ ...disposition, customAmount: v })} placeholder={String(Math.round(loan.principal))}/>
-      )}
-      {rolling && (
-        <>
-          {destOptions.length > 0
-            ? <Sel label="Where does it go?" value={disposition.destination} onChange={v => onChange({ ...disposition, destination: v })} options={destOptions}/>
-            : <p className="text-xs text-amber-600 dark:text-amber-400 mb-3 font-medium">No other active properties — will save as Unassigned.</p>
-          }
-          <DateInp label="New Loan Start Date" value={disposition.newStartDate}
-            onChange={v => onChange({ ...disposition, newStartDate: v })} helpText="Defaults to sale date"/>
-          <Inp label={isFixed ? "New Fixed Interest Amount ($) — blank to keep same" : "New Interest Rate (%) — blank to keep same"}
-            type="number" value={disposition.newRate} onChange={v => onChange({ ...disposition, newRate: v })}
-            placeholder={String(loan.interestRate || 0)}/>
-        </>
-      )}
-    </div>
-  );
-}
-
 // ─── Mark Property Sold Modal ─────────────────────────────────────────────────
 function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const [step,setStep]=useState(1);
   const [soldDate,setSoldDate]=useState(TODAY);
-  const activeLoans = prop.loans.filter(l => !l.endDate);
-  const makeDispositions = date => {
-    const d = {};
-    activeLoans.forEach(l => { d[l.id]={type:"rollPrincipal",destination:"unassigned",customAmount:"",newStartDate:date,newRate:String(l.interestRate??"")}; });
-    return d;
+  const activeLoans=prop.loans.filter(l=>!l.endDate);
+  const otherProps=allProperties.filter(p=>!p.dateSold&&p.id!==prop.id);
+
+  // Step 1 – wire breakdown
+  const [wf,setWf]=useState({
+    cashToClose:String(prop.purchasePrice||""),
+    rehab:String(prop.rehabBudget||""),
+    misc:"0",
+  });
+  const sw=k=>e=>setWf(p=>({...p,[k]:e.target.value}));
+  const totalWire=(parseFloat(wf.cashToClose)||0)+(parseFloat(wf.rehab)||0)+(parseFloat(wf.misc)||0);
+
+  // Step 2 – per-lender rows
+  const [rows,setRows]=useState(()=>activeLoans.map(l=>({
+    loanId:l.id, lenderName:l.lenderName, loanType:l.loanType,
+    principal:l.principal||0,
+    calcPayoff:Math.round(calcBalance(l,TODAY)),
+    actualPayoff:String(Math.round(calcBalance(l,TODAY))),
+    interestRate:l.interestRate||0, interestType:l.interestType||"percentage",
+    paymentType:l.paymentType||"closing", specialTerms:l.specialTerms||"",
+    type:"paidOut",
+    destination:otherProps[0]?.id||"unassigned",
+    newStartDate:TODAY,
+  })));
+  const upd=(id,patch)=>setRows(rs=>rs.map(r=>r.loanId===id?{...r,...patch}:r));
+
+  // Profit / self-funded
+  const lenderTotal=rows.reduce((s,r)=>s+(parseFloat(r.actualPayoff)||0),0);
+  const nexusReturn=totalWire-lenderTotal;
+  const [profitInput,setProfitInput]=useState("");
+  const profit=parseFloat(profitInput)||0;
+  const selfFunded=nexusReturn-profit;
+  const balanced=totalWire>0&&Math.abs(lenderTotal+Math.max(0,selfFunded)+profit-totalWire)<1;
+
+  const handleConfirm=()=>{
+    const dispositions={};
+    rows.forEach(r=>{
+      dispositions[r.loanId]={
+        type:r.type, actualPayoff:parseFloat(r.actualPayoff)||0,
+        destination:r.destination, newStartDate:r.newStartDate||soldDate,
+        newRate:String(r.interestRate),
+        interestType:r.interestType, paymentType:r.paymentType, specialTerms:r.specialTerms,
+      };
+    });
+    const closingData={
+      wire:totalWire,cashToClose:parseFloat(wf.cashToClose)||0,
+      rehab:parseFloat(wf.rehab)||0,misc:parseFloat(wf.misc)||0,
+      profit,selfFunded:Math.max(0,selfFunded),
+      lenderPayoffs:rows.map(r=>({loanId:r.loanId,lenderName:r.lenderName,actualPayoff:parseFloat(r.actualPayoff)||0,type:r.type})),
+    };
+    onConfirm(soldDate,dispositions,closingData);
   };
-  const [dispositions,setDispositions]=useState(()=>makeDispositions(TODAY));
-  const handleDateChange = date => {
-    setSoldDate(date);
-    setDispositions(prev=>{ const next={...prev}; Object.keys(next).forEach(id=>{next[id]={...next[id],newStartDate:date};}); return next; });
-  };
-  const totalPayoff = activeLoans.reduce((s,l)=>s+calcBalance(l,soldDate),0);
 
   return (
-    <Modal title={`Sell: ${prop.address}`} onClose={onClose}>
-      {step===1 && (
+    <Modal title={`Close: ${prop.address}`} onClose={onClose}>
+
+      {/* ── Step 1: Date + Wire ── */}
+      {step===1&&(
         <div>
-          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mb-4 text-sm text-amber-800 dark:text-amber-300">
-            <strong>Every loan ends when a property sells.</strong> On the next screen you'll decide what happens to each lender's money.
-          </div>
-          <DateInp label="Date Sold" value={soldDate} onChange={handleDateChange}/>
-          {activeLoans.length > 0 && (
-            <div className="bg-slate-50 dark:bg-zinc-800 rounded-xl p-4 mb-4 text-sm text-slate-600 dark:text-zinc-300">
-              <strong>{activeLoans.length} active loan{activeLoans.length!==1?"s":""}</strong> · Total payoff: <strong className="text-blue-700 dark:text-blue-400 tabular-nums">{$$(totalPayoff)}</strong>
+          <DateInp label="Date Sold" value={soldDate} onChange={setSoldDate}/>
+          <div className="mb-5">
+            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Wire Breakdown</div>
+            <div className="space-y-2.5">
+              {[["Cash to Close","cashToClose"],["Rehab Amount","rehab"],["Miscellaneous","misc"]].map(([label,key])=>(
+                <div key={key} className="flex items-center gap-3">
+                  <span className="w-36 text-sm text-slate-600 dark:text-zinc-300 shrink-0">{label}</span>
+                  <input type="number" value={wf[key]} onChange={sw(key)} onWheel={e=>e.target.blur()}
+                    className="flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
+                </div>
+              ))}
+              <div className="flex items-center gap-3 pt-3 border-t border-slate-200 dark:border-zinc-700">
+                <span className="w-36 text-sm font-bold text-slate-900 dark:text-zinc-100 shrink-0">Total Wire</span>
+                <span className="flex-1 text-right font-bold text-xl text-blue-700 dark:text-blue-400 tabular-nums">{$$(totalWire)}</span>
+              </div>
             </div>
-          )}
-          {activeLoans.length===0 && <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No active loans — property will just be archived.</p>}
+          </div>
           <div className="flex gap-2">
-            <Btn onClick={()=>activeLoans.length>0?setStep(2):onConfirm(soldDate,{})} color="navy" full>
-              {activeLoans.length>0?`Settle ${activeLoans.length} Loan${activeLoans.length!==1?"s":""} →`:"Confirm Sale"}
+            <Btn onClick={()=>activeLoans.length>0?setStep(2):handleConfirm()} color="navy" full>
+              {activeLoans.length>0?`Settle ${activeLoans.length} Lender${activeLoans.length!==1?"s":""} →`:"Confirm Sale"}
             </Btn>
             <Btn onClick={onClose} color="ghost">Cancel</Btn>
           </div>
         </div>
       )}
-      {step===2 && (
+
+      {/* ── Step 2: Lender Settlement ── */}
+      {step===2&&(
         <div>
           <div className="flex items-center gap-3 mb-4">
             <button onClick={()=>setStep(1)} className="text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-200 text-sm font-medium transition-colors">← Back</button>
-            <span className="text-sm text-slate-500 dark:text-zinc-400">Sold {soldDate} · Settle each lender</span>
+            <span className="text-sm text-slate-500 dark:text-zinc-400">Sold {soldDate} · {$$(totalWire)} wire</span>
           </div>
-          <div className="max-h-[55vh] overflow-y-auto -mx-1 px-1">
-            {activeLoans.map(loan=>(
-              <LoanDispositionRow key={loan.id} loan={loan} soldDate={soldDate} allProperties={allProperties}
-                currentPropId={prop.id} disposition={dispositions[loan.id]}
-                onChange={d=>setDispositions(prev=>({...prev,[loan.id]:d}))}/>
-            ))}
+
+          <div className="max-h-[48vh] overflow-y-auto -mx-1 px-1 space-y-3 pb-1">
+            {rows.map(r=>{
+              const isRolling=r.type==="roll"||r.type==="waiveInterest";
+              return (
+                <div key={r.loanId} className="rounded-xl border border-slate-200 dark:border-zinc-700 p-4 bg-white dark:bg-zinc-900">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="font-bold text-slate-900 dark:text-zinc-100">{r.lenderName}</span>
+                    <TypeBadge type={r.loanType} sm/>
+                    <span className="text-[10px] text-slate-400 dark:text-zinc-500 ml-auto tabular-nums">Calc: {$$(r.calcPayoff)}</span>
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Actual Payoff</label>
+                    <input type="number" value={r.actualPayoff}
+                      onChange={e=>upd(r.loanId,{actualPayoff:e.target.value})}
+                      onWheel={e=>e.target.blur()}
+                      disabled={r.type==="waiveInterest"}
+                      className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums transition-colors ${r.type==="waiveInterest"?"border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 text-slate-400 dark:text-zinc-500 cursor-not-allowed":"border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100"}`}/>
+                    {r.type==="waiveInterest"&&<p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">Interest waived — principal only</p>}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      ["paidOut",       "💰","Paid Out",       "bg-slate-800 dark:bg-zinc-100 border-slate-800 dark:border-zinc-100 text-white dark:text-zinc-900"],
+                      ["roll",          "🔄","Roll to Deal",   "bg-blue-600 border-blue-600 text-white"],
+                      ["waiveInterest", "⚡","Waive Int & Roll","bg-amber-500 border-amber-500 text-white"],
+                    ].map(([v,icon,label,activeCls])=>(
+                      <button key={v} type="button"
+                        onClick={()=>upd(r.loanId,{type:v,...(v==="waiveInterest"?{actualPayoff:String(r.principal)}:{})})}
+                        className={`text-[11px] font-semibold px-1.5 py-2 rounded-lg border transition-all ${r.type===v?activeCls:"border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:border-slate-400 dark:hover:border-zinc-500 bg-white dark:bg-zinc-900"}`}>
+                        <div>{icon}</div><div className="mt-0.5">{label}</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {isRolling&&(
+                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">Roll To</div>
+                        <select value={r.destination} onChange={e=>upd(r.loanId,{destination:e.target.value})}
+                          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                          <option value="unassigned">💼 Unassigned</option>
+                          {otherProps.map(p=><option key={p.id} value={p.id}>🏠 {p.address}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">New Start Date</div>
+                        <input type="date" value={r.newStartDate} onChange={e=>upd(r.loanId,{newStartDate:e.target.value})}
+                          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Nexus / Profit row */}
+            <div className="rounded-xl border-2 border-dashed border-slate-200 dark:border-zinc-700 p-4 bg-slate-50/50 dark:bg-zinc-800/20">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="font-bold text-slate-800 dark:text-zinc-100">🏢 Nexus Homes LLC</span>
+                <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2 py-0.5 rounded-full">Self-Funded</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Profit</label>
+                  <input type="number" value={profitInput} onChange={e=>setProfitInput(e.target.value)}
+                    onWheel={e=>e.target.blur()}
+                    placeholder={String(Math.max(0,Math.round(nexusReturn)))}
+                    className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 tabular-nums"/>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Capital Returned</label>
+                  <div className="border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 dark:text-zinc-200 tabular-nums">
+                    {$$(Math.max(0,selfFunded))}
+                  </div>
+                </div>
+              </div>
+              {selfFunded<-0.5&&<p className="text-[10px] text-red-500 dark:text-red-400 mt-2">⚠ Profit exceeds Nexus return — check your numbers</p>}
+            </div>
           </div>
-          <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800">
-            <Btn onClick={()=>onConfirm(soldDate,dispositions)} color="navy" full>✓ Confirm Sale &amp; Settle All</Btn>
+
+          {/* Reconciliation bar */}
+          <div className={`mt-3 rounded-xl px-4 py-3 border ${balanced?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800":"bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"}`}>
+            <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
+              <span className={`font-bold shrink-0 ${balanced?"text-emerald-700 dark:text-emerald-300":"text-amber-700 dark:text-amber-300"}`}>{balanced?"✓ Balanced":"⚠ Check numbers"}</span>
+              <span className="text-slate-500 dark:text-zinc-400 tabular-nums text-[11px]">
+                {$$(totalWire)} = Lenders {$$(lenderTotal)} + Nexus {$$(Math.max(0,selfFunded))} + Profit {$$(profit)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <Btn onClick={handleConfirm} color="navy" full>✓ Confirm Sale &amp; Settle All</Btn>
             <Btn onClick={onClose} color="ghost">Cancel</Btn>
           </div>
         </div>
@@ -590,7 +664,7 @@ function PropertyForm({ init, onSave, onClose }) {
     <div>
       <Inp label="Property Address" value={f.address} onChange={s("address")} placeholder="123 Oak Ave, Nashville, TN"/>
       <div className="grid grid-cols-2 gap-3">
-        <Inp label="Purchase Price ($)" type="number" value={f.purchasePrice} onChange={s("purchasePrice")} placeholder="150000"/>
+        <Inp label="Cash to Close ($)" type="number" value={f.purchasePrice} onChange={s("purchasePrice")} placeholder="150000"/>
         <Inp label="Rehab Budget ($)" type="number" value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
       </div>
       <div className="mb-3">
@@ -613,7 +687,7 @@ function PropertyForm({ init, onSave, onClose }) {
       {totalBase>0&&(
         <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs space-y-1">
           <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Estimated Capital Need</div>
-          {[["Purchase",purchase],["Rehab",rehab],[`Holding (${months} mo × $${holding}/mo)`,holding*months]].filter(([,v])=>v>0).map(([l,v])=>(
+          {[["Cash to Close",purchase],["Rehab",rehab],[`Holding (${months} mo × $${holding}/mo)`,holding*months]].filter(([,v])=>v>0).map(([l,v])=>(
             <div key={l} className="flex justify-between text-slate-600 dark:text-zinc-300"><span>{l}</span><span className="tabular-nums">{$$(v)}</span></div>
           ))}
           <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-200 dark:border-zinc-700 pt-2 mt-1">
@@ -766,17 +840,32 @@ function PropertiesPage({ data, update }) {
   const delLoan = (propId,loanId) => { if(!confirm("Delete this loan?"))return; update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:p.loans.filter(l=>l.id!==loanId)})})); };
   const delUnassigned = id => { if(!confirm("Remove this unassigned fund?"))return; update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==id)})); };
 
-  const handleMarkSold = (prop,soldDate,dispositions) => {
+  const handleMarkSold = (prop, soldDate, dispositions, closingData) => {
     const activeLoans=prop.loans.filter(l=>!l.endDate);
     const newUnassigned=[]; const newLoansForProps={};
     activeLoans.forEach(loan=>{
-      const d=dispositions[loan.id]; if(!d||d.type==="paidOut")return;
-      const payoff=calcBalance(loan,soldDate);
-      let np; if(d.type==="rollFull")np=payoff; else if(d.type==="rollPrincipal")np=loan.principal; else if(d.type==="custom")np=parseFloat(d.customAmount)||loan.principal; else return;
-      const entry={id:uid(),lenderName:loan.lenderName,loanType:loan.loanType,principal:np,startDate:d.newStartDate||soldDate,interestRate:d.newRate!==""?parseFloat(d.newRate):(loan.interestRate||0),interestType:loan.interestType||"percentage",promissoryNote:false,specialTerms:loan.specialTerms||"",endDate:null};
-      if(d.destination==="unassigned"){newUnassigned.push(entry);}else{if(!newLoansForProps[d.destination])newLoansForProps[d.destination]=[];newLoansForProps[d.destination].push(entry);}
+      const d=dispositions[loan.id]; if(!d||d.type==="paidOut") return;
+      // roll: use actualPayoff as new principal; waiveInterest: use original principal only
+      const np=d.type==="waiveInterest"?loan.principal:(d.actualPayoff||calcBalance(loan,soldDate));
+      const entry={
+        id:uid(),lenderName:loan.lenderName,loanType:loan.loanType,principal:np,
+        startDate:d.newStartDate||soldDate,
+        interestRate:d.newRate!==""?parseFloat(d.newRate):(loan.interestRate||0),
+        interestType:d.interestType||loan.interestType||"percentage",
+        paymentType:d.paymentType||loan.paymentType||"closing",
+        promissoryNote:false,specialTerms:d.specialTerms||loan.specialTerms||"",endDate:null,
+      };
+      if(d.destination==="unassigned"){newUnassigned.push(entry);}
+      else{if(!newLoansForProps[d.destination])newLoansForProps[d.destination]=[];newLoansForProps[d.destination].push(entry);}
     });
-    update(d=>({...d,properties:d.properties.map(p=>{if(p.id===prop.id)return{...p,dateSold:soldDate,loans:p.loans.map(l=>l.endDate?l:{...l,endDate:soldDate})};if(newLoansForProps[p.id])return{...p,loans:[...p.loans,...newLoansForProps[p.id]]};return p;}),unassigned:[...d.unassigned,...newUnassigned]}));
+    update(d=>({...d,
+      properties:d.properties.map(p=>{
+        if(p.id===prop.id)return{...p,dateSold:soldDate,closingData:closingData||null,loans:p.loans.map(l=>l.endDate?l:{...l,endDate:soldDate})};
+        if(newLoansForProps[p.id])return{...p,loans:[...p.loans,...newLoansForProps[p.id]]};
+        return p;
+      }),
+      unassigned:[...d.unassigned,...newUnassigned],
+    }));
     setModal(null);
   };
 
@@ -955,7 +1044,7 @@ function PropertiesPage({ data, update }) {
                         </div>
                         {(prop.purchasePrice||prop.rehabBudget)&&(
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-400 dark:text-zinc-500">
-                            {prop.purchasePrice>0&&<span>Purchase <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(prop.purchasePrice)}</span></span>}
+                            {prop.purchasePrice>0&&<span>Cash to Close <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(prop.purchasePrice)}</span></span>}
                             {prop.rehabBudget>0&&<span>Rehab <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(prop.rehabBudget)}</span></span>}
                             <span>Holding <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdingMo*months)}</span> <span className="opacity-70">({months}mo×${holdingMo}/mo)</span></span>
                             {monthlyInt>0&&<span>Interest <span className="font-semibold text-orange-500 dark:text-orange-400 tabular-nums">{$$c(monthlyInt*months)}</span> <span className="opacity-70">({months}mo×{$$(monthlyInt)}/mo)</span></span>}
@@ -1095,7 +1184,7 @@ function PropertiesPage({ data, update }) {
           }} onClose={()=>setModal(null)}/>
       </Modal>}
       {modal?.type==="place"&&<PlaceOnPropertyModal fund={modal.fund} properties={data.properties} onPlace={propId=>placeOnProperty(modal.fund,propId)} onClose={()=>setModal(null)}/>}
-      {modal?.type==="markSold"&&<MarkSoldModal prop={modal.prop} allProperties={data.properties} onConfirm={(d,disp)=>handleMarkSold(modal.prop,d,disp)} onClose={()=>setModal(null)}/>}
+      {modal?.type==="markSold"&&<MarkSoldModal prop={modal.prop} allProperties={data.properties} onConfirm={(d,disp,cd)=>handleMarkSold(modal.prop,d,disp,cd)} onClose={()=>setModal(null)}/>}
       {modal?.type==="moveLoan"&&<MoveModal item={{type:"loan",propId:modal.propId,loan:modal.loan}} properties={data.properties} onMove={dest=>handleMove({type:"loan",propId:modal.propId,loan:modal.loan},dest)} onClose={()=>setModal(null)}/>}
       {modal?.type==="moveUnassigned"&&<MoveModal item={{type:"unassigned",fund:modal.fund}} properties={data.properties} onMove={dest=>{placeOnProperty(modal.fund,dest);setModal(null);}} onClose={()=>setModal(null)}/>}
     </div>
@@ -1449,22 +1538,27 @@ function HistoryPage({ data }) {
       const end=loan.endDate||prop.dateSold;
       if(end){const finBal=calcBalance(loan,end);raw.push({date:end,sx:"a",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype:prop.dateSold&&!loan.endDate?"sold":"closed",amount:finBal,principal:loan.principal||0,interest:finBal-(loan.principal||0),property:prop.address,rate:loan.interestRate||0,loanId:loan.id});}
     });
+    if(prop.dateSold&&prop.closingData){
+      raw.push({date:prop.dateSold,sx:"c",etype:"saleSummary",property:prop.address,propId:prop.id,closingData:prop.closingData,loanId:`sale-${prop.id}`});
+    }
   });
   raw.sort((a,b)=>((a.date||"")+a.sx).localeCompare((b.date||"")+b.sx));
   const lp={},lc={};
   const events=raw.map(ev=>{
     lp[ev.lender]=lp[ev.lender]??0;lc[ev.lender]=lc[ev.lender]??0;
     let nc,pp;
-    if(ev.etype==="start"){lc[ev.lender]+=ev.amount;pp=lp[ev.lender];nc=pp>0?ev.amount-pp:ev.amount;lp[ev.lender]=0;}
+    if(ev.etype==="saleSummary"){nc=ev.closingData?.profit??0;}
+    else if(ev.etype==="start"){lc[ev.lender]+=ev.amount;pp=lp[ev.lender];nc=pp>0?ev.amount-pp:ev.amount;lp[ev.lender]=0;}
     else{nc=ev.interest??0;lp[ev.lender]+=ev.amount;}
     return{...ev,nc,pp,cumLent:lc[ev.lender]};
   });
   const allL=[...new Set(events.map(e=>e.lender))].sort();
   const filtered=events.filter(e=>(lf==="all"||e.lender===lf)&&(tf==="all"||e.loanType===tf));
   const cfg={
-    start: {label:"Loan Started", icon:"↗", cls:"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"},
-    closed:{label:"Loan Closed",  icon:"✓", cls:"bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"},
-    sold:  {label:"Property Sold",icon:"🏡",cls:"bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"},
+    start:       {label:"Loan Started",  icon:"↗", cls:"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"},
+    closed:      {label:"Loan Closed",   icon:"✓", cls:"bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"},
+    sold:        {label:"Property Sold", icon:"🏡",cls:"bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"},
+    saleSummary: {label:"Sale Closed",   icon:"🏡",cls:"bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"},
   };
 
   return (
@@ -1489,6 +1583,44 @@ function HistoryPage({ data }) {
         {filtered.map((ev,i)=>{
           const c=cfg[ev.etype]??cfg.closed;const pos=ev.nc>=0;const roll=ev.etype==="start"&&ev.pp>0;
           const rateLabel=ev.interestType==="fixed"?"$"+Math.round(ev.rate).toLocaleString()+" fixed":ev.rate+"%/yr";
+          if(ev.etype==="saleSummary"){
+            const cd=ev.closingData;
+            return(
+              <div key={ev.loanId} className="bg-blue-50 dark:bg-blue-950/20 border-l-4 border-blue-400 dark:border-blue-600 px-5 py-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">🏡</span>
+                  <div>
+                    <div className="font-bold text-blue-900 dark:text-blue-100">Sale Closed — {ev.property}</div>
+                    <div className="text-xs text-blue-500 dark:text-blue-400">{ev.date} · For Bookkeepers</div>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <div className="text-[10px] text-blue-400 dark:text-blue-500 uppercase font-semibold">Wire Received</div>
+                    <div className="font-bold text-xl text-blue-700 dark:text-blue-300 tabular-nums">{$$(cd.wire)}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
+                    <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Costs</div>
+                    {cd.cashToClose>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Cash to Close</span><span className="tabular-nums">{$$(cd.cashToClose)}</span></div>}
+                    {cd.rehab>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Rehab</span><span className="tabular-nums">{$$(cd.rehab)}</span></div>}
+                    {cd.misc>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Miscellaneous</span><span className="tabular-nums">{$$(cd.misc)}</span></div>}
+                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.wire)}</span></div>
+                  </div>
+                  <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
+                    <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Funded By</div>
+                    {(cd.lenderPayoffs||[]).map(lp=>(
+                      <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
+                        <span className="truncate mr-1">{lp.lenderName}{lp.type==="waiveInterest"&&<span className="text-amber-500 dark:text-amber-400 ml-1 text-[10px]">(waived int.)</span>}</span>
+                        <span className="tabular-nums shrink-0">{$$(lp.actualPayoff)}</span>
+                      </div>
+                    ))}
+                    {cd.selfFunded>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{$$(cd.selfFunded)}</span></div>}
+                    <div className="flex justify-between font-bold text-emerald-700 dark:text-emerald-400 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>Profit</span><span className="tabular-nums">{$$(cd.profit)}</span></div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
           return(
             <div key={`${ev.loanId}-${ev.etype}-${i}`} className="flex items-start gap-3 px-5 py-4 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0 mt-0.5 ${c.cls}`}>{c.icon}</div>
