@@ -448,198 +448,210 @@ function MoveModal({ item, properties, onMove, onClose }) {
 
 // ─── Mark Property Sold Modal ─────────────────────────────────────────────────
 function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
-  const [step,setStep]=useState(1);
-  const [soldDate,setSoldDate]=useState(TODAY);
   const activeLoans=prop.loans.filter(l=>!l.endDate);
   const otherProps=allProperties.filter(p=>!p.dateSold&&p.id!==prop.id);
+  const [soldDate,setSoldDate]=useState(TODAY);
 
-  // Step 1 – wire breakdown
-  const [wf,setWf]=useState({
-    cashToClose:String(prop.purchasePrice||""),
-    rehab:String(prop.rehabBudget||""),
-    misc:"0",
-  });
-  const sw=k=>e=>setWf(p=>({...p,[k]:e.target.value}));
-  const totalWire=(parseFloat(wf.cashToClose)||0)+(parseFloat(wf.rehab)||0)+(parseFloat(wf.misc)||0);
+  // Cost fields — cashToClose, rehab, moneyCosts are independent; wire & misc are linked
+  const autoMoneyCosts=Math.round(activeLoans.filter(l=>(l.paymentType||"closing")!=="closing").reduce((s,l)=>s+calcIntEarned(l),0));
+  const [cashToCloseIn,setCashToCloseIn]=useState(String(prop.purchasePrice||""));
+  const [rehabIn,setRehabIn]=useState(String(prop.rehabBudget||""));
+  const [moneyCostsIn,setMoneyCostsIn]=useState(String(autoMoneyCosts));
+  const [miscIn,setMiscIn]=useState(String(Math.round((prop.monthlyHolding??500)*effectiveMonths(prop))));
+  const [wireIn,setWireIn]=useState("");
+  // "wire" or "misc" — whichever was typed last drives the other
+  const [linked,setLinked]=useState("wire");
 
-  // Step 2 – per-lender rows
+  const cashToClose=parseFloat(cashToCloseIn)||0;
+  const rehab=parseFloat(rehabIn)||0;
+  const moneyCosts=parseFloat(moneyCostsIn)||0;
+  const baseCosts=cashToClose+rehab+moneyCosts;
+  // linked pair: editing wire → misc auto; editing misc → wire auto
+  const wire=linked==="wire"?parseFloat(wireIn)||0:baseCosts+(parseFloat(miscIn)||0);
+  const misc=linked==="misc"?parseFloat(miscIn)||0:Math.max(0,wire-baseCosts);
+  const totalCosts=baseCosts+misc;
+  const dealProfit=wire-totalCosts;
+
+  const handleWireChange=v=>{setWireIn(v);setLinked("wire");};
+  const handleMiscChange=v=>{setMiscIn(v);setLinked("misc");};
+
+  // Per-lender rows
   const [rows,setRows]=useState(()=>activeLoans.map(l=>({
-    loanId:l.id, lenderName:l.lenderName, loanType:l.loanType,
+    loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
     principal:l.principal||0,
     calcPayoff:Math.round(calcBalance(l,TODAY)),
     actualPayoff:String(Math.round(calcBalance(l,TODAY))),
-    interestRate:l.interestRate||0, interestType:l.interestType||"percentage",
-    paymentType:l.paymentType||"closing", specialTerms:l.specialTerms||"",
-    type:"paidOut",
-    destination:otherProps[0]?.id||"unassigned",
-    newStartDate:TODAY,
+    interestRate:l.interestRate||0,interestType:l.interestType||"percentage",
+    paymentType:l.paymentType||"closing",specialTerms:l.specialTerms||"",
+    type:"paidOut",destination:otherProps[0]?.id||"unassigned",newStartDate:TODAY,
   })));
   const upd=(id,patch)=>setRows(rs=>rs.map(r=>r.loanId===id?{...r,...patch}:r));
 
-  // Profit / self-funded
   const lenderTotal=rows.reduce((s,r)=>s+(parseFloat(r.actualPayoff)||0),0);
-  const nexusReturn=totalWire-lenderTotal;
-  const [profitInput,setProfitInput]=useState("");
-  const profit=parseFloat(profitInput)||0;
-  const selfFunded=nexusReturn-profit;
-  const balanced=totalWire>0&&Math.abs(lenderTotal+Math.max(0,selfFunded)+profit-totalWire)<1;
+  const nexusCapital=Math.max(0,wire-lenderTotal-Math.max(0,dealProfit));
+  const balanced=wire>0&&Math.abs(lenderTotal+nexusCapital+Math.max(0,dealProfit)-wire)<1;
 
   const handleConfirm=()=>{
     const dispositions={};
-    rows.forEach(r=>{
-      dispositions[r.loanId]={
-        type:r.type, actualPayoff:parseFloat(r.actualPayoff)||0,
-        destination:r.destination, newStartDate:r.newStartDate||soldDate,
-        newRate:String(r.interestRate),
-        interestType:r.interestType, paymentType:r.paymentType, specialTerms:r.specialTerms,
-      };
-    });
-    const closingData={
-      wire:totalWire,cashToClose:parseFloat(wf.cashToClose)||0,
-      rehab:parseFloat(wf.rehab)||0,misc:parseFloat(wf.misc)||0,
-      profit,selfFunded:Math.max(0,selfFunded),
-      lenderPayoffs:rows.map(r=>({loanId:r.loanId,lenderName:r.lenderName,actualPayoff:parseFloat(r.actualPayoff)||0,type:r.type})),
-    };
-    onConfirm(soldDate,dispositions,closingData);
+    rows.forEach(r=>{dispositions[r.loanId]={type:r.type,actualPayoff:parseFloat(r.actualPayoff)||0,destination:r.destination,newStartDate:r.newStartDate||soldDate,newRate:String(r.interestRate),interestType:r.interestType,paymentType:r.paymentType,specialTerms:r.specialTerms};});
+    onConfirm(soldDate,dispositions,{wire,cashToClose,rehab,moneyCosts,misc,totalCosts,profit:Math.max(0,dealProfit),selfFunded:nexusCapital,lenderPayoffs:rows.map(r=>({loanId:r.loanId,lenderName:r.lenderName,actualPayoff:parseFloat(r.actualPayoff)||0,type:r.type}))});
   };
+
+  const inputCls="flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums";
+  const autoCls="flex-1 border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-right text-slate-400 dark:text-zinc-500 tabular-nums select-none";
+  const labelCls="w-40 text-sm text-slate-600 dark:text-zinc-300 shrink-0 leading-tight";
 
   return (
     <Modal title={`Close: ${prop.address}`} onClose={onClose}>
+      <div className="max-h-[80vh] overflow-y-auto -mx-1 px-1">
+      <div className="space-y-5 pb-2">
 
-      {/* ── Step 1: Date + Wire ── */}
-      {step===1&&(
+        {/* Date */}
+        <DateInp label="Date Sold" value={soldDate} onChange={setSoldDate}/>
+
+        {/* ── Project Costs ── */}
         <div>
-          <DateInp label="Date Sold" value={soldDate} onChange={setSoldDate}/>
-          <div className="mb-5">
-            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Wire Breakdown</div>
-            <div className="space-y-2.5">
-              {[["Cash to Close","cashToClose"],["Rehab Amount","rehab"],["Miscellaneous","misc"]].map(([label,key])=>(
-                <div key={key} className="flex items-center gap-3">
-                  <span className="w-36 text-sm text-slate-600 dark:text-zinc-300 shrink-0">{label}</span>
-                  <input type="number" value={wf[key]} onChange={sw(key)} onWheel={e=>e.target.blur()}
-                    className="flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
-                </div>
-              ))}
-              <div className="flex items-center gap-3 pt-3 border-t border-slate-200 dark:border-zinc-700">
-                <span className="w-36 text-sm font-bold text-slate-900 dark:text-zinc-100 shrink-0">Total Wire</span>
-                <span className="flex-1 text-right font-bold text-xl text-blue-700 dark:text-blue-400 tabular-nums">{$$(totalWire)}</span>
-              </div>
+          <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Project Costs</div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <span className={labelCls}>Cash to Close</span>
+              <input type="number" value={cashToCloseIn} onChange={e=>setCashToCloseIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Btn onClick={()=>activeLoans.length>0?setStep(2):handleConfirm()} color="navy" full>
-              {activeLoans.length>0?`Settle ${activeLoans.length} Lender${activeLoans.length!==1?"s":""} →`:"Confirm Sale"}
-            </Btn>
-            <Btn onClick={onClose} color="ghost">Cancel</Btn>
+            <div className="flex items-center gap-3">
+              <span className={labelCls}>Rehab</span>
+              <input type="number" value={rehabIn} onChange={e=>setRehabIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className={labelCls}>Money Costs <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(interest paid)</span></span>
+              <input type="number" value={moneyCostsIn} onChange={e=>setMoneyCostsIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
+            </div>
+            {/* Misc ↔ Wire linked pair */}
+            <div className="flex items-center gap-3">
+              <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
+              {linked==="wire"
+                ? <div className={autoCls} title="Auto-calculated from wire">{$$(misc)}</div>
+                : <input type="number" value={miscIn} onChange={e=>handleMiscChange(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>}
+              <button type="button" onClick={()=>{if(linked==="wire"){setMiscIn(String(Math.round(misc)));setLinked("misc");}else{setWireIn(String(Math.round(wire)));setLinked("wire");}}}
+                className="shrink-0 text-[10px] font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors whitespace-nowrap">
+                {linked==="wire"?"edit":"auto"}
+              </button>
+            </div>
+            <div className="flex items-center gap-3 pt-2 border-t border-slate-200 dark:border-zinc-700">
+              <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Total Deployed</span>
+              <span className="flex-1 text-right font-bold text-slate-900 dark:text-zinc-100 tabular-nums">{$$(totalCosts)}</span>
+            </div>
           </div>
         </div>
-      )}
 
-      {/* ── Step 2: Lender Settlement ── */}
-      {step===2&&(
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <button onClick={()=>setStep(1)} className="text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-200 text-sm font-medium transition-colors">← Back</button>
-            <span className="text-sm text-slate-500 dark:text-zinc-400">Sold {soldDate} · {$$(totalWire)} wire</span>
+        {/* ── Wire Received ── */}
+        <div className="flex items-center gap-3">
+          <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Wire Received</span>
+          {linked==="misc"
+            ? <div className={`${autoCls} font-bold text-blue-700 dark:text-blue-400`} title="Auto-calculated from misc">{$$(wire)}</div>
+            : <input type="number" value={wireIn} onChange={e=>handleWireChange(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0"
+                className="flex-1 border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>}
+          <button type="button" onClick={()=>{if(linked==="misc"){setWireIn(String(Math.round(wire)));setLinked("wire");}else{setMiscIn(String(Math.round(misc)));setLinked("misc");}}}
+            className="shrink-0 text-[10px] font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors whitespace-nowrap">
+            {linked==="misc"?"edit":"auto"}
+          </button>
+        </div>
+
+        {/* Deal Profit */}
+        {wire>0&&(
+          <div className={`rounded-xl p-3 text-center ${dealProfit>=0?"bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900":"bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900"}`}>
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Deal Profit</div>
+            <div className={`text-2xl font-bold tabular-nums ${dealProfit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$s(dealProfit)}</div>
           </div>
+        )}
 
-          <div className="max-h-[48vh] overflow-y-auto -mx-1 px-1 space-y-3 pb-1">
-            {rows.map(r=>{
-              const isRolling=r.type==="roll"||r.type==="waiveInterest";
-              return (
-                <div key={r.loanId} className="rounded-xl border border-slate-200 dark:border-zinc-700 p-4 bg-white dark:bg-zinc-900">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="font-bold text-slate-900 dark:text-zinc-100">{r.lenderName}</span>
-                    <TypeBadge type={r.loanType} sm/>
-                    <span className="text-[10px] text-slate-400 dark:text-zinc-500 ml-auto tabular-nums">Calc: {$$(r.calcPayoff)}</span>
-                  </div>
-
-                  <div className="mb-3">
-                    <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Actual Payoff</label>
-                    <input type="number" value={r.actualPayoff}
-                      onChange={e=>upd(r.loanId,{actualPayoff:e.target.value})}
-                      onWheel={e=>e.target.blur()}
-                      disabled={r.type==="waiveInterest"}
-                      className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums transition-colors ${r.type==="waiveInterest"?"border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 text-slate-400 dark:text-zinc-500 cursor-not-allowed":"border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100"}`}/>
-                    {r.type==="waiveInterest"&&<p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">Interest waived — principal only</p>}
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[
-                      ["paidOut",       "💰","Paid Out",       "bg-slate-800 dark:bg-zinc-100 border-slate-800 dark:border-zinc-100 text-white dark:text-zinc-900"],
-                      ["roll",          "🔄","Roll to Deal",   "bg-blue-600 border-blue-600 text-white"],
-                      ["waiveInterest", "⚡","Waive Int & Roll","bg-amber-500 border-amber-500 text-white"],
-                    ].map(([v,icon,label,activeCls])=>(
-                      <button key={v} type="button"
-                        onClick={()=>upd(r.loanId,{type:v,...(v==="waiveInterest"?{actualPayoff:String(r.principal)}:{})})}
-                        className={`text-[11px] font-semibold px-1.5 py-2 rounded-lg border transition-all ${r.type===v?activeCls:"border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:border-slate-400 dark:hover:border-zinc-500 bg-white dark:bg-zinc-900"}`}>
-                        <div>{icon}</div><div className="mt-0.5">{label}</div>
-                      </button>
-                    ))}
-                  </div>
-
-                  {isRolling&&(
-                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-2 gap-2">
-                      <div>
-                        <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">Roll To</div>
-                        <select value={r.destination} onChange={e=>upd(r.loanId,{destination:e.target.value})}
-                          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                          <option value="unassigned">💼 Unassigned</option>
-                          {otherProps.map(p=><option key={p.id} value={p.id}>🏠 {p.address}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">New Start Date</div>
-                        <input type="date" value={r.newStartDate} onChange={e=>upd(r.loanId,{newStartDate:e.target.value})}
-                          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
-                      </div>
+        {/* ── Settle Lenders ── */}
+        {activeLoans.length>0&&(
+          <div>
+            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Settle Lenders</div>
+            <div className="space-y-3">
+              {rows.map(r=>{
+                const isRolling=r.type==="roll"||r.type==="waiveInterest";
+                return (
+                  <div key={r.loanId} className="rounded-xl border border-slate-200 dark:border-zinc-700 p-4 bg-white dark:bg-zinc-900">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="font-bold text-slate-900 dark:text-zinc-100">{r.lenderName}</span>
+                      <TypeBadge type={r.loanType} sm/>
+                      <span className="text-[10px] text-slate-400 dark:text-zinc-500 ml-auto tabular-nums">Calc: {$$(r.calcPayoff)}</span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Nexus / Profit row */}
-            <div className="rounded-xl border-2 border-dashed border-slate-200 dark:border-zinc-700 p-4 bg-slate-50/50 dark:bg-zinc-800/20">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="font-bold text-slate-800 dark:text-zinc-100">🏢 Nexus Homes LLC</span>
-                <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2 py-0.5 rounded-full">Self-Funded</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Profit</label>
-                  <input type="number" value={profitInput} onChange={e=>setProfitInput(e.target.value)}
-                    onWheel={e=>e.target.blur()}
-                    placeholder={String(Math.max(0,Math.round(nexusReturn)))}
-                    className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 tabular-nums"/>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Capital Returned</label>
-                  <div className="border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 dark:text-zinc-200 tabular-nums">
-                    {$$(Math.max(0,selfFunded))}
+                    <div className="mb-3">
+                      <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Actual Payoff</label>
+                      <input type="number" value={r.actualPayoff} onChange={e=>upd(r.loanId,{actualPayoff:e.target.value})} onWheel={e=>e.target.blur()}
+                        disabled={r.type==="waiveInterest"}
+                        className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums ${r.type==="waiveInterest"?"border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 text-slate-400 dark:text-zinc-500 cursor-not-allowed":"border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100"}`}/>
+                      {r.type==="waiveInterest"&&<p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">Interest waived — principal only rolls forward</p>}
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        ["paidOut","💰","Paid Out","bg-slate-800 dark:bg-zinc-100 border-slate-800 dark:border-zinc-100 text-white dark:text-zinc-900"],
+                        ["roll","🔄","Roll to Deal","bg-blue-600 border-blue-600 text-white"],
+                        ["waiveInterest","⚡","Waive Int & Roll","bg-amber-500 border-amber-500 text-white"],
+                      ].map(([v,icon,label,activeCls])=>(
+                        <button key={v} type="button"
+                          onClick={()=>upd(r.loanId,{type:v,...(v==="waiveInterest"?{actualPayoff:String(r.principal)}:{})})}
+                          className={`text-[11px] font-semibold px-1.5 py-2 rounded-lg border transition-all ${r.type===v?activeCls:"border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:border-slate-400 dark:hover:border-zinc-500 bg-white dark:bg-zinc-900"}`}>
+                          <div>{icon}</div><div className="mt-0.5">{label}</div>
+                        </button>
+                      ))}
+                    </div>
+                    {isRolling&&(
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-2 gap-2">
+                        <div>
+                          <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">Roll To</div>
+                          <select value={r.destination} onChange={e=>upd(r.loanId,{destination:e.target.value})}
+                            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                            <option value="unassigned">💼 Unassigned</option>
+                            {otherProps.map(p=><option key={p.id} value={p.id}>🏠 {p.address}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">New Start Date</div>
+                          <input type="date" value={r.newStartDate} onChange={e=>upd(r.loanId,{newStartDate:e.target.value})}
+                            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                        </div>
+                      </div>
+                    )}
                   </div>
+                );
+              })}
+
+              {/* Nexus row */}
+              {wire>0&&(
+                <div className="rounded-xl border-2 border-dashed border-slate-200 dark:border-zinc-700 p-4 bg-slate-50/50 dark:bg-zinc-800/20 flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-slate-800 dark:text-zinc-100">🏢 Nexus Homes LLC</span>
+                    <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Capital returned from this deal</div>
+                  </div>
+                  <span className="font-bold text-xl tabular-nums text-slate-800 dark:text-zinc-100">{$$(nexusCapital)}</span>
                 </div>
-              </div>
-              {selfFunded<-0.5&&<p className="text-[10px] text-red-500 dark:text-red-400 mt-2">⚠ Profit exceeds Nexus return — check your numbers</p>}
+              )}
             </div>
           </div>
+        )}
 
-          {/* Reconciliation bar */}
-          <div className={`mt-3 rounded-xl px-4 py-3 border ${balanced?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800":"bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"}`}>
-            <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
-              <span className={`font-bold shrink-0 ${balanced?"text-emerald-700 dark:text-emerald-300":"text-amber-700 dark:text-amber-300"}`}>{balanced?"✓ Balanced":"⚠ Check numbers"}</span>
+        {/* Reconciliation */}
+        {wire>0&&(
+          <div className={`rounded-xl px-4 py-3 border ${balanced?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800":"bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"}`}>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className={`font-bold text-sm shrink-0 ${balanced?"text-emerald-700 dark:text-emerald-300":"text-amber-700 dark:text-amber-300"}`}>{balanced?"✓ Balanced":"⚠ Check numbers"}</span>
               <span className="text-slate-500 dark:text-zinc-400 tabular-nums text-[11px]">
-                {$$(totalWire)} = Lenders {$$(lenderTotal)} + Nexus {$$(Math.max(0,selfFunded))} + Profit {$$(profit)}
+                {$$(wire)} = Lenders {$$(lenderTotal)} + Nexus {$$(nexusCapital)} + Profit {$$(Math.max(0,dealProfit))}
               </span>
             </div>
           </div>
+        )}
 
-          <div className="flex gap-2 mt-4">
-            <Btn onClick={handleConfirm} color="navy" full>✓ Confirm Sale &amp; Settle All</Btn>
-            <Btn onClick={onClose} color="ghost">Cancel</Btn>
-          </div>
+        <div className="flex gap-2 pt-1">
+          <Btn onClick={handleConfirm} color="navy" full>✓ Confirm &amp; Close Property</Btn>
+          <Btn onClick={onClose} color="ghost">Cancel</Btn>
         </div>
-      )}
+
+      </div>
+      </div>
     </Modal>
   );
 }
@@ -1603,7 +1615,8 @@ function HistoryPage({ data }) {
                     <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Costs</div>
                     {cd.cashToClose>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Cash to Close</span><span className="tabular-nums">{$$(cd.cashToClose)}</span></div>}
                     {cd.rehab>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Rehab</span><span className="tabular-nums">{$$(cd.rehab)}</span></div>}
-                    {cd.misc>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Miscellaneous</span><span className="tabular-nums">{$$(cd.misc)}</span></div>}
+                    {cd.moneyCosts>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Money Costs (Interest)</span><span className="tabular-nums">{$$(cd.moneyCosts)}</span></div>}
+                    {cd.misc>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Misc / Holding</span><span className="tabular-nums">{$$(cd.misc)}</span></div>}
                     <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.wire)}</span></div>
                   </div>
                   <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
