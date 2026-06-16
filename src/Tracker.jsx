@@ -479,6 +479,19 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   }));
   const upd=(id,patch)=>setRows(rs=>rs.map(r=>r.loanId===id?{...r,...patch}:r));
 
+  // When soldDate changes, recalculate interest up to that date and push into rows
+  useEffect(()=>{
+    setRows(rs=>rs.map(r=>{
+      const l=activeLoans.find(loan=>loan.id===r.loanId);
+      if(!l) return r;
+      const monthly=(l.paymentType||"closing")!=="closing";
+      const calcP=Math.round(calcBalance(l,soldDate));
+      const calcI=monthly?0:Math.round(calcP-(l.principal||0));
+      const intEarned=Math.round(calcIntEarned(l,soldDate));
+      return {...r,calcPayoff:calcP,calcInterest:calcI,interestPayoff:String(intEarned)};
+    }));
+  },[soldDate]);
+
   // How much flows through the wire for each lender (0 if paid at title)
   // Rolling lenders: their amount counts in the wire because gross proceeds cover it;
   // it immediately goes back out as a new loan on the next deal.
