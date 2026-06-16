@@ -9,12 +9,16 @@ const uid   = () => Math.random().toString(36).slice(2, 9);
 const $$    = n  => "$" + Math.round(Math.abs(n ?? 0)).toLocaleString();
 const $$s   = n  => { if (n==null) return "—"; const a=Math.round(Math.abs(n)).toLocaleString(); return n>=0?`+$${a}`:`-$${a}`; };
 const $$c   = n  => { const a=Math.round(Math.abs(n??0)); if(a>=1e6){const m=a/1e6;return "$"+(m>=10?m.toFixed(1):m.toFixed(2)).replace(/\.?0+$/,"")+"M";} if(a>=1e3)return "$"+Math.round(a/1e3)+"K"; return "$"+a; };
+// Penny-precise formatters for the closing modal
+const $$p   = n  => "$" + Math.abs(n??0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+const $$ps  = n  => { if(n==null) return "—"; const a=Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); return n>=0?`+$${a}`:`-$${a}`; };
 const pct   = (a,b) => b>0 ? Math.min(100, Math.round(a/b*100)) : 0;
 
 const daysBetween = (d1, d2) => {
   if (!d1||!d2) return 0;
   return Math.max(0, Math.floor((new Date(d2)-new Date(d1))/864e5));
 };
+const nextDay = d => { const [y,m,day]=d.split('-').map(Number); const dt=new Date(y,m-1,day+1); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
 const yearDays = l => /phoenix/i.test(l?.lenderName||"") ? 360 : 365;
 
 const calcBalance = (l, asOf=TODAY) => {
@@ -32,9 +36,9 @@ const calcIntEarned = (l, asOf=TODAY) => {
   const pt = l.paymentType||"closing";
   const end = l.endDate&&l.endDate<=asOf ? l.endDate : asOf;
   const days = daysBetween(l.startDate, end);
-  if (pt==="monthly_rate") return Math.round((l.principal||0)*(l.interestRate||0)/100/yearDays(l)*days);
-  if (pt==="monthly_fixed") return Math.round((l.monthlyPayment||0)*days/30.44);
-  return Math.round(calcBalance(l,asOf)-(l.principal||0));
+  if (pt==="monthly_rate") return Math.round((l.principal||0)*(l.interestRate||0)/100/yearDays(l)*days*100)/100;
+  if (pt==="monthly_fixed") return Math.round((l.monthlyPayment||0)*days/30.44*100)/100;
+  return Math.round((calcBalance(l,asOf)-(l.principal||0))*100)/100;
 };
 
 const effectiveMonths = prop => {
@@ -456,11 +460,11 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   // Per-lender rows — includes principal/interest/fees breakdown
   const [rows,setRows]=useState(()=>activeLoans.map(l=>{
     const monthly=(l.paymentType||"closing")!=="closing";
-    const calcP=Math.round(calcBalance(l,TODAY));
+    const calcP=Math.round(calcBalance(l,soldDate)*100)/100; // cent precision
     // calcInterest: interest owed AT CLOSING (0 for monthly since it was paid during hold)
-    const calcI=monthly?0:Math.round(calcP-(l.principal||0));
+    const calcI=monthly?0:Math.round((calcP-(l.principal||0))*100)/100;
     // intEarned: total interest earned on this loan (paid monthly OR accrued to closing)
-    const intEarned=Math.round(calcIntEarned(l));
+    const intEarned=calcIntEarned(l,soldDate); // already cent-precise
     return {
       loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
       principal:l.principal||0,calcPayoff:calcP,calcInterest:calcI,
@@ -474,21 +478,22 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
       paidAtTitle:false, // if true, lender is paid at closing table — not from our wire
       // For custom split
       customRolling:String(l.principal||0),
-      type:"paidOut",destination:otherProps[0]?.id||"unassigned",newStartDate:TODAY,
+      type:"paidOut",destination:otherProps[0]?.id||"unassigned",newStartDate:nextDay(soldDate),
     };
   }));
   const upd=(id,patch)=>setRows(rs=>rs.map(r=>r.loanId===id?{...r,...patch}:r));
 
-  // When soldDate changes, recalculate interest up to that date and push into rows
+  // When soldDate changes: recalculate interest to that date; reset newStartDate to day after
   useEffect(()=>{
+    const startDate=nextDay(soldDate);
     setRows(rs=>rs.map(r=>{
       const l=activeLoans.find(loan=>loan.id===r.loanId);
       if(!l) return r;
       const monthly=(l.paymentType||"closing")!=="closing";
-      const calcP=Math.round(calcBalance(l,soldDate));
-      const calcI=monthly?0:Math.round(calcP-(l.principal||0));
-      const intEarned=Math.round(calcIntEarned(l,soldDate));
-      return {...r,calcPayoff:calcP,calcInterest:calcI,interestPayoff:String(intEarned)};
+      const calcP=Math.round(calcBalance(l,soldDate)*100)/100;
+      const calcI=monthly?0:Math.round((calcP-(l.principal||0))*100)/100;
+      const intEarned=calcIntEarned(l,soldDate);
+      return {...r,calcPayoff:calcP,calcInterest:calcI,interestPayoff:String(intEarned),newStartDate:startDate};
     }));
   },[soldDate]);
 
@@ -524,13 +529,13 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 
   const cashToClose=parseFloat(cashToCloseIn)||0;
   const rehab=parseFloat(rehabIn)||0;
-  // Money Costs derived live from step 1 interestPayoff fields:
+  // Money Costs derived live from step 1 interestPayoff fields (cent precision):
   // monthly loans → interest paid during hold; closing loans → interest paid at payoff
   const moneyCosts=Math.round(rows.reduce((s,r)=>{
     if(r.isMonthly) return s+(parseFloat(r.interestPayoff)||0);
     if(r.type==="paidOut"||r.type==="payInterest") return s+(parseFloat(r.interestPayoff)||0);
     return s; // rolling/waived: no interest cash cost this deal
-  },0));
+  },0)*100)/100;
   const baseCosts=cashToClose+rehab+moneyCosts;
   const wire=linked==="wire"?parseFloat(wireIn)||0:baseCosts+(parseFloat(miscIn)||0);
   const misc=linked==="misc"?parseFloat(miscIn)||0:Math.max(0,wire-baseCosts);
@@ -632,9 +637,9 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           </label>
                         </div>
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500 tabular-nums text-right leading-tight shrink-0">
-                          <div>Principal: {$$(r.principal)}</div>
-                          {r.calcInterest>0&&<div>Accrued Int: {$$(r.calcInterest)}</div>}
-                          <div className="font-semibold text-slate-600 dark:text-zinc-300">Payoff: {$$(r.calcPayoff)}</div>
+                          <div>Principal: {$$p(r.principal)}</div>
+                          {r.calcInterest>0&&<div>Accrued Int: {$$p(r.calcInterest)}</div>}
+                          <div className="font-semibold text-slate-600 dark:text-zinc-300">Payoff: {$$p(r.calcPayoff)}</div>
                         </div>
                       </div>
 
@@ -653,13 +658,13 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                             upd(r.loanId,patch);
                           }}
                           className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                          <option value="paidOut">💰 Paid Out — {$$(r.calcPayoff)} leaves Nexus</option>
-                          <option value="rollFull">🔄 Roll Full {$$(r.calcPayoff)} to next deal</option>
+                          <option value="paidOut">💰 Paid Out — {$$p(r.calcPayoff)} leaves Nexus</option>
+                          <option value="rollFull">🔄 Roll Full {$$p(r.calcPayoff)} to next deal</option>
                           {r.calcInterest>0.01&&<>
-                            <option value="rollPrincipal">🔄 Roll {$$(r.principal)}, Nexus keeps {$$(r.calcInterest)}</option>
-                            <option value="payInterest">💸 Pay {$$(r.calcInterest)} interest, roll {$$(r.principal)}</option>
+                            <option value="rollPrincipal">🔄 Roll {$$p(r.principal)}, Nexus keeps {$$p(r.calcInterest)}</option>
+                            <option value="payInterest">💸 Pay {$$p(r.calcInterest)} interest, roll {$$p(r.principal)}</option>
                           </>}
-                          <option value="waiveInterest">⚡ Waive interest, roll {$$(r.principal)}</option>
+                          <option value="waiveInterest">⚡ Waive interest, roll {$$p(r.principal)}</option>
                           <option value="custom">✏️ Custom split</option>
                         </select>
                       </div>
@@ -688,7 +693,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           {r.isMonthly&&<p className="text-[10px] text-amber-600 dark:text-amber-400">Interest already received monthly — not deducted from closing wire</p>}
                           <div className="flex items-center justify-between pt-1">
                             <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400">Total from wire</span>
-                            <span className="text-sm font-bold tabular-nums text-slate-800 dark:text-zinc-100">{$$(totalFromWire)}</span>
+                            <span className="text-sm font-bold tabular-nums text-slate-800 dark:text-zinc-100">{$$p(totalFromWire)}</span>
                           </div>
                         </div>
                       )}
@@ -707,7 +712,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                               <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
                             </div>
                           </div>
-                          <div className="text-[10px] text-slate-400 dark:text-zinc-500">Principal {$$(r.principal)} rolls to next deal</div>
+                          <div className="text-[10px] text-slate-400 dark:text-zinc-500">Principal {$$p(r.principal)} rolls to next deal</div>
                         </div>
                       )}
 
@@ -722,7 +727,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">From Wire</div>
-                              <div className={autoNum}>{$$(autoWireForCustom)}</div>
+                              <div className={autoNum}>{$$p(autoWireForCustom)}</div>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
@@ -738,7 +743,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Flows Through Wire</span>
                             <span className="text-sm font-bold tabular-nums text-slate-800 dark:text-zinc-100">
-                              {$$(r.type==="rollFull"?r.calcPayoff:r.principal)}
+                              {$$p(r.type==="rollFull"?r.calcPayoff:r.principal)}
                               {r.type==="rollPrincipal"&&<span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500 ml-1">(principal; Nexus keeps int)</span>}
                               {r.type==="waiveInterest"&&<span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500 ml-1">(principal; interest forgiven)</span>}
                             </span>
@@ -786,15 +791,15 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 <div className="rounded-xl bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700 px-4 py-4 space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-slate-500 dark:text-zinc-400">Lenders (from wire)</span>
-                    <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$(lenderTotal)}</span>
+                    <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$p(lenderTotal)}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-slate-500 dark:text-zinc-400">Est. project costs</span>
-                    <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$(estCosts)}</span>
+                    <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$p(estCosts)}</span>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-zinc-700">
                     <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">Break-even wire</span>
-                    <span className="font-bold text-base tabular-nums text-slate-900 dark:text-zinc-100">{$$(minWire)}</span>
+                    <span className="font-bold text-base tabular-nums text-slate-900 dark:text-zinc-100">{$$p(minWire)}</span>
                   </div>
                 </div>
               );
@@ -816,8 +821,8 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[10px] font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-widest">Lender Settlements (Step 1)</div>
                 <div className="text-right">
-                  {titleTotal>0&&<div className="text-[10px] text-amber-600 dark:text-amber-400 tabular-nums">🏛 Title: {$$(titleTotal)}</div>}
-                  <div className="font-bold text-lg tabular-nums text-blue-700 dark:text-blue-300">Wire: {$$(lenderTotal)}</div>
+                  {titleTotal>0&&<div className="text-[10px] text-amber-600 dark:text-amber-400 tabular-nums">🏛 Title: {$$p(titleTotal)}</div>}
+                  <div className="font-bold text-lg tabular-nums text-blue-700 dark:text-blue-300">Wire: {$$p(lenderTotal)}</div>
                 </div>
               </div>
               <div className="text-[11px] text-blue-600 dark:text-blue-400 space-y-0.5">
@@ -825,10 +830,10 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                   const titleTotal=(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0);
                   const rolling=r.type==="rollFull"||r.type==="rollPrincipal"||r.type==="payInterest"||r.type==="waiveInterest"||r.type==="custom";
                   const label=r.paidAtTitle
-                    ?`${$$(titleTotal)} at title`
+                    ?`${$$p(titleTotal)} at title`
                     :rolling
-                      ?`${$$(wireContrib(r))} → new loan`
-                      :$$(wireContrib(r));
+                      ?`${$$p(wireContrib(r))} → new loan`
+                      :$$p(wireContrib(r));
                   return (
                     <div key={r.loanId} className="flex justify-between">
                       <span>{r.lenderName}{r.paidAtTitle&&<span className="ml-1 text-amber-500">🏛</span>}</span>
@@ -853,13 +858,13 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Money Costs <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(from step 1)</span></span>
-                  <div className={autoCls} title="Auto-derived from lender interest in step 1">{$$(moneyCosts)}</div>
+                  <div className={autoCls} title="Auto-derived from lender interest in step 1">{$$p(moneyCosts)}</div>
                   <button type="button" onClick={()=>setStep(1)} className="shrink-0 text-[10px] font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors whitespace-nowrap">edit ↑</button>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
                   {linked==="wire"
-                    ?<div className={autoCls} title="Auto-calculated from wire">{$$(misc)}</div>
+                    ?<div className={autoCls} title="Auto-calculated from wire">{$$p(misc)}</div>
                     :<input type="number" value={miscIn} onChange={e=>handleMiscChange(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>}
                   <button type="button" onClick={()=>{if(linked==="wire"){setMiscIn(String(Math.round(misc)));setLinked("misc");}else{setWireIn(String(Math.round(wire)));setLinked("wire");}}}
                     className="shrink-0 text-[10px] font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors whitespace-nowrap">
@@ -868,7 +873,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 </div>
                 <div className="flex items-center gap-3 pt-2 border-t border-slate-200 dark:border-zinc-700">
                   <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Total Deployed</span>
-                  <span className="flex-1 text-right font-bold text-slate-900 dark:text-zinc-100 tabular-nums">{$$(totalCosts)}</span>
+                  <span className="flex-1 text-right font-bold text-slate-900 dark:text-zinc-100 tabular-nums">{$$p(totalCosts)}</span>
                 </div>
               </div>
             </div>
@@ -877,7 +882,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
             <div className="flex items-center gap-3">
               <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Wire Received</span>
               {linked==="misc"
-                ?<div className={`${autoCls} font-bold text-blue-700 dark:text-blue-400`} title="Auto-calculated from misc">{$$(wire)}</div>
+                ?<div className={`${autoCls} font-bold text-blue-700 dark:text-blue-400`} title="Auto-calculated from misc">{$$p(wire)}</div>
                 :<input type="number" value={wireIn} onChange={e=>handleWireChange(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0"
                     className="flex-1 border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>}
               <button type="button" onClick={()=>{if(linked==="misc"){setWireIn(String(Math.round(wire)));setLinked("wire");}else{setMiscIn(String(Math.round(misc)));setLinked("misc");}}}
@@ -890,14 +895,14 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
             {wire>0?(
               <div className={`rounded-xl p-3 text-center ${dealProfit>=0?"bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900":"bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900"}`}>
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Deal Profit</div>
-                <div className={`text-2xl font-bold tabular-nums ${dealProfit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$s(dealProfit)}</div>
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">{$$(wire)} wire − {$$(totalCosts)} costs</div>
+                <div className={`text-2xl font-bold tabular-nums ${dealProfit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$ps(dealProfit)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">{$$p(wire)} wire − {$$p(totalCosts)} costs</div>
               </div>
             ):(
               <div className="rounded-xl p-3 text-center bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700">
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Deal Profit</div>
                 <div className="text-lg font-bold text-slate-400 dark:text-zinc-500">— Enter wire above —</div>
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">Break-even wire: {$$(lenderTotal+baseCosts)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">Break-even wire: {$$p(lenderTotal+baseCosts)}</div>
               </div>
             )}
 
@@ -908,7 +913,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                   <span className="font-bold text-slate-800 dark:text-zinc-100">🏢 Nexus Homes LLC</span>
                   <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Capital returned from this deal</div>
                 </div>
-                <span className="font-bold text-xl tabular-nums text-slate-800 dark:text-zinc-100">{$$(nexusCapital)}</span>
+                <span className="font-bold text-xl tabular-nums text-slate-800 dark:text-zinc-100">{$$p(nexusCapital)}</span>
               </div>
             )}
 
@@ -918,7 +923,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className={`font-bold text-sm shrink-0 ${balanced?"text-emerald-700 dark:text-emerald-300":"text-amber-700 dark:text-amber-300"}`}>{balanced?"✓ Balanced":"⚠ Check numbers"}</span>
                   <span className="text-slate-500 dark:text-zinc-400 tabular-nums text-[11px]">
-                    {$$(wire)} = Lenders {$$(lenderTotal)} + Nexus {$$(nexusCapital)} + Profit {$$(Math.max(0,dealProfit))}
+                    {$$p(wire)} = Lenders {$$p(lenderTotal)} + Nexus {$$p(nexusCapital)} + Profit {$$p(Math.max(0,dealProfit))}
                   </span>
                 </div>
               </div>
