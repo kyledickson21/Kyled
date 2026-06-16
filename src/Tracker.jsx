@@ -497,23 +497,19 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     }));
   },[soldDate]);
 
-  // How much flows through the wire for each lender (0 if paid at title)
-  // Rolling lenders: their amount counts in the wire because gross proceeds cover it;
-  // it immediately goes back out as a new loan on the next deal.
+  // How much each lender is paid FROM the wire (0 if paid at title or rolling)
+  // Rolling lenders (rollFull, rollPrincipal, waiveInterest) don't touch the wire —
+  // their loan continues on the next deal. Only actually-paid-out amounts count.
   const wireContrib=r=>{
     if(r.paidAtTitle) return 0;
     const fees=parseFloat(r.lenderFees)||0;
     if(r.type==="paidOut"){
-      // Monthly loans: interest was already received during hold, not from closing wire
       const intFromWire=r.isMonthly?0:(parseFloat(r.interestPayoff)||0);
       return (parseFloat(r.principalPayoff)||0)+intFromWire+fees;
     }
-    if(r.type==="rollFull") return r.calcPayoff+fees;
-    if(r.type==="rollPrincipal") return r.principal+fees; // interest stays with Nexus
-    if(r.type==="payInterest") return r.principal+(parseFloat(r.interestPayoff)||0)+fees;
-    if(r.type==="waiveInterest") return r.principal+fees; // principal rolls; interest forgiven
-    if(r.type==="custom") return r.calcPayoff+fees; // full amount through wire; split decides payout vs new loan
-    return fees;
+    if(r.type==="payInterest") return (parseFloat(r.interestPayoff)||0)+fees; // only interest paid; principal rolls
+    if(r.type==="custom") return Math.max(0,r.calcPayoff-(parseFloat(r.customRolling)||0))+fees;
+    return 0; // rollFull / rollPrincipal / waiveInterest — loan continues, nothing from wire
   };
   // Total paid at title (before wire lands)
   const titleTotal=rows.reduce((s,r)=>r.paidAtTitle?s+((parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0)):s,0);
@@ -540,9 +536,11 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const wire=linked==="wire"?parseFloat(wireIn)||0:baseCosts+(parseFloat(miscIn)||0);
   const misc=linked==="misc"?parseFloat(miscIn)||0:Math.max(0,wire-baseCosts);
   const totalCosts=baseCosts+misc;
-  const dealProfit=wire-totalCosts;
-  const nexusCapital=Math.max(0,wire-lenderTotal-Math.max(0,dealProfit));
-  const balanced=wire>0&&Math.abs(lenderTotal+nexusCapital+Math.max(0,dealProfit)-wire)<1;
+  // wire = lenders_paid_from_wire + costs_recovered + deal_profit
+  // nexus recovers exactly totalCosts (what was deployed); profit is the upside
+  const nexusCapital=totalCosts;
+  const dealProfit=wire-lenderTotal-nexusCapital;
+  const balanced=wire>0&&Math.abs(lenderTotal+nexusCapital+dealProfit-wire)<0.01;
 
   const handleWireChange=v=>{setWireIn(v);setLinked("wire");};
   const handleMiscChange=v=>{setMiscIn(v);setLinked("misc");};
@@ -567,7 +565,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     });
     onConfirm(soldDate,dispositions,{
       wire,cashToClose,rehab,moneyCosts,misc,totalCosts,
-      profit:Math.max(0,dealProfit),selfFunded:nexusCapital,
+      profit:dealProfit,selfFunded:nexusCapital,
       titleTotal,
       lenderPayoffs:rows.map(r=>({
         loanId:r.loanId,lenderName:r.lenderName,type:r.type,
@@ -827,17 +825,17 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               </div>
               <div className="text-[11px] text-blue-600 dark:text-blue-400 space-y-0.5">
                 {rows.map(r=>{
-                  const titleTotal=(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0);
-                  const rolling=r.type==="rollFull"||r.type==="rollPrincipal"||r.type==="payInterest"||r.type==="waiveInterest"||r.type==="custom";
-                  const label=r.paidAtTitle
-                    ?`${$$p(titleTotal)} at title`
-                    :rolling
-                      ?`${$$p(wireContrib(r))} → new loan`
-                      :$$p(wireContrib(r));
+                  const rowTotal=(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0);
+                  const pureRolling=r.type==="rollFull"||r.type==="rollPrincipal"||r.type==="waiveInterest";
+                  let label;
+                  if(r.paidAtTitle) label=`${$$p(rowTotal)} at title 🏛`;
+                  else if(pureRolling) label=`rolls → next deal`;
+                  else if(r.type==="payInterest") label=`${$$p(wireContrib(r))} from wire + principal rolls`;
+                  else label=$$p(wireContrib(r));
                   return (
-                    <div key={r.loanId} className="flex justify-between">
-                      <span>{r.lenderName}{r.paidAtTitle&&<span className="ml-1 text-amber-500">🏛</span>}</span>
-                      <span className="tabular-nums">{label}</span>
+                    <div key={r.loanId} className="flex justify-between gap-2">
+                      <span>{r.lenderName}</span>
+                      <span className="tabular-nums text-right">{label}</span>
                     </div>
                   );
                 })}
@@ -896,7 +894,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               <div className={`rounded-xl p-3 text-center ${dealProfit>=0?"bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900":"bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900"}`}>
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Deal Profit</div>
                 <div className={`text-2xl font-bold tabular-nums ${dealProfit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$ps(dealProfit)}</div>
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">{$$p(wire)} wire − {$$p(totalCosts)} costs</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">{$$p(wire)} wire − {$$p(lenderTotal)} lenders − {$$p(totalCosts)} costs</div>
               </div>
             ):(
               <div className="rounded-xl p-3 text-center bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700">
@@ -906,16 +904,14 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               </div>
             )}
 
-            {/* Nexus Capital */}
-            {wire>0&&(
-              <div className="rounded-xl border-2 border-dashed border-slate-200 dark:border-zinc-700 p-4 bg-slate-50/50 dark:bg-zinc-800/20 flex items-center justify-between">
-                <div>
-                  <span className="font-bold text-slate-800 dark:text-zinc-100">🏢 Nexus Homes LLC</span>
-                  <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Capital returned from this deal</div>
-                </div>
-                <span className="font-bold text-xl tabular-nums text-slate-800 dark:text-zinc-100">{$$p(nexusCapital)}</span>
+            {/* Nexus self-funding recovered = total costs deployed */}
+            <div className="rounded-xl border-2 border-dashed border-slate-200 dark:border-zinc-700 p-4 bg-slate-50/50 dark:bg-zinc-800/20 flex items-center justify-between">
+              <div>
+                <span className="font-bold text-slate-800 dark:text-zinc-100">🏢 Nexus Self-Funding</span>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Costs recovered (c2c + rehab + money costs + misc)</div>
               </div>
-            )}
+              <span className="font-bold text-xl tabular-nums text-slate-800 dark:text-zinc-100">{$$p(nexusCapital)}</span>
+            </div>
 
             {/* Reconciliation */}
             {wire>0&&(
@@ -923,7 +919,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className={`font-bold text-sm shrink-0 ${balanced?"text-emerald-700 dark:text-emerald-300":"text-amber-700 dark:text-amber-300"}`}>{balanced?"✓ Balanced":"⚠ Check numbers"}</span>
                   <span className="text-slate-500 dark:text-zinc-400 tabular-nums text-[11px]">
-                    {$$p(wire)} = Lenders {$$p(lenderTotal)} + Nexus {$$p(nexusCapital)} + Profit {$$p(Math.max(0,dealProfit))}
+                    {$$p(wire)} = Lenders {$$p(lenderTotal)} + Costs {$$p(nexusCapital)} + Profit {$$ps(dealProfit)}
                   </span>
                 </div>
               </div>
