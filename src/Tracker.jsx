@@ -457,17 +457,19 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const [rows,setRows]=useState(()=>activeLoans.map(l=>{
     const monthly=(l.paymentType||"closing")!=="closing";
     const calcP=Math.round(calcBalance(l,TODAY));
+    // calcInterest: interest owed AT CLOSING (0 for monthly since it was paid during hold)
     const calcI=monthly?0:Math.round(calcP-(l.principal||0));
-    const holdingInt=monthly?Math.round(calcIntEarned(l)):0; // interest already paid via monthly payments
+    // intEarned: total interest earned on this loan (paid monthly OR accrued to closing)
+    const intEarned=Math.round(calcIntEarned(l));
     return {
       loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
       principal:l.principal||0,calcPayoff:calcP,calcInterest:calcI,
-      holdingInterest:holdingInt, // for monthly loans: total interest received during hold
+      isMonthly:monthly,
       interestRate:l.interestRate||0,interestType:l.interestType||"percentage",
       paymentType:l.paymentType||"closing",specialTerms:l.specialTerms||"",
-      // Breakdown fields (editable)
+      // Breakdown fields (editable) — interestPayoff pre-filled from dashboard calc
       principalPayoff:String(l.principal||0),
-      interestPayoff:String(calcI),
+      interestPayoff:String(intEarned), // for monthly: interest paid during hold; for closing: accrued at payoff
       lenderFees:"0",
       paidAtTitle:false, // if true, lender is paid at closing table — not from our wire
       // For custom split
@@ -483,7 +485,11 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const wireContrib=r=>{
     if(r.paidAtTitle) return 0;
     const fees=parseFloat(r.lenderFees)||0;
-    if(r.type==="paidOut") return (parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+fees;
+    if(r.type==="paidOut"){
+      // Monthly loans: interest was already received during hold, not from closing wire
+      const intFromWire=r.isMonthly?0:(parseFloat(r.interestPayoff)||0);
+      return (parseFloat(r.principalPayoff)||0)+intFromWire+fees;
+    }
     if(r.type==="rollFull") return r.calcPayoff+fees;
     if(r.type==="rollPrincipal") return r.principal+fees; // interest stays with Nexus
     if(r.type==="payInterest") return r.principal+(parseFloat(r.interestPayoff)||0)+fees;
@@ -505,11 +511,10 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 
   const cashToClose=parseFloat(cashToCloseIn)||0;
   const rehab=parseFloat(rehabIn)||0;
-  // Money Costs derived live from step 1: monthly loan interest (paid during hold) +
-  // closing loan interest being paid at payoff
+  // Money Costs derived live from step 1 interestPayoff fields:
+  // monthly loans → interest paid during hold; closing loans → interest paid at payoff
   const moneyCosts=Math.round(rows.reduce((s,r)=>{
-    const monthly=(r.paymentType||"closing")!=="closing";
-    if(monthly) return s+(r.holdingInterest||0);
+    if(r.isMonthly) return s+(parseFloat(r.interestPayoff)||0);
     if(r.type==="paidOut"||r.type==="payInterest") return s+(parseFloat(r.interestPayoff)||0);
     return s; // rolling/waived: no interest cash cost this deal
   },0));
@@ -627,9 +632,11 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           onChange={e=>{
                             const t=e.target.value;
                             const patch={type:t};
-                            if(t==="paidOut"){patch.principalPayoff=String(r.principal);patch.interestPayoff=String(r.calcInterest);}
-                            if(t==="payInterest"){patch.interestPayoff=String(r.calcInterest);}
-                            if(t==="custom"){patch.customRolling=String(r.principal);}
+                            // paidOut: only reset principal; leave interestPayoff as-is (pre-filled from dashboard)
+                            if(t==="paidOut") patch.principalPayoff=String(r.principal);
+                            // payInterest: reset interest to closing interest (only shown for closing-type loans)
+                            if(t==="payInterest") patch.interestPayoff=String(r.calcInterest);
+                            if(t==="custom") patch.customRolling=String(r.principal);
                             upd(r.loanId,patch);
                           }}
                           className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -654,14 +661,18 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                               <input type="number" value={r.principalPayoff} onChange={e=>upd(r.loanId,{principalPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
                             </div>
                             <div>
-                              <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Interest</div>
-                              <input type="number" value={r.interestPayoff} onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">
+                                {r.isMonthly?"Interest (paid monthly)":"Interest"}
+                              </div>
+                              <input type="number" value={r.interestPayoff} onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})} onWheel={e=>e.target.blur()}
+                                className={r.isMonthly?"w-full border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400 tabular-nums text-amber-700 dark:text-amber-400":numIn}/>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
                               <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
                             </div>
                           </div>
+                          {r.isMonthly&&<p className="text-[10px] text-amber-600 dark:text-amber-400">Interest already received monthly — not deducted from closing wire</p>}
                           <div className="flex items-center justify-between pt-1">
                             <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400">Total from wire</span>
                             <span className="text-sm font-bold tabular-nums text-slate-800 dark:text-zinc-100">{$$(totalFromWire)}</span>
