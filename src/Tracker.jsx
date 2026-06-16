@@ -584,7 +584,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 
   return (
     <Modal title={`Close: ${prop.address}`} onClose={onClose}>
-      <div className="max-h-[80vh] overflow-y-auto -mx-1 px-1">
+      <div>
 
         {/* Step tabs */}
         <div className="flex gap-2 mb-5">
