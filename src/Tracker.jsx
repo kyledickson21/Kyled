@@ -458,9 +458,11 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     const monthly=(l.paymentType||"closing")!=="closing";
     const calcP=Math.round(calcBalance(l,TODAY));
     const calcI=monthly?0:Math.round(calcP-(l.principal||0));
+    const holdingInt=monthly?Math.round(calcIntEarned(l)):0; // interest already paid via monthly payments
     return {
       loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
       principal:l.principal||0,calcPayoff:calcP,calcInterest:calcI,
+      holdingInterest:holdingInt, // for monthly loans: total interest received during hold
       interestRate:l.interestRate||0,interestType:l.interestType||"percentage",
       paymentType:l.paymentType||"closing",specialTerms:l.specialTerms||"",
       // Breakdown fields (editable)
@@ -475,14 +477,19 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   }));
   const upd=(id,patch)=>setRows(rs=>rs.map(r=>r.loanId===id?{...r,...patch}:r));
 
-  // How much each lender takes FROM the wire (0 if paid at title)
+  // How much flows through the wire for each lender (0 if paid at title)
+  // Rolling lenders: their amount counts in the wire because gross proceeds cover it;
+  // it immediately goes back out as a new loan on the next deal.
   const wireContrib=r=>{
     if(r.paidAtTitle) return 0;
     const fees=parseFloat(r.lenderFees)||0;
     if(r.type==="paidOut") return (parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+fees;
-    if(r.type==="payInterest") return (parseFloat(r.interestPayoff)||0)+fees;
-    if(r.type==="custom") return Math.max(0,r.calcPayoff-(parseFloat(r.customRolling)||0))+fees;
-    return fees; // rollFull / rollPrincipal / waiveInterest — only fees if any
+    if(r.type==="rollFull") return r.calcPayoff+fees;
+    if(r.type==="rollPrincipal") return r.principal+fees; // interest stays with Nexus
+    if(r.type==="payInterest") return r.principal+(parseFloat(r.interestPayoff)||0)+fees;
+    if(r.type==="waiveInterest") return r.principal+fees; // principal rolls; interest forgiven
+    if(r.type==="custom") return r.calcPayoff+fees; // full amount through wire; split decides payout vs new loan
+    return fees;
   };
   // Total paid at title (before wire lands)
   const titleTotal=rows.reduce((s,r)=>r.paidAtTitle?s+((parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0)):s,0);
@@ -490,17 +497,22 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const lenderTotal=rows.reduce((s,r)=>s+wireContrib(r),0);
 
   // Step 2 cost fields
-  const autoMoneyCosts=Math.round(activeLoans.filter(l=>(l.paymentType||"closing")!=="closing").reduce((s,l)=>s+calcIntEarned(l),0));
   const [cashToCloseIn,setCashToCloseIn]=useState(String(prop.purchasePrice||""));
   const [rehabIn,setRehabIn]=useState(String(prop.rehabBudget||""));
-  const [moneyCostsIn,setMoneyCostsIn]=useState(String(autoMoneyCosts));
   const [miscIn,setMiscIn]=useState(String(Math.round((prop.monthlyHolding??500)*effectiveMonths(prop))));
   const [wireIn,setWireIn]=useState("");
   const [linked,setLinked]=useState("wire");
 
   const cashToClose=parseFloat(cashToCloseIn)||0;
   const rehab=parseFloat(rehabIn)||0;
-  const moneyCosts=parseFloat(moneyCostsIn)||0;
+  // Money Costs derived live from step 1: monthly loan interest (paid during hold) +
+  // closing loan interest being paid at payoff
+  const moneyCosts=Math.round(rows.reduce((s,r)=>{
+    const monthly=(r.paymentType||"closing")!=="closing";
+    if(monthly) return s+(r.holdingInterest||0);
+    if(r.type==="paidOut"||r.type==="payInterest") return s+(parseFloat(r.interestPayoff)||0);
+    return s; // rolling/waived: no interest cash cost this deal
+  },0));
   const baseCosts=cashToClose+rehab+moneyCosts;
   const wire=linked==="wire"?parseFloat(wireIn)||0:baseCosts+(parseFloat(miscIn)||0);
   const misc=linked==="misc"?parseFloat(miscIn)||0:Math.max(0,wire-baseCosts);
@@ -696,11 +708,21 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                         </div>
                       )}
 
-                      {/* Fees-only for pure rolling types */}
+                      {/* Rolling type: show wire amount and optional fees */}
                       {(r.type==="rollFull"||r.type==="rollPrincipal"||r.type==="waiveInterest")&&(
-                        <div className="mb-3">
-                          <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Misc Fees from Wire (if any)</label>
-                          <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} placeholder="0" className={numIn}/>
+                        <div className="mb-3 p-3 bg-slate-50 dark:bg-zinc-800/40 rounded-lg space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Flows Through Wire</span>
+                            <span className="text-sm font-bold tabular-nums text-slate-800 dark:text-zinc-100">
+                              {$$(r.type==="rollFull"?r.calcPayoff:r.principal)}
+                              {r.type==="rollPrincipal"&&<span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500 ml-1">(principal; Nexus keeps int)</span>}
+                              {r.type==="waiveInterest"&&<span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500 ml-1">(principal; interest forgiven)</span>}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Misc Fees from Wire (if any)</div>
+                            <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} placeholder="0" className={numIn}/>
+                          </div>
                         </div>
                       )}
 
@@ -756,13 +778,17 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               </div>
               <div className="text-[11px] text-blue-600 dark:text-blue-400 space-y-0.5">
                 {rows.map(r=>{
-                  const total=(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0);
+                  const titleTotal=(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0);
+                  const rolling=r.type==="rollFull"||r.type==="rollPrincipal"||r.type==="payInterest"||r.type==="waiveInterest"||r.type==="custom";
+                  const label=r.paidAtTitle
+                    ?`${$$(titleTotal)} at title`
+                    :rolling
+                      ?`${$$(wireContrib(r))} → new loan`
+                      :$$(wireContrib(r));
                   return (
                     <div key={r.loanId} className="flex justify-between">
                       <span>{r.lenderName}{r.paidAtTitle&&<span className="ml-1 text-amber-500">🏛</span>}</span>
-                      <span className="tabular-nums">
-                        {r.type==="rollFull"||r.type==="rollPrincipal"||r.type==="waiveInterest"?"rolls →":r.paidAtTitle?`${$$(total)} at title`:$$(wireContrib(r))}
-                      </span>
+                      <span className="tabular-nums">{label}</span>
                     </div>
                   );
                 })}
@@ -782,8 +808,9 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                   <input type="number" value={rehabIn} onChange={e=>setRehabIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className={labelCls}>Money Costs <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(interest paid)</span></span>
-                  <input type="number" value={moneyCostsIn} onChange={e=>setMoneyCostsIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
+                  <span className={labelCls}>Money Costs <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(from step 1)</span></span>
+                  <div className={autoCls} title="Auto-derived from lender interest in step 1">{$$(moneyCosts)}</div>
+                  <button type="button" onClick={()=>setStep(1)} className="shrink-0 text-[10px] font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors whitespace-nowrap">edit ↑</button>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
