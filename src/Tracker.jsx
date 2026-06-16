@@ -774,11 +774,31 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               </div>
             </div>
 
-            {/* Step 1 lender total summary */}
-            <div className="rounded-xl bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700 px-4 py-3 flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-600 dark:text-zinc-300">Total from wire to lenders</span>
-              <span className="font-bold text-lg tabular-nums text-slate-900 dark:text-zinc-100">{$$(lenderTotal)}</span>
-            </div>
+            {/* Step 1 summary: lenders + estimated costs */}
+            {(()=>{
+              const estC2C=parseFloat(prop.purchasePrice)||0;
+              const estRehab=parseFloat(prop.rehabBudget)||0;
+              const estMoney=moneyCosts; // derived from step 1 interest fields
+              const estMisc=Math.round((prop.monthlyHolding??500)*effectiveMonths(prop));
+              const estCosts=estC2C+estRehab+estMoney+estMisc;
+              const minWire=lenderTotal+estCosts;
+              return (
+                <div className="rounded-xl bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700 px-4 py-4 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500 dark:text-zinc-400">Lenders (from wire)</span>
+                    <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$(lenderTotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500 dark:text-zinc-400">Est. project costs</span>
+                    <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$(estCosts)}</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-zinc-700">
+                    <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">Break-even wire</span>
+                    <span className="font-bold text-base tabular-nums text-slate-900 dark:text-zinc-100">{$$(minWire)}</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="flex gap-2 pt-1">
               <Btn onClick={()=>setStep(2)} color="navy" full>Next: Wire &amp; Costs →</Btn>
@@ -866,12 +886,18 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               </button>
             </div>
 
-            {/* Deal Profit */}
-            {wire>0&&(
+            {/* Deal Profit — always visible */}
+            {wire>0?(
               <div className={`rounded-xl p-3 text-center ${dealProfit>=0?"bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900":"bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900"}`}>
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Deal Profit</div>
                 <div className={`text-2xl font-bold tabular-nums ${dealProfit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$s(dealProfit)}</div>
                 <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">{$$(wire)} wire − {$$(totalCosts)} costs</div>
+              </div>
+            ):(
+              <div className="rounded-xl p-3 text-center bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Deal Profit</div>
+                <div className="text-lg font-bold text-slate-400 dark:text-zinc-500">— Enter wire above —</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">Break-even wire: {$$(lenderTotal+baseCosts)}</div>
               </div>
             )}
 
