@@ -527,14 +527,15 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 
   const cashToClose=parseFloat(cashToCloseIn)||0;
   const rehab=parseFloat(rehabIn)||0;
-  // Money Costs derived live from step 1 interestPayoff fields (cent precision):
-  // monthly loans → interest paid during hold; closing loans → interest paid at payoff
-  // rollFull: interest earned and rolled (cost of borrowing this deal)
-  // rollPrincipal: Nexus keeps interest (income, not cost); waiveInterest: forgiven (not cost)
+  // Money Costs = interest + lender fees for all applicable types
+  // rollPrincipal: Nexus keeps interest (income), but fees are still a cost
+  // waiveInterest: interest forgiven, but fees still apply
   const moneyCosts=Math.round(rows.reduce((s,r)=>{
-    if(r.isMonthly) return s+(parseFloat(r.interestPayoff)||0);
-    if(r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull") return s+(parseFloat(r.interestPayoff)||0);
-    return s;
+    const fees=parseFloat(r.lenderFees)||0;
+    const interest=parseFloat(r.interestPayoff)||0;
+    if(r.isMonthly) return s+interest+fees;
+    if(r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull") return s+interest+fees;
+    return s+fees; // rollPrincipal/waiveInterest/custom: fees still cost, interest not
   },0)*100)/100;
   const baseCosts=cashToClose+rehab+moneyCosts;
   const wire=linked==="wire"?parseFloat(wireIn)||0:baseCosts+(parseFloat(miscIn)||0);
