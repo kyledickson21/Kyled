@@ -519,9 +519,9 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     if(!r.paidAtTitle) return s;
     const principal=parseFloat(r.principalPayoff)||0;
     const fees=parseFloat(r.lenderFees)||0;
-    // monthly+paidAtTitle: title only sends the prorated stub; rest was paid monthly
-    const interest=r.isMonthly?(parseFloat(r.titleMoneyCosts)||0):(parseFloat(r.interestPayoff)||0);
-    return s+principal+interest+fees;
+    // monthly+paidAtTitle: titleMoneyCosts covers interest+fees title sent; rest was paid monthly
+    if(r.isMonthly) return s+principal+(parseFloat(r.titleMoneyCosts)||0);
+    return s+principal+(parseFloat(r.interestPayoff)||0)+fees;
   },0);
 
   const lenderTotal=rows.reduce((s,r)=>s+wireContrib(r),0);
@@ -707,12 +707,12 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                               <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Of that interest, split:</div>
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                  <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Paid from title</div>
+                                  <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Paid from title (int + fees)</div>
                                   <input type="number" value={r.titleMoneyCosts} onChange={e=>upd(r.loanId,{titleMoneyCosts:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
                                 </div>
                                 <div>
                                   <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Already paid monthly</div>
-                                  <div className={autoNum}>{$$p(Math.max(0,(parseFloat(r.interestPayoff)||0)-(parseFloat(r.titleMoneyCosts)||0)))}</div>
+                                  <div className={autoNum}>{$$p(Math.max(0,(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0)-(parseFloat(r.titleMoneyCosts)||0)))}</div>
                                 </div>
                               </div>
                             </div>
