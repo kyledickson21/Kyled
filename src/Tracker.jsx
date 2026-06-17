@@ -1176,7 +1176,8 @@ function PropertiesPage({ data, update }) {
     setModal(null);
   };
 
-  const visible=data.properties.filter(p=>showSold||!p.dateSold);
+  const propPurchaseDate=p=>p.purchaseDate||(p.loans.map(l=>l.startDate).filter(Boolean).sort()[0])||"";
+  const visible=data.properties.filter(p=>showSold||!p.dateSold).sort((a,b)=>propPurchaseDate(a).localeCompare(propPurchaseDate(b)));
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
 
@@ -1238,7 +1239,7 @@ function PropertiesPage({ data, update }) {
           return{prop,active,funded,needed,short,under:!prop.dateSold&&short>0,full:!prop.dateSold&&funded>0&&short===0};
         });
         const sorted=[...rows].sort((a,b)=>{
-          if(!propSort.col)return 0;
+          if(!propSort.col)return propPurchaseDate(a.prop).localeCompare(propPurchaseDate(b.prop));
           const d=propSort.dir==="asc"?1:-1;
           switch(propSort.col){
             case"Address": return d*(a.prop.address||"").localeCompare(b.prop.address||"");
