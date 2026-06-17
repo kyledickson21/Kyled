@@ -951,6 +951,7 @@ function PropertyForm({ init, onSave, onClose }) {
     rehabBudget:String(init?.rehabBudget||""),
     projectMonths:init?.projectMonths!=null?String(init.projectMonths):"",
     monthlyHolding:String(init?.monthlyHolding??500),
+    purchaseDate:init?.purchaseDate||(()=>{const dates=(init?.loans||[]).map(l=>l.startDate).filter(Boolean).sort();return dates[0]||"";})(),
   }));
   const s=k=>v=>sf(p=>({...p,[k]:v}));
   const rehab=parseFloat(f.rehabBudget)||0;
@@ -962,6 +963,7 @@ function PropertyForm({ init, onSave, onClose }) {
   return (
     <div>
       <Inp label="Property Address" value={f.address} onChange={s("address")} placeholder="123 Oak Ave, Nashville, TN"/>
+      <DateInp label="Purchase Date" value={f.purchaseDate} onChange={s("purchaseDate")} helpText="Reference only — does not affect calculations"/>
       <div className="grid grid-cols-2 gap-3">
         <Inp label="Cash to Close ($)" type="number" value={f.purchasePrice} onChange={s("purchasePrice")} placeholder="150000"/>
         <Inp label="Rehab Budget ($)" type="number" value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
@@ -1104,7 +1106,7 @@ function PropertiesPage({ data, update }) {
     const rehabBudget=parseFloat(f.rehabBudget)||0;
     const projectMonths=f.projectMonths!==""&&f.projectMonths!=null?parseFloat(f.projectMonths)||null:null;
     const monthlyHolding=parseFloat(f.monthlyHolding)||500;
-    const p={...(existing??{id:uid(),loans:[]}),address:f.address,purchasePrice,rehabBudget,projectMonths,monthlyHolding,fundingNeeded:purchasePrice+rehabBudget,dateSold:existing?.dateSold??null};
+    const p={...(existing??{id:uid(),loans:[]}),address:f.address,purchasePrice,rehabBudget,projectMonths,monthlyHolding,fundingNeeded:purchasePrice+rehabBudget,dateSold:existing?.dateSold??null,purchaseDate:f.purchaseDate||null};
     update(d=>({...d,properties:existing?d.properties.map(x=>x.id===p.id?p:x):[...d.properties,p]}));
     setModal(null);
   };
@@ -1332,6 +1334,7 @@ function PropertiesPage({ data, update }) {
                       <span className="text-[10px] font-bold text-slate-300 dark:text-zinc-600 tabular-nums">#{allIdx+1}</span>
                       <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[15px]">{prop.address||"Unnamed Property"}</span>
                     </div>
+                    {(()=>{const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);return pd?<div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Purchased {pd}</div>:null;})()}
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {prop.dateSold && <Chip color="gray">Sold {prop.dateSold}</Chip>}
                       {full   && <Chip color="green">✓ Fully Funded</Chip>}
