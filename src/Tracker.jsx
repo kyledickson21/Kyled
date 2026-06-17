@@ -897,10 +897,53 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 
             {/* Deal Profit — always visible */}
             {wire>0?(
-              <div className={`rounded-xl p-3 text-center ${dealProfit>=0?"bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900":"bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900"}`}>
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Deal Profit</div>
-                <div className={`text-2xl font-bold tabular-nums ${dealProfit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$ps(dealProfit)}</div>
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">{$$p(wire)} wire {titleTotal>0?`+ ${$$p(titleTotal)} title `:""}− {$$p(totalCosts)} costs</div>
+              <div className={`rounded-xl p-4 ${dealProfit>=0?"bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900":"bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900"}`}>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">Profit Calculation</div>
+                {/* Proceeds side */}
+                <div className="space-y-1 mb-2">
+                  <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
+                    <span>Wire received</span>
+                    <span className="tabular-nums font-medium">{$$p(wire)}</span>
+                  </div>
+                  {titleTotal>0&&(
+                    <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
+                      <span>+ Title paid to lenders</span>
+                      <span className="tabular-nums font-medium">{$$p(titleTotal)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm font-semibold text-slate-700 dark:text-zinc-200 border-t border-slate-200 dark:border-zinc-700 pt-1">
+                    <span>= Total proceeds</span>
+                    <span className="tabular-nums">{$$p(wire+titleTotal)}</span>
+                  </div>
+                </div>
+                {/* Costs side */}
+                <div className="space-y-1 mb-2">
+                  <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
+                    <span>− Cash to close</span>
+                    <span className="tabular-nums font-medium">{$$p(cashToClose)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
+                    <span>− Rehab</span>
+                    <span className="tabular-nums font-medium">{$$p(rehab)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
+                    <span>− Money costs <span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500">(interest + fees)</span></span>
+                    <span className="tabular-nums font-medium">{$$p(moneyCosts)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
+                    <span>− Misc</span>
+                    <span className="tabular-nums font-medium">{$$p(misc)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold text-slate-700 dark:text-zinc-200 border-t border-slate-200 dark:border-zinc-700 pt-1">
+                    <span>= Total costs</span>
+                    <span className="tabular-nums">{$$p(totalCosts)}</span>
+                  </div>
+                </div>
+                {/* Result */}
+                <div className="flex justify-between items-center border-t-2 border-slate-300 dark:border-zinc-600 pt-2 mt-1">
+                  <span className="font-bold text-slate-800 dark:text-zinc-100">Deal Profit</span>
+                  <span className={`text-2xl font-bold tabular-nums ${dealProfit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$ps(dealProfit)}</span>
+                </div>
               </div>
             ):(
               <div className="rounded-xl p-3 text-center bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700">
