@@ -1176,8 +1176,15 @@ function PropertiesPage({ data, update }) {
     setModal(null);
   };
 
-  const propPurchaseDate=p=>p.purchaseDate||(p.loans.map(l=>l.startDate).filter(Boolean).sort()[0])||"9999-99-99";
-  const visible=data.properties.filter(p=>showSold||!p.dateSold).sort((a,b)=>propPurchaseDate(a).localeCompare(propPurchaseDate(b)));
+  const propPurchaseDate=p=>p.purchaseDate||(p.loans.map(l=>l.startDate).filter(Boolean).sort()[0])||"";
+  const propSellDate=p=>{
+    const pd=propPurchaseDate(p);
+    if(!pd) return "9999-99-99";
+    const [y,m,d]=pd.split('-').map(Number);
+    const dt=new Date(y,m-1+Math.round(effectiveMonths(p)),d);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  };
+  const visible=data.properties.filter(p=>showSold||!p.dateSold).sort((a,b)=>propSellDate(a).localeCompare(propSellDate(b)));
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
 
@@ -1239,7 +1246,7 @@ function PropertiesPage({ data, update }) {
           return{prop,active,funded,needed,short,under:!prop.dateSold&&short>0,full:!prop.dateSold&&funded>0&&short===0};
         });
         const sorted=[...rows].sort((a,b)=>{
-          if(!propSort.col){const pa=propPurchaseDate(a.prop),pb=propPurchaseDate(b.prop);return pa.localeCompare(pb);}
+          if(!propSort.col) return propSellDate(a.prop).localeCompare(propSellDate(b.prop));
           const d=propSort.dir==="asc"?1:-1;
           switch(propSort.col){
             case"Address": return d*(a.prop.address||"").localeCompare(b.prop.address||"");
