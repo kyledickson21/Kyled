@@ -541,9 +541,9 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const moneyCosts=Math.round(rows.reduce((s,r)=>{
     const fees=parseFloat(r.lenderFees)||0;
     const interest=parseFloat(r.interestPayoff)||0;
-    if(r.isMonthly) return s+interest+fees;
-    if(r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull") return s+interest+fees;
-    return s+fees; // rollPrincipal/waiveInterest/custom: fees still cost, interest not
+    if(r.type==="rollPrincipal"||r.type==="waiveInterest") return s+fees;
+    if(r.isMonthly||r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull") return s+interest+fees;
+    return s+fees; // custom: fees still cost, interest not
   },0)*100)/100;
   const baseCosts=cashToClose+rehab+moneyCosts;
   const wire=linked==="wire"?parseFloat(wireIn)||0:baseCosts+(parseFloat(miscIn)||0);
@@ -553,7 +553,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   // nexusCapital = what Nexus recovers from wire after paying lenders (totalCosts - titleTotal - lenderTotal)
   const nexusCapital=totalCosts-titleTotal-lenderTotal;
   const dealProfit=(wire+titleTotal)-totalCosts;
-  const balanced=wire>0&&Math.abs(lenderTotal+nexusCapital+dealProfit-wire)<0.01;
+  const balanced=wire>0&&nexusCapital>=-0.01;
 
   const handleWireChange=v=>{setWireIn(v);setLinked("wire");};
   const handleMiscChange=v=>{setMiscIn(v);setLinked("misc");};
@@ -853,9 +853,12 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               </div>
               <div className="text-[11px] text-blue-600 dark:text-blue-400 space-y-0.5">
                 {rows.map(r=>{
-                  const rowTotal=(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0);
                   let label;
-                  if(r.paidAtTitle) label=`${$$p(rowTotal)} at title 🏛`;
+                  if(r.paidAtTitle){
+                    const principal=parseFloat(r.principalPayoff)||0;
+                    const atTitleCosts=r.isMonthly?(parseFloat(r.titleMoneyCosts)||0):(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0);
+                    label=`${$$p(principal+atTitleCosts)} at title 🏛`;
+                  }
                   else if(r.type==="rollFull") label=`${$$p(wireContrib(r))} → rolls full`;
                   else if(r.type==="rollPrincipal") label=`${$$p(wireContrib(r))} → principal rolls`;
                   else if(r.type==="waiveInterest") label=`${$$p(wireContrib(r))} → rolls (int waived)`;
