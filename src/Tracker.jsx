@@ -473,9 +473,10 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
       paymentType:l.paymentType||"closing",specialTerms:l.specialTerms||"",
       // Breakdown fields (editable) — interestPayoff pre-filled from dashboard calc
       principalPayoff:String(l.principal||0),
-      interestPayoff:String(intEarned), // for monthly: interest paid during hold; for closing: accrued at payoff
+      interestPayoff:String(intEarned), // total interest over full hold period
       lenderFees:"0",
-      paidAtTitle:false, // if true, lender is paid at closing table — not from our wire
+      titleMoneyCosts:"0", // for paidAtTitle+monthly: how much of money costs title actually sent
+      paidAtTitle:false,
       // For custom split
       customRolling:String(l.principal||0),
       type:"paidOut",destination:otherProps[0]?.id||"unassigned",newStartDate:nextDay(soldDate),
@@ -514,7 +515,14 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     return 0;
   };
   // Total paid at title (before wire lands)
-  const titleTotal=rows.reduce((s,r)=>r.paidAtTitle?s+((parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0)):s,0);
+  const titleTotal=rows.reduce((s,r)=>{
+    if(!r.paidAtTitle) return s;
+    const principal=parseFloat(r.principalPayoff)||0;
+    const fees=parseFloat(r.lenderFees)||0;
+    // monthly+paidAtTitle: title only sends the prorated stub; rest was paid monthly
+    const interest=r.isMonthly?(parseFloat(r.titleMoneyCosts)||0):(parseFloat(r.interestPayoff)||0);
+    return s+principal+interest+fees;
+  },0);
 
   const lenderTotal=rows.reduce((s,r)=>s+wireContrib(r),0);
 
@@ -683,7 +691,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">
-                                {r.isMonthly?"Interest (paid monthly)":"Interest"}
+                                {r.isMonthly?"Total Interest (full period)":"Interest"}
                               </div>
                               <input type="number" value={r.interestPayoff} onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})} onWheel={e=>e.target.blur()}
                                 className={r.isMonthly?"w-full border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400 tabular-nums text-amber-700 dark:text-amber-400":numIn}/>
@@ -693,7 +701,22 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                               <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
                             </div>
                           </div>
-                          {r.isMonthly&&<p className="text-[10px] text-amber-600 dark:text-amber-400">Interest already received monthly — not deducted from closing wire</p>}
+                          {r.isMonthly&&!r.paidAtTitle&&<p className="text-[10px] text-amber-600 dark:text-amber-400">Total interest over hold period — not deducted from closing wire</p>}
+                          {r.isMonthly&&r.paidAtTitle&&(
+                            <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800/40 space-y-2">
+                              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Of that interest, split:</div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Paid from title</div>
+                                  <input type="number" value={r.titleMoneyCosts} onChange={e=>upd(r.loanId,{titleMoneyCosts:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Already paid monthly</div>
+                                  <div className={autoNum}>{$$p(Math.max(0,(parseFloat(r.interestPayoff)||0)-(parseFloat(r.titleMoneyCosts)||0)))}</div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           <div className="flex items-center justify-between pt-1">
                             <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400">Total from wire</span>
                             <span className="text-sm font-bold tabular-nums text-slate-800 dark:text-zinc-100">{$$p(totalFromWire)}</span>
