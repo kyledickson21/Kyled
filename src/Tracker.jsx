@@ -1313,7 +1313,7 @@ function PropertiesPage({ data, update }) {
       })()}
 
       {viewMode==="expanded"&&<div className="space-y-3">
-        {visible.map(prop=>{
+        {visible.map((prop,visIdx)=>{
           const active=prop.loans.filter(l=>!l.endDate);
           const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
           const needed=propNeeded(prop,active);
@@ -1321,7 +1321,6 @@ function PropertiesPage({ data, update }) {
           const under=!prop.dateSold&&short>0;
           const full=!prop.dateSold&&funded>0&&short===0;
           const isOpen=!!expanded[prop.id];
-          const allIdx=data.properties.findIndex(p=>p.id===prop.id);
           const months=effectiveMonths(prop);
           const monthlyInt=active.reduce((s,l)=>s+monthlyLoanPayment(l),0);
           const holdingMo=prop.monthlyHolding??500;
@@ -1332,7 +1331,7 @@ function PropertiesPage({ data, update }) {
                 <div className="px-5 pt-4 pb-3 flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-[10px] font-bold text-slate-300 dark:text-zinc-600 tabular-nums">#{allIdx+1}</span>
+                      <span className="text-[10px] font-bold text-slate-300 dark:text-zinc-600 tabular-nums">#{visIdx+1}</span>
                       <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[15px]">{prop.address||"Unnamed Property"}</span>
                     </div>
                     {(()=>{const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);return pd?<div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Purchased {pd}</div>:null;})()}
