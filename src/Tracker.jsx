@@ -480,6 +480,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
       paidAtTitle:false,
       // For custom split
       customRolling:String(l.principal||0),
+      origStartDate:l.startDate||soldDate,
       type:"paidOut",destination:otherProps[0]?.id||"unassigned",newStartDate:nextDay(soldDate),
     };
   }));
@@ -495,7 +496,9 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
       const calcP=Math.round(calcBalance(l,soldDate)*100)/100;
       const calcI=monthly?0:Math.round((calcP-(l.principal||0))*100)/100;
       const intEarned=calcIntEarned(l,soldDate);
-      return {...r,calcPayoff:calcP,calcInterest:calcI,interestPayoff:String(intEarned),newStartDate:startDate};
+      // waiveInterest: interest not paid, so original start date carries forward (don't reset)
+      const newSD=r.type==="waiveInterest"?r.origStartDate:startDate;
+      return {...r,calcPayoff:calcP,calcInterest:calcI,interestPayoff:String(intEarned),newStartDate:newSD};
     }));
   },[soldDate]);
 
@@ -666,11 +669,13 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           onChange={e=>{
                             const t=e.target.value;
                             const patch={type:t};
-                            // paidOut: only reset principal; leave interestPayoff as-is (pre-filled from dashboard)
                             if(t==="paidOut") patch.principalPayoff=String(r.principal);
-                            // payInterest: reset interest to closing interest (only shown for closing-type loans)
                             if(t==="payInterest") patch.interestPayoff=String(r.calcInterest);
                             if(t==="custom") patch.customRolling=String(r.principal);
+                            // waiveInterest: keep original start date so accrued interest isn't lost
+                            if(t==="waiveInterest") patch.newStartDate=r.origStartDate;
+                            // switching away from waiveInterest: reset to day after sold
+                            else if(r.type==="waiveInterest") patch.newStartDate=nextDay(soldDate);
                             upd(r.loanId,patch);
                           }}
                           className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
