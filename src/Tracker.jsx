@@ -1612,7 +1612,7 @@ function PropertiesPage({ data, update }) {
                             <div className="flex gap-1 shrink-0">
                               <button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-violet-500 dark:hover:text-violet-400 transition-colors" title="Move">⇄</button>
                               <button onClick={()=>setModal({type:"editLoan",propId:prop.id,loan})} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors" title="Edit">✏️</button>
-                              <button onClick={()=>setModal({type:"closeLoan",propId:prop.id,loan})} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-orange-500 dark:hover:text-orange-400 transition-colors" title="Close Loan">⊗</button>
+                              <button onClick={()=>setModal({type:"closeLoan",propId:prop.id,loan})} className="px-2 py-1 text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-orange-500 dark:hover:text-orange-400 border border-slate-200 dark:border-zinc-700 hover:border-orange-300 dark:hover:border-orange-700 rounded-lg transition-colors" title="Close Loan">Close Loan</button>
                               <button onClick={()=>delLoan(prop.id,loan.id)} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Delete">🗑</button>
                             </div>
                           </div>
