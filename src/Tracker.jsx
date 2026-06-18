@@ -515,14 +515,15 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     if(r.type==="custom") return Math.max(0,r.calcPayoff-(parseFloat(r.customRolling)||0))+fees;
     return 0;
   };
-  // Total paid at title (before wire lands)
+  // Total paid at title (gross — includes overage title actually sent to lender)
   const titleTotal=rows.reduce((s,r)=>{
     if(!r.paidAtTitle) return s;
     const principal=parseFloat(r.principalPayoff)||0;
     const fees=parseFloat(r.lenderFees)||0;
+    const overage=parseFloat(r.overageRefund)||0;
     // monthly+paidAtTitle: titleMoneyCosts covers interest+fees title sent; rest was paid monthly
-    if(r.isMonthly) return s+principal+(parseFloat(r.titleMoneyCosts)||0);
-    return s+principal+(parseFloat(r.interestPayoff)||0)+fees;
+    if(r.isMonthly) return s+principal+(parseFloat(r.titleMoneyCosts)||0)+overage;
+    return s+principal+(parseFloat(r.interestPayoff)||0)+fees+overage;
   },0);
 
   const lenderTotal=rows.reduce((s,r)=>s+wireContrib(r),0);
@@ -552,9 +553,12 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const totalCosts=baseCosts+misc;
   // wire + titleTotal = totalCosts + dealProfit  (user's double-sided equation)
   // nexusCapital = what Nexus recovers from wire after paying lenders (totalCosts - titleTotal - lenderTotal)
-  const overageRefund=Math.round(rows.reduce((s,r)=>s+(parseFloat(r.overageRefund)||0),0)*100)/100;
+  // paidAtTitle overage: included in titleTotal (gross), subtract back — net zero profit impact
+  // wire-paid overage: extra cash from lender directly to Nexus — adds to profit
+  const paidAtTitleOverage=Math.round(rows.reduce((s,r)=>r.paidAtTitle?s+(parseFloat(r.overageRefund)||0):s,0)*100)/100;
+  const wireOverage=Math.round(rows.reduce((s,r)=>!r.paidAtTitle?s+(parseFloat(r.overageRefund)||0):s,0)*100)/100;
   const nexusCapital=totalCosts-titleTotal-lenderTotal;
-  const dealProfit=(wire+titleTotal+overageRefund)-totalCosts;
+  const dealProfit=(wire+titleTotal-paidAtTitleOverage+wireOverage)-totalCosts;
   const balanced=wire>0&&nexusCapital>=-0.01;
 
   const handleWireChange=v=>{setWireIn(v);setLinked("wire");};
@@ -867,7 +871,8 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                   if(r.paidAtTitle){
                     const principal=parseFloat(r.principalPayoff)||0;
                     const atTitleCosts=r.isMonthly?(parseFloat(r.titleMoneyCosts)||0):(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0);
-                    label=`${$$p(principal+atTitleCosts)} at title 🏛`;
+                    const overage=parseFloat(r.overageRefund)||0;
+                    label=`${$$p(principal+atTitleCosts+overage)} at title 🏛${overage>0?` (incl. ${$$p(overage)} overage)`:""}`;
                   }
                   else if(r.type==="rollFull") label=`${$$p(wireContrib(r))} → rolls full`;
                   else if(r.type==="rollPrincipal") label=`${$$p(wireContrib(r))} → principal rolls`;
@@ -943,19 +948,25 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                   </div>
                   {titleTotal>0&&(
                     <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
-                      <span>+ Title paid to lenders</span>
+                      <span>+ Title paid to lenders{paidAtTitleOverage>0&&<span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500"> (gross, incl. overage)</span>}</span>
                       <span className="tabular-nums font-medium">{$$p(titleTotal)}</span>
                     </div>
                   )}
-                  {overageRefund>0&&(
+                  {paidAtTitleOverage>0&&(
+                    <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
+                      <span>− Overage returned by lender <span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500">(post-close)</span></span>
+                      <span className="tabular-nums font-medium text-red-500 dark:text-red-400">−{$$p(paidAtTitleOverage)}</span>
+                    </div>
+                  )}
+                  {wireOverage>0&&(
                     <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
                       <span>+ Overage refund <span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500">(post-close)</span></span>
-                      <span className="tabular-nums font-medium">{$$p(overageRefund)}</span>
+                      <span className="tabular-nums font-medium">{$$p(wireOverage)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-semibold text-slate-700 dark:text-zinc-200 border-t border-slate-200 dark:border-zinc-700 pt-1">
                     <span>= Total proceeds</span>
-                    <span className="tabular-nums">{$$p(wire+titleTotal+overageRefund)}</span>
+                    <span className="tabular-nums">{$$p(wire+titleTotal-paidAtTitleOverage+wireOverage)}</span>
                   </div>
                 </div>
                 {/* Costs side */}
@@ -1010,7 +1021,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className={`font-bold text-sm shrink-0 ${balanced?"text-emerald-700 dark:text-emerald-300":"text-amber-700 dark:text-amber-300"}`}>{balanced?"✓ Balanced":"⚠ Check numbers"}</span>
                   <span className="text-slate-500 dark:text-zinc-400 tabular-nums text-[11px]">
-                    {$$p(wire)}{overageRefund>0?` + Overage ${$$p(overageRefund)}`:""} = Lenders {$$p(lenderTotal)} + Costs {$$p(nexusCapital)} + Profit {$$ps(dealProfit)}
+                    {$$p(wire)}{paidAtTitleOverage>0?` + Title(gross) ${$$p(titleTotal)} − Ovg ${$$p(paidAtTitleOverage)}`:titleTotal>0?` + Title ${$$p(titleTotal)}`:""}{wireOverage>0?` + Ovg ${$$p(wireOverage)}`:""} = Costs {$$p(nexusCapital)} + Lenders {$$p(lenderTotal)} + Profit {$$ps(dealProfit)}
                   </span>
                 </div>
               </div>
