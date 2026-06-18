@@ -1945,7 +1945,14 @@ function HistoryPage({ data }) {
     prop.loans.forEach(loan=>{
       raw.push({date:loan.startDate,sx:"b",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype:"start",amount:loan.principal||0,principal:loan.principal||0,property:prop.address,rate:loan.interestRate||0,loanId:loan.id});
       const end=loan.endDate||prop.dateSold;
-      if(end){const finBal=calcBalance(loan,end);raw.push({date:end,sx:"a",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype:prop.dateSold&&!loan.endDate?"sold":"closed",amount:finBal,principal:loan.principal||0,interest:finBal-(loan.principal||0),property:prop.address,rate:loan.interestRate||0,loanId:loan.id});}
+      if(end){
+        const finBal=calcBalance(loan,end);
+        const disp=prop.closingData?.lenderPayoffs?.find(lp=>lp.loanId===loan.id);
+        const rollingTypes=["rollFull","rollPrincipal","payInterest","waiveInterest","custom"];
+        const isRoll=disp&&rollingTypes.includes(disp.type);
+        const etype=isRoll?"rolled":(prop.dateSold&&!loan.endDate?"sold":"closed");
+        raw.push({date:end,sx:"a",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype,disposition:disp?.type||null,amount:finBal,principal:loan.principal||0,interest:finBal-(loan.principal||0),property:prop.address,rate:loan.interestRate||0,loanId:loan.id});
+      }
     });
     if(prop.dateSold&&prop.closingData){
       raw.push({date:prop.dateSold,sx:"c",etype:"saleSummary",property:prop.address,propId:prop.id,closingData:prop.closingData,loanId:`sale-${prop.id}`});
@@ -1968,7 +1975,9 @@ function HistoryPage({ data }) {
     closed:      {label:"Loan Closed",   icon:"✓", cls:"bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"},
     sold:        {label:"Property Sold", icon:"🏡",cls:"bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"},
     saleSummary: {label:"Sale Closed",   icon:"🏡",cls:"bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"},
+    rolled:      {label:"Rolled",        icon:"🔄",cls:"bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"},
   };
+  const rollLabel={rollFull:"Rolled Full",rollPrincipal:"Principal Rolled",payInterest:"Interest Paid — Rolled",waiveInterest:"Interest Waived — Rolled",custom:"Partial Roll"};
 
   return (
     <div>
@@ -2039,7 +2048,7 @@ function HistoryPage({ data }) {
                   <div>
                     <div className="flex items-center gap-1.5 flex-wrap mb-1">
                       <span className="font-mono text-[10px] text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 rounded-md px-1.5 py-0.5">{ev.date}</span>
-                      <span className={`text-[10px] font-semibold uppercase ${c.cls} rounded-full px-2 py-0.5`}>{c.label}</span>
+                      <span className={`text-[10px] font-semibold uppercase ${c.cls} rounded-full px-2 py-0.5`}>{ev.etype==="rolled"?(rollLabel[ev.disposition]||"Rolled"):c.label}</span>
                       <TypeBadge type={ev.loanType} sm/>
                       {roll&&<span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 rounded-full px-2 py-0.5">Rollover</span>}
                     </div>
