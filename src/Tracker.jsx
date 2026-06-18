@@ -531,6 +531,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const [rehabIn,setRehabIn]=useState(String(prop.rehabBudget||""));
   const [miscIn,setMiscIn]=useState(String(Math.round((prop.monthlyHolding??500)*effectiveMonths(prop))));
   const [wireIn,setWireIn]=useState("");
+  const [overageRefundIn,setOverageRefundIn]=useState("0");
   const [linked,setLinked]=useState("wire");
 
   const cashToClose=parseFloat(cashToCloseIn)||0;
@@ -551,8 +552,9 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const totalCosts=baseCosts+misc;
   // wire + titleTotal = totalCosts + dealProfit  (user's double-sided equation)
   // nexusCapital = what Nexus recovers from wire after paying lenders (totalCosts - titleTotal - lenderTotal)
+  const overageRefund=parseFloat(overageRefundIn)||0;
   const nexusCapital=totalCosts-titleTotal-lenderTotal;
-  const dealProfit=(wire+titleTotal)-totalCosts;
+  const dealProfit=(wire+titleTotal+overageRefund)-totalCosts;
   const balanced=wire>0&&nexusCapital>=-0.01;
 
   const handleWireChange=v=>{setWireIn(v);setLinked("wire");};
@@ -578,6 +580,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     });
     onConfirm(soldDate,dispositions,{
       wire,cashToClose,rehab,moneyCosts,misc,totalCosts,
+      overageRefund,
       profit:dealProfit,selfFunded:nexusCapital,
       titleTotal,
       lenderPayoffs:rows.map(r=>({
@@ -921,6 +924,12 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               </button>
             </div>
 
+            {/* Overage Refund */}
+            <div className="flex items-center gap-3">
+              <span className={labelCls}>Overage Refund <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(post-close)</span></span>
+              <input type="number" value={overageRefundIn} onChange={e=>setOverageRefundIn(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0" className={inputCls}/>
+            </div>
+
             {/* Deal Profit — always visible */}
             {wire>0?(
               <div className={`rounded-xl p-4 ${dealProfit>=0?"bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900":"bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900"}`}>
@@ -937,9 +946,15 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                       <span className="tabular-nums font-medium">{$$p(titleTotal)}</span>
                     </div>
                   )}
+                  {overageRefund>0&&(
+                    <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
+                      <span>+ Overage refund <span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500">(post-close)</span></span>
+                      <span className="tabular-nums font-medium">{$$p(overageRefund)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm font-semibold text-slate-700 dark:text-zinc-200 border-t border-slate-200 dark:border-zinc-700 pt-1">
                     <span>= Total proceeds</span>
-                    <span className="tabular-nums">{$$p(wire+titleTotal)}</span>
+                    <span className="tabular-nums">{$$p(wire+titleTotal+overageRefund)}</span>
                   </div>
                 </div>
                 {/* Costs side */}
@@ -994,7 +1009,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className={`font-bold text-sm shrink-0 ${balanced?"text-emerald-700 dark:text-emerald-300":"text-amber-700 dark:text-amber-300"}`}>{balanced?"✓ Balanced":"⚠ Check numbers"}</span>
                   <span className="text-slate-500 dark:text-zinc-400 tabular-nums text-[11px]">
-                    {$$p(wire)} = Lenders {$$p(lenderTotal)} + Costs {$$p(nexusCapital)} + Profit {$$ps(dealProfit)}
+                    {$$p(wire)}{overageRefund>0?` + Overage ${$$p(overageRefund)}`:""} = Lenders {$$p(lenderTotal)} + Costs {$$p(nexusCapital)} + Profit {$$ps(dealProfit)}
                   </span>
                 </div>
               </div>
