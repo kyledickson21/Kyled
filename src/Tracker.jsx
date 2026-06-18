@@ -553,12 +553,9 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const totalCosts=baseCosts+misc;
   // wire + titleTotal = totalCosts + dealProfit  (user's double-sided equation)
   // nexusCapital = what Nexus recovers from wire after paying lenders (totalCosts - titleTotal - lenderTotal)
-  // paidAtTitle overage: included in titleTotal (gross), subtract back — net zero profit impact
-  // wire-paid overage: extra cash from lender directly to Nexus — adds to profit
-  const paidAtTitleOverage=Math.round(rows.reduce((s,r)=>r.paidAtTitle?s+(parseFloat(r.overageRefund)||0):s,0)*100)/100;
-  const wireOverage=Math.round(rows.reduce((s,r)=>!r.paidAtTitle?s+(parseFloat(r.overageRefund)||0):s,0)*100)/100;
+  const overageRefund=Math.round(rows.reduce((s,r)=>s+(parseFloat(r.overageRefund)||0),0)*100)/100;
   const nexusCapital=totalCosts-titleTotal-lenderTotal;
-  const dealProfit=(wire+titleTotal-paidAtTitleOverage+wireOverage)-totalCosts;
+  const dealProfit=(wire+titleTotal)-totalCosts+overageRefund;
   const balanced=wire>0&&nexusCapital>=-0.01;
 
   const handleWireChange=v=>{setWireIn(v);setLinked("wire");};
@@ -948,25 +945,13 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                   </div>
                   {titleTotal>0&&(
                     <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
-                      <span>+ Title paid to lenders{paidAtTitleOverage>0&&<span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500"> (gross, incl. overage)</span>}</span>
+                      <span>+ Title paid to lenders</span>
                       <span className="tabular-nums font-medium">{$$p(titleTotal)}</span>
-                    </div>
-                  )}
-                  {paidAtTitleOverage>0&&(
-                    <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
-                      <span>− Overage returned by lender <span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500">(post-close)</span></span>
-                      <span className="tabular-nums font-medium text-red-500 dark:text-red-400">−{$$p(paidAtTitleOverage)}</span>
-                    </div>
-                  )}
-                  {wireOverage>0&&(
-                    <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
-                      <span>+ Overage refund <span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500">(post-close)</span></span>
-                      <span className="tabular-nums font-medium">{$$p(wireOverage)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-semibold text-slate-700 dark:text-zinc-200 border-t border-slate-200 dark:border-zinc-700 pt-1">
                     <span>= Total proceeds</span>
-                    <span className="tabular-nums">{$$p(wire+titleTotal-paidAtTitleOverage+wireOverage)}</span>
+                    <span className="tabular-nums">{$$p(wire+titleTotal)}</span>
                   </div>
                 </div>
                 {/* Costs side */}
@@ -992,6 +977,13 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                     <span className="tabular-nums">{$$p(totalCosts)}</span>
                   </div>
                 </div>
+                {/* Overage refund added to profit */}
+                {overageRefund>0&&(
+                  <div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400 mb-1">
+                    <span>+ Overage refund <span className="text-[10px] font-normal opacity-70">(post-close)</span></span>
+                    <span className="tabular-nums font-medium">{$$p(overageRefund)}</span>
+                  </div>
+                )}
                 {/* Result */}
                 <div className="flex justify-between items-center border-t-2 border-slate-300 dark:border-zinc-600 pt-2 mt-1">
                   <span className="font-bold text-slate-800 dark:text-zinc-100">Deal Profit</span>
@@ -1021,7 +1013,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className={`font-bold text-sm shrink-0 ${balanced?"text-emerald-700 dark:text-emerald-300":"text-amber-700 dark:text-amber-300"}`}>{balanced?"✓ Balanced":"⚠ Check numbers"}</span>
                   <span className="text-slate-500 dark:text-zinc-400 tabular-nums text-[11px]">
-                    {$$p(wire)}{paidAtTitleOverage>0?` + Title(gross) ${$$p(titleTotal)} − Ovg ${$$p(paidAtTitleOverage)}`:titleTotal>0?` + Title ${$$p(titleTotal)}`:""}{wireOverage>0?` + Ovg ${$$p(wireOverage)}`:""} = Costs {$$p(nexusCapital)} + Lenders {$$p(lenderTotal)} + Profit {$$ps(dealProfit)}
+                    {$$p(wire)}{titleTotal>0?` + Title ${$$p(titleTotal)}`:""}{overageRefund>0?` + Overage ${$$p(overageRefund)}`:""} = Lenders {$$p(lenderTotal)} + Costs {$$p(nexusCapital)} + Profit {$$ps(dealProfit)}
                   </span>
                 </div>
               </div>
