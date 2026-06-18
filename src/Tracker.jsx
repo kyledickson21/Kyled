@@ -475,6 +475,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
       principalPayoff:String(l.principal||0),
       interestPayoff:String(intEarned), // total interest over full hold period
       lenderFees:"0",
+      overageRefund:"0",
       titleMoneyCosts:"0", // for paidAtTitle+monthly: how much of money costs title actually sent
       paidAtTitle:false,
       // For custom split
@@ -531,7 +532,6 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const [rehabIn,setRehabIn]=useState(String(prop.rehabBudget||""));
   const [miscIn,setMiscIn]=useState(String(Math.round((prop.monthlyHolding??500)*effectiveMonths(prop))));
   const [wireIn,setWireIn]=useState("");
-  const [overageRefundIn,setOverageRefundIn]=useState("0");
   const [linked,setLinked]=useState("wire");
 
   const cashToClose=parseFloat(cashToCloseIn)||0;
@@ -552,7 +552,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const totalCosts=baseCosts+misc;
   // wire + titleTotal = totalCosts + dealProfit  (user's double-sided equation)
   // nexusCapital = what Nexus recovers from wire after paying lenders (totalCosts - titleTotal - lenderTotal)
-  const overageRefund=parseFloat(overageRefundIn)||0;
+  const overageRefund=Math.round(rows.reduce((s,r)=>s+(parseFloat(r.overageRefund)||0),0)*100)/100;
   const nexusCapital=totalCosts-titleTotal-lenderTotal;
   const dealProfit=(wire+titleTotal+overageRefund)-totalCosts;
   const balanced=wire>0&&nexusCapital>=-0.01;
@@ -568,6 +568,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
         principalPayoff:parseFloat(r.principalPayoff)||0,
         interestPayoff:parseFloat(r.interestPayoff)||0,
         lenderFees:parseFloat(r.lenderFees)||0,
+        overageRefund:parseFloat(r.overageRefund)||0,
         wireAmount:wireContrib(r),
         customRolling:r.customRolling,
         destination:r.destination,
@@ -784,6 +785,12 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                         </div>
                       )}
 
+                      {/* Overage refund (post-close) */}
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-3">
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight">Overage Refund<br/><span className="text-[9px]">(post-close, from this lender)</span></div>
+                        <input type="number" value={r.overageRefund} onChange={e=>upd(r.loanId,{overageRefund:e.target.value})} onWheel={e=>e.target.blur()} placeholder="0" className={numIn}/>
+                      </div>
+
                       {/* Roll destination */}
                       {isRolling&&(
                         <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-2 gap-2">
@@ -922,12 +929,6 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 className="shrink-0 text-[10px] font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors whitespace-nowrap">
                 {linked==="misc"?"edit":"auto"}
               </button>
-            </div>
-
-            {/* Overage Refund */}
-            <div className="flex items-center gap-3">
-              <span className={labelCls}>Overage Refund <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(post-close)</span></span>
-              <input type="number" value={overageRefundIn} onChange={e=>setOverageRefundIn(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0" className={inputCls}/>
             </div>
 
             {/* Deal Profit — always visible */}
