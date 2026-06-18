@@ -1524,7 +1524,7 @@ function PropertiesPage({ data, update }) {
                 <div className="border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 px-5 py-4">
                   <div className="flex justify-between items-center mb-3">
                     <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Loans · {prop.loans.length}</span>
-                    <Btn onClick={()=>setModal("addMoney")} color="green" sm>+ Add Money</Btn>
+                    <Btn onClick={()=>setModal({type:"addMoney",propId:prop.id})} color="green" sm>+ Add Money</Btn>
                   </div>
                   {prop.loans.length===0&&<div className="text-center py-6 text-slate-400 dark:text-zinc-500 text-sm">No loans yet</div>}
                   <div className="space-y-2">
@@ -1610,7 +1610,7 @@ function PropertiesPage({ data, update }) {
         })}
       </div>}
 
-      {modal==="addMoney"&&<Modal title="Add Lender Money" onClose={()=>setModal(null)}><LenderMoneyForm properties={data.properties} onSave={saveMoneyForm} onClose={()=>setModal(null)}/></Modal>}
+      {(modal==="addMoney"||modal?.type==="addMoney")&&<Modal title="Add Lender Money" onClose={()=>setModal(null)}><LenderMoneyForm properties={data.properties} init={modal?.propId?{destination:modal.propId}:undefined} onSave={saveMoneyForm} onClose={()=>setModal(null)}/></Modal>}
       {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
       {modal?.type==="editProp"&&<Modal title="Edit Property" onClose={()=>setModal(null)}><PropertyForm init={modal.prop} onSave={f=>saveProp(f,modal.prop)} onClose={()=>setModal(null)}/></Modal>}
       {modal?.type==="editLoan"&&<Modal title="Edit Loan" onClose={()=>setModal(null)}>
