@@ -1965,7 +1965,7 @@ function HistoryPage({ data }) {
     let nc,pp;
     if(ev.etype==="saleSummary"){nc=ev.closingData?.profit??0;}
     else if(ev.etype==="start"){lc[ev.lender]+=ev.amount;pp=lp[ev.lender];nc=pp>0?ev.amount-pp:ev.amount;lp[ev.lender]=0;}
-    else{nc=ev.interest??0;lp[ev.lender]+=ev.amount;}
+    else{nc=ev.interest??0;if(ev.etype==="rolled")lp[ev.lender]+=ev.amount;}
     return{...ev,nc,pp,cumLent:lc[ev.lender]};
   });
   const allL=[...new Set(events.map(e=>e.lender))].sort();
