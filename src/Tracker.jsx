@@ -450,6 +450,52 @@ function MoveModal({ item, properties, onMove, onClose }) {
   );
 }
 
+// ─── Close Loan Modal ─────────────────────────────────────────────────────────
+function CloseLoanModal({ loan, onConfirm, onClose }) {
+  const [closeDate, setCloseDate] = useState(TODAY);
+  const payoff = Math.round(calcBalance(loan, closeDate) * 100) / 100;
+  const intEarned = Math.round(calcIntEarned(loan, closeDate) * 100) / 100;
+  const inputCls = "flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500";
+  return (
+    <Modal title={`Close Loan — ${loan.lenderName}`} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="w-32 text-sm text-slate-600 dark:text-zinc-300 shrink-0">Close Date</span>
+          <input type="date" value={closeDate} onChange={e=>setCloseDate(e.target.value)} className={inputCls}/>
+        </div>
+        <div className="rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-700 p-4 space-y-2 text-sm">
+          <div className="flex justify-between text-slate-600 dark:text-zinc-300">
+            <span>Principal</span>
+            <span className="tabular-nums font-medium">{$p(loan.principal)}</span>
+          </div>
+          {intEarned > 0 && (
+            <div className="flex justify-between text-slate-600 dark:text-zinc-300">
+              <span>Accrued Interest</span>
+              <span className="tabular-nums font-medium text-emerald-600 dark:text-emerald-400">+{$p(intEarned)}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-200 dark:border-zinc-700 pt-2">
+            <span>Total Payoff</span>
+            <span className="tabular-nums">{$p(payoff)}</span>
+          </div>
+          {intEarned > 0 && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1">
+              Use <span className="font-semibold">{$p(payoff)}</span> as the new loan principal when you re-add this lender's funds.
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-sm font-semibold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">Cancel</button>
+          <button type="button" onClick={()=>onConfirm(closeDate)}
+            className="flex-1 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold transition-colors">
+            Close Loan as of {closeDate}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Mark Property Sold Modal ─────────────────────────────────────────────────
 function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const activeLoans=prop.loans.filter(l=>!l.endDate);
@@ -1211,6 +1257,11 @@ function PropertiesPage({ data, update }) {
     setModal(null);
   };
 
+  const handleCloseLoan = (propId, loan, closeDate) => {
+    update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:p.loans.map(l=>l.id!==loan.id?l:{...l,endDate:closeDate})})}));
+    setModal(null);
+  };
+
   const placeOnProperty = (fund,propId) => {
     const loan={id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",paymentType:fund.paymentType||"closing",monthlyPayment:fund.monthlyPayment||0,drawFacility:fund.drawFacility||null,promissoryNote:fund.promissoryNote||false,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null};
     update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==fund.id),properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:[...p.loans,loan]})}));
@@ -1560,8 +1611,9 @@ function PropertiesPage({ data, update }) {
                             </div>
                             <div className="flex gap-1 shrink-0">
                               <button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-violet-500 dark:hover:text-violet-400 transition-colors" title="Move">⇄</button>
-                              <button onClick={()=>setModal({type:"editLoan",propId:prop.id,loan})} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors">✏️</button>
-                              <button onClick={()=>delLoan(prop.id,loan.id)} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors">🗑</button>
+                              <button onClick={()=>setModal({type:"editLoan",propId:prop.id,loan})} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors" title="Edit">✏️</button>
+                              <button onClick={()=>setModal({type:"closeLoan",propId:prop.id,loan})} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-orange-500 dark:hover:text-orange-400 transition-colors" title="Close Loan">⊗</button>
+                              <button onClick={()=>delLoan(prop.id,loan.id)} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Delete">🗑</button>
                             </div>
                           </div>
                         </div>
@@ -1593,6 +1645,7 @@ function PropertiesPage({ data, update }) {
           }} onClose={()=>setModal(null)}/>
       </Modal>}
       {modal?.type==="place"&&<PlaceOnPropertyModal fund={modal.fund} properties={data.properties} onPlace={propId=>placeOnProperty(modal.fund,propId)} onClose={()=>setModal(null)}/>}
+      {modal?.type==="closeLoan"&&<CloseLoanModal loan={modal.loan} onConfirm={date=>handleCloseLoan(modal.propId,modal.loan,date)} onClose={()=>setModal(null)}/>}
       {modal?.type==="markSold"&&<MarkSoldModal prop={modal.prop} allProperties={data.properties} onConfirm={(d,disp,cd)=>handleMarkSold(modal.prop,d,disp,cd)} onClose={()=>setModal(null)}/>}
       {modal?.type==="moveLoan"&&<MoveModal item={{type:"loan",propId:modal.propId,loan:modal.loan}} properties={data.properties} onMove={dest=>handleMove({type:"loan",propId:modal.propId,loan:modal.loan},dest)} onClose={()=>setModal(null)}/>}
       {modal?.type==="moveUnassigned"&&<MoveModal item={{type:"unassigned",fund:modal.fund}} properties={data.properties} onMove={dest=>{placeOnProperty(modal.fund,dest);setModal(null);}} onClose={()=>setModal(null)}/>}
