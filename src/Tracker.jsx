@@ -271,7 +271,7 @@ function LenderMoneyForm({ properties, init, onSave, onClose }) {
   const [f, sf] = useState(()=>({
     lenderName:"", loanType:"private", principal:"",
     startDate:TODAY, interestType:"percentage", interestRate:"", specialTerms:"", endDate:"",
-    destination:"unassigned", promissoryNote:false,
+    destination:"unassigned",
     paymentType:"closing", monthlyPayment:"", drawFacility:null,
     ...(init??{}),
     paymentType: init?.paymentType || (init?.loanType==="hard" ? "monthly_rate" : "closing"),
@@ -368,21 +368,6 @@ function LenderMoneyForm({ properties, init, onSave, onClose }) {
           )}
         </div>
       )}
-      <div className="mt-1 mb-4 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input type="checkbox" checked={f.promissoryNote||false} onChange={e=>s("promissoryNote")(e.target.checked)}
-            className="w-4 h-4 rounded border-slate-300 dark:border-zinc-600 accent-emerald-600 cursor-pointer"/>
-          <div>
-            <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Promissory note on file</div>
-            <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Check once you have a signed note for this loan</div>
-          </div>
-        </label>
-        {!f.promissoryNote && (
-          <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold mt-2.5 flex items-center gap-1.5">
-            ⚠ No note recorded — get one before funds transfer
-          </p>
-        )}
-      </div>
       <div className="flex gap-2 pt-1">
         <Btn onClick={handleSave} color={f.destination==="unassigned"?"purple":"green"} full>
           {f.destination==="unassigned" ? "💼  Save as Unassigned" : "🏠  Place on Property"}
@@ -1180,7 +1165,6 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${days>60?"bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800":days>30?"bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800":"bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700"}`}>
                     {days}d
                   </span>
-                  {u.promissoryNote ? <Chip color="green">📄 Note ✓</Chip> : <Chip color="amber">⚠ No Note</Chip>}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={()=>onPlace(u)} className="text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1 transition-colors">Place →</button>
@@ -1228,7 +1212,7 @@ function PropertiesPage({ data, update }) {
     paymentType:f.paymentType||"closing",
     monthlyPayment:parseFloat(f.monthlyPayment)||0,
     drawFacility:f.drawFacility?{committed:parseFloat(f.drawFacility.committed)||0,draws:f.drawFacility.draws||[]}:null,
-    promissoryNote:f.promissoryNote||false, specialTerms:f.specialTerms||"", endDate:f.endDate||null,
+    specialTerms:f.specialTerms||"", endDate:f.endDate||null,
   });
 
   const saveMoneyForm = f => {
@@ -1263,7 +1247,7 @@ function PropertiesPage({ data, update }) {
   };
 
   const placeOnProperty = (fund,propId) => {
-    const loan={id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",paymentType:fund.paymentType||"closing",monthlyPayment:fund.monthlyPayment||0,drawFacility:fund.drawFacility||null,promissoryNote:fund.promissoryNote||false,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null};
+    const loan={id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",paymentType:fund.paymentType||"closing",monthlyPayment:fund.monthlyPayment||0,drawFacility:fund.drawFacility||null,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null};
     update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==fund.id),properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:[...p.loans,loan]})}));
     setExpanded(e=>({...e,[propId]:true}));
     setModal(null);
@@ -1305,7 +1289,7 @@ function PropertiesPage({ data, update }) {
         interestRate:d.newRate!==""?parseFloat(d.newRate):(loan.interestRate||0),
         interestType:d.interestType||loan.interestType||"percentage",
         paymentType:d.paymentType||loan.paymentType||"closing",
-        promissoryNote:false,specialTerms:d.specialTerms||loan.specialTerms||"",endDate:null,
+        specialTerms:d.specialTerms||loan.specialTerms||"",endDate:null,
       };
       if(d.destination==="unassigned"){newUnassigned.push(entry);}
       else{if(!newLoansForProps[d.destination])newLoansForProps[d.destination]=[];newLoansForProps[d.destination].push(entry);}
@@ -1557,7 +1541,6 @@ function PropertiesPage({ data, update }) {
                                 <span className="font-bold text-slate-900 dark:text-zinc-100">{loan.lenderName}</span>
                                 <TypeBadge type={loan.loanType} sm/>
                                 {loan.endDate&&<Chip color="gray">Closed {loan.endDate}</Chip>}
-                                {loan.promissoryNote ? <Chip color="green">📄 Note ✓</Chip> : <Chip color="red">⚠ No Note</Chip>}
                               </div>
                               <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
                                 <span className="text-slate-500 dark:text-zinc-400">Principal <strong className="text-slate-800 dark:text-zinc-100 tabular-nums">{$$(loan.principal)}</strong></span>
@@ -1631,14 +1614,14 @@ function PropertiesPage({ data, update }) {
       {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
       {modal?.type==="editProp"&&<Modal title="Edit Property" onClose={()=>setModal(null)}><PropertyForm init={modal.prop} onSave={f=>saveProp(f,modal.prop)} onClose={()=>setModal(null)}/></Modal>}
       {modal?.type==="editLoan"&&<Modal title="Edit Loan" onClose={()=>setModal(null)}>
-        <LenderMoneyForm properties={data.properties} init={{...modal.loan,destination:modal.propId,principal:String(modal.loan.principal),interestRate:String(modal.loan.interestRate||""),interestType:modal.loan.interestType||"percentage",paymentType:modal.loan.paymentType||"closing",monthlyPayment:String(modal.loan.monthlyPayment||""),drawFacility:modal.loan.drawFacility||null,promissoryNote:modal.loan.promissoryNote||false}}
+        <LenderMoneyForm properties={data.properties} init={{...modal.loan,destination:modal.propId,principal:String(modal.loan.principal),interestRate:String(modal.loan.interestRate||""),interestType:modal.loan.interestType||"percentage",paymentType:modal.loan.paymentType||"closing",monthlyPayment:String(modal.loan.monthlyPayment||""),drawFacility:modal.loan.drawFacility||null}}
           onSave={f=>saveEditedLoan(modal.propId,f,modal.loan)} onClose={()=>setModal(null)}/>
       </Modal>}
       {modal?.type==="editUnassigned"&&<Modal title="Edit Unassigned Fund" onClose={()=>setModal(null)}>
         <LenderMoneyForm properties={data.properties}
-          init={{...modal.fund,destination:"unassigned",principal:String(modal.fund.principal||modal.fund.amount||""),interestRate:String(modal.fund.interestRate||""),interestType:modal.fund.interestType||"percentage",promissoryNote:modal.fund.promissoryNote||false}}
+          init={{...modal.fund,destination:"unassigned",principal:String(modal.fund.principal||modal.fund.amount||""),interestRate:String(modal.fund.interestRate||""),interestType:modal.fund.interestType||"percentage"}}
           onSave={f=>{
-            const updated={...modal.fund,lenderName:f.lenderName,loanType:f.loanType,principal:parseFloat(f.principal)||0,startDate:f.startDate,interestRate:parseFloat(f.interestRate)||0,interestType:f.interestType||"percentage",promissoryNote:f.promissoryNote||false,specialTerms:f.specialTerms||"",endDate:f.endDate||null};
+            const updated={...modal.fund,lenderName:f.lenderName,loanType:f.loanType,principal:parseFloat(f.principal)||0,startDate:f.startDate,interestRate:parseFloat(f.interestRate)||0,interestType:f.interestType||"percentage",specialTerms:f.specialTerms||"",endDate:f.endDate||null};
             if(f.destination!=="unassigned"){update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==modal.fund.id),properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...p.loans,{id:uid(),...updated}]})}));}
             else{update(d=>({...d,unassigned:d.unassigned.map(u=>u.id===modal.fund.id?updated:u)}));}
             setModal(null);
@@ -1722,7 +1705,6 @@ function LenderDashboard({ data }) {
             case"Payoff Bal": return d*(a.bal-b.bal);
             case"Int Paid":   return d*(a.intEarned-b.intEarned);
             case"Started":  return d*(a.startDate||"").localeCompare(b.startDate||"");
-            case"Note":     return d*((a.promissoryNote?1:0)-(b.promissoryNote?1:0));
             default:        return 0;
           }
         });
@@ -1735,7 +1717,6 @@ function LenderDashboard({ data }) {
           {h:"Payoff Bal",left:false, sort:true},
           {h:"Int Paid",  left:false, sort:true},
           {h:"Started",  left:false, sort:true},
-          {h:"Note",     left:false, sort:true},
         ];
         return (
           <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
@@ -1773,9 +1754,6 @@ function LenderDashboard({ data }) {
                       <td className="py-3 px-3 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{$$(l.bal)}</td>
                       <td className="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400 tabular-nums">{$$(l.intEarned)}</td>
                       <td className="py-3 px-3 text-right text-slate-500 dark:text-zinc-400 whitespace-nowrap tabular-nums">{l.startDate||"—"}</td>
-                      <td className="py-3 px-3 text-right">
-                        {l.promissoryNote ? <span className="text-emerald-500 font-bold">✓</span> : <span className="text-red-400 font-bold">✗</span>}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
