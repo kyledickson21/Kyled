@@ -1951,7 +1951,9 @@ function HistoryPage({ data }) {
         const rollingTypes=["rollFull","rollPrincipal","payInterest","waiveInterest","custom"];
         const isRoll=disp&&rollingTypes.includes(disp.type);
         const etype=isRoll?"rolled":(prop.dateSold&&!loan.endDate?"sold":"closed");
-        raw.push({date:end,sx:"a",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype,disposition:disp?.type||null,amount:finBal,principal:loan.principal||0,interest:finBal-(loan.principal||0),property:prop.address,rate:loan.interestRate||0,loanId:loan.id});
+        // waiveInterest: interest forgiven, principal unchanged — show principal only as amount
+        const dispAmt=disp?.type==="waiveInterest"?loan.principal:finBal;
+        raw.push({date:end,sx:"a",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype,disposition:disp?.type||null,amount:dispAmt,principal:loan.principal||0,interest:finBal-(loan.principal||0),property:prop.address,rate:loan.interestRate||0,loanId:loan.id});
       }
     });
     if(prop.dateSold&&prop.closingData){
