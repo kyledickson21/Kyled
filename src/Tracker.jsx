@@ -1965,7 +1965,11 @@ function HistoryPage({ data }) {
     let nc,pp;
     if(ev.etype==="saleSummary"){nc=ev.closingData?.profit??0;}
     else if(ev.etype==="start"){lc[ev.lender]+=ev.amount;pp=lp[ev.lender];nc=pp>0?ev.amount-pp:ev.amount;lp[ev.lender]=0;}
-    else{nc=ev.interest??0;if(ev.etype==="rolled")lp[ev.lender]+=ev.amount;}
+    else{
+      const waived=ev.disposition==="waiveInterest";
+      nc=waived?0:(ev.interest??0);
+      if(ev.etype==="rolled")lp[ev.lender]+=(waived?ev.principal:ev.amount);
+    }
     return{...ev,nc,pp,cumLent:lc[ev.lender]};
   });
   const allL=[...new Set(events.map(e=>e.lender))].sort();
@@ -2054,7 +2058,8 @@ function HistoryPage({ data }) {
                     </div>
                     <div className="font-bold text-slate-900 dark:text-zinc-100">{ev.lender}</div>
                     <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{ev.property} · {rateLabel}</div>
-                    {ev.etype!=="start"&&(ev.interest||0)>0.01&&<div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5 tabular-nums">+{$$(ev.interest)} interest</div>}
+                    {ev.etype!=="start"&&ev.disposition!=="waiveInterest"&&(ev.interest||0)>0.01&&<div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5 tabular-nums">+{$$(ev.interest)} interest</div>}
+                    {ev.disposition==="waiveInterest"&&(ev.interest||0)>0.01&&<div className="text-xs text-amber-500 dark:text-amber-400 mt-0.5 tabular-nums">{$$(ev.interest)} interest waived</div>}
                     {roll&&ev.pp>0&&<div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">Rolled from {$$(ev.pp)}</div>}
                   </div>
                   <div className="text-right shrink-0">
