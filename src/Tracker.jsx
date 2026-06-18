@@ -19,7 +19,7 @@ const daysBetween = (d1, d2) => {
   return Math.max(0, Math.floor((new Date(d2)-new Date(d1))/864e5));
 };
 const nextDay = d => { const [y,m,day]=d.split('-').map(Number); const dt=new Date(y,m-1,day+1); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
-const yearDays = l => /phoenix/i.test(l?.lenderName||"") ? 360 : 365;
+const yearDays = l => l?.loanType==="hard" ? 360 : 365;
 
 const calcBalance = (l, asOf=TODAY) => {
   if (!l?.startDate||!l?.principal) return l?.principal??0;
