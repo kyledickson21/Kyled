@@ -1420,7 +1420,7 @@ function PropertiesPage({ data, update }) {
                 </thead>
                 <tbody className="bg-white dark:bg-zinc-900 divide-y divide-slate-50 dark:divide-zinc-800">
                   {sorted.map(({prop,active,funded,needed,short,under,full},i)=>(
-                    <tr key={prop.id} className={`hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors ${under?"bg-red-50/40 dark:bg-red-950/10":""}`}>
+                    <tr key={prop.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
                       <td className="py-2.5 px-4 text-slate-300 dark:text-zinc-600 tabular-nums font-semibold">{i+1}</td>
                       <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">{prop.address||"Unnamed"}</td>
                       <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">{active.length}</td>
@@ -1462,8 +1462,8 @@ function PropertiesPage({ data, update }) {
           const holdingMo=prop.monthlyHolding??500;
 
           return (
-            <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"border border-slate-200 dark:border-zinc-800 opacity-60":under?"border-l-4 border border-red-300 dark:border-red-700 border-l-red-500":"border border-slate-200 dark:border-zinc-800 shadow-sm hover:shadow-md dark:shadow-none transition-shadow"}`}>
-              <div className={`cursor-pointer ${prop.dateSold?"bg-slate-50 dark:bg-zinc-800/30":under?"bg-red-50 dark:bg-red-950/20":"bg-white dark:bg-zinc-900"}`} onClick={()=>toggle(prop.id)}>
+            <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"border border-slate-200 dark:border-zinc-800 opacity-60":"border border-slate-200 dark:border-zinc-800 shadow-sm hover:shadow-md dark:shadow-none transition-shadow"}`}>
+              <div className={`cursor-pointer ${prop.dateSold?"bg-slate-50 dark:bg-zinc-800/30":"bg-white dark:bg-zinc-900"}`} onClick={()=>toggle(prop.id)}>
                 <div className="px-5 pt-4 pb-3 flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -1480,7 +1480,7 @@ function PropertiesPage({ data, update }) {
                     {needed>0&&!prop.dateSold&&(
                       <div className="mt-3">
                         <div className="h-1.5 bg-slate-100 dark:bg-zinc-700 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all ${full?"bg-emerald-500":pct(funded,needed)>=60?"bg-blue-500":"bg-red-400"}`} style={{width:`${pct(funded,needed)}%`}}/>
+                          <div className={`h-full rounded-full transition-all ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
                         </div>
                         <div className="flex justify-between text-[10px] mt-1">
                           <span className={`font-semibold tabular-nums ${full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{$$(funded)} / {$$(needed)}</span>
