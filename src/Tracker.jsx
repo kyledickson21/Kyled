@@ -567,7 +567,6 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const [rehabIn,setRehabIn]=useState(String(prop.rehabBudget||""));
   const [miscIn,setMiscIn]=useState(String(Math.round((prop.monthlyHolding??500)*effectiveMonths(prop))));
   const [wireIn,setWireIn]=useState("");
-  const [linked,setLinked]=useState("wire");
 
   const cashToClose=parseFloat(cashToCloseIn)||0;
   const rehab=parseFloat(rehabIn)||0;
@@ -582,8 +581,8 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     return s+fees; // custom: fees still cost, interest not
   },0)*100)/100;
   const baseCosts=cashToClose+rehab+moneyCosts;
-  const wire=linked==="wire"?parseFloat(wireIn)||0:baseCosts+(parseFloat(miscIn)||0);
-  const misc=linked==="misc"?parseFloat(miscIn)||0:Math.max(0,wire-baseCosts);
+  const wire=parseFloat(wireIn)||0;
+  const misc=parseFloat(miscIn)||0;
   const totalCosts=baseCosts+misc;
   // wire + titleTotal = totalCosts + dealProfit  (user's double-sided equation)
   // nexusCapital = what Nexus recovers from wire after paying lenders (totalCosts - titleTotal - lenderTotal)
@@ -592,8 +591,8 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const dealProfit=(wire+titleTotal)-totalCosts+overageRefund;
   const balanced=wire>0&&nexusCapital>=-0.01;
 
-  const handleWireChange=v=>{setWireIn(v);setLinked("wire");};
-  const handleMiscChange=v=>{setMiscIn(v);setLinked("misc");};
+  const handleWireChange=v=>setWireIn(v);
+  const handleMiscChange=v=>setMiscIn(v);
 
   const handleConfirm=()=>{
     const dispositions={};
@@ -941,13 +940,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
-                  {linked==="wire"
-                    ?<div className={autoCls} title="Auto-calculated from wire">{$$p(misc)}</div>
-                    :<input type="number" value={miscIn} onChange={e=>handleMiscChange(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>}
-                  <button type="button" onClick={()=>{if(linked==="wire"){setMiscIn(String(Math.round(misc)));setLinked("misc");}else{setWireIn(String(Math.round(wire)));setLinked("wire");}}}
-                    className="shrink-0 text-[10px] font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors whitespace-nowrap">
-                    {linked==="wire"?"edit":"auto"}
-                  </button>
+                  <input type="number" value={miscIn} onChange={e=>handleMiscChange(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-3 pt-2 border-t border-slate-200 dark:border-zinc-700">
                   <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Total Deployed</span>
@@ -959,14 +952,8 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
             {/* Wire Received */}
             <div className="flex items-center gap-3">
               <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Wire Received</span>
-              {linked==="misc"
-                ?<div className={`${autoCls} font-bold text-blue-700 dark:text-blue-400`} title="Auto-calculated from misc">{$$p(wire)}</div>
-                :<input type="number" value={wireIn} onChange={e=>handleWireChange(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0"
-                    className="flex-1 border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>}
-              <button type="button" onClick={()=>{if(linked==="misc"){setWireIn(String(Math.round(wire)));setLinked("wire");}else{setMiscIn(String(Math.round(misc)));setLinked("misc");}}}
-                className="shrink-0 text-[10px] font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors whitespace-nowrap">
-                {linked==="misc"?"edit":"auto"}
-              </button>
+              <input type="number" value={wireIn} onChange={e=>handleWireChange(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0"
+                  className="flex-1 border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
             </div>
 
             {/* Deal Profit — always visible */}
