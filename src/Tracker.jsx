@@ -205,11 +205,11 @@ const Chip = ({children,color}) => {
 
 function Modal({title,onClose,children}) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
-        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-zinc-800 sticky top-0 bg-white dark:bg-zinc-900 rounded-t-2xl z-10">
-          <h2 className="font-bold text-slate-900 dark:text-zinc-100 text-base">{title}</h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all text-xl leading-none">&times;</button>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-md" onClick={onClose}>
+      <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.25)] w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.06] sticky top-0 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl rounded-t-2xl z-10">
+          <h2 className="font-semibold text-slate-900 dark:text-zinc-100 text-base tracking-[-0.2px]">{title}</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-500 dark:text-zinc-400 hover:bg-black/10 dark:hover:bg-white/15 transition-all text-xl leading-none">&times;</button>
         </div>
         <div className="px-6 py-5">{children}</div>
       </div>
@@ -1123,26 +1123,26 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
   const sorted=[...funds].sort((a,b)=>(a.startDate||"").localeCompare(b.startDate||""));
 
   return (
-    <div className="mb-3 rounded-2xl border-2 border-violet-200 dark:border-violet-800 overflow-hidden">
+    <div className="mb-3 rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
       <button onClick={()=>setOpen(o=>!o)}
-        className="w-full bg-violet-50 dark:bg-violet-950 hover:bg-violet-100 dark:hover:bg-violet-900/80 px-5 py-3.5 flex items-center justify-between transition-colors">
+        className="w-full px-5 py-3.5 flex items-center justify-between transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <div className="flex items-center gap-3">
-          <span className="text-sm">💼</span>
-          <span className="text-sm font-bold text-violet-900 dark:text-violet-200">Ready to Place</span>
-          <span className="text-xl font-bold text-violet-700 dark:text-violet-300 tabular-nums">{$$(total)}</span>
-          <span className="text-xs text-violet-400 dark:text-violet-500">{funds.length} lender{funds.length!==1?"s":""}</span>
+          <div className="w-7 h-7 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center text-sm">💼</div>
+          <span className="text-sm font-semibold text-slate-900 dark:text-zinc-100">Ready to Place</span>
+          <span className="text-sm font-bold text-violet-600 dark:text-violet-400 tabular-nums">{$$(total)}</span>
+          <span className="text-xs text-slate-400 dark:text-zinc-500">{funds.length} lender{funds.length!==1?"s":""}</span>
         </div>
-        <span className="text-violet-400 dark:text-violet-500 text-xs font-semibold">{open?"▲ Hide":"▼ Show"}</span>
+        <span className="text-slate-300 dark:text-zinc-600 text-xs font-semibold">{open?"▲":"▼"}</span>
       </button>
       {open && (
-        <div className="bg-white dark:bg-zinc-900 divide-y divide-slate-100 dark:divide-zinc-800">
+        <div className="border-t border-black/[0.06] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.05]">
           {sorted.map(u=>{
             const principal=u.principal||u.amount||0;
             const bal=calcBalance({...u,principal});
             const earned=bal-principal;
             const days=daysBetween(u.startDate,TODAY);
             return (
-              <div key={u.id} className="px-5 py-3 flex items-center justify-between gap-2">
+              <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 bg-white dark:bg-[#1C1C1E] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
                 <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-slate-900 dark:text-zinc-100 text-sm">{u.lenderName}</span>
                   <TypeBadge type={u.loanType} sm/>
@@ -1337,10 +1337,10 @@ function PropertiesPage({ data, update }) {
       )}
 
       <button onClick={()=>setModal("addMoney")}
-        className="w-full mb-5 py-4 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-all flex items-center justify-center gap-3 group">
-        <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-lg font-bold group-hover:scale-105 transition-transform shadow-sm shadow-blue-200 dark:shadow-none">+</div>
+        className="w-full mb-5 py-4 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_18px_rgba(0,0,0,0.10)] dark:hover:bg-white/[0.04] transition-all flex items-center justify-center gap-3 group">
+        <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-lg font-bold group-hover:scale-105 transition-transform shadow-sm shadow-blue-500/30">+</div>
         <div className="text-left">
-          <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">Add Lender Money</div>
+          <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Add Lender Money</div>
           <div className="text-xs text-slate-400 dark:text-zinc-500">Place on a property or hold as unassigned</div>
         </div>
       </button>
@@ -1381,11 +1381,11 @@ function PropertiesPage({ data, update }) {
           {h:"Status", left:false},
         ];
         return (
-          <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
+          <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="bg-slate-50 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">
+                  <tr className="bg-[#F9F9FB] dark:bg-black/20 text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-wider text-[10px] border-b border-black/[0.05] dark:border-white/[0.05]">
                     <th className="py-2.5 px-4 text-left w-6">#</th>
                     {COLS.map(({h,left})=>{
                       const isActive=propSort.col===h;
@@ -1405,9 +1405,9 @@ function PropertiesPage({ data, update }) {
                     <th className="py-2.5 px-2"></th>
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-zinc-900 divide-y divide-slate-50 dark:divide-zinc-800">
+                <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
                   {sorted.map(({prop,active,funded,needed,short,under,full},i)=>(
-                    <tr key={prop.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
+                    <tr key={prop.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
                       <td className="py-2.5 px-4 text-slate-300 dark:text-zinc-600 tabular-nums font-semibold">{i+1}</td>
                       <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">{prop.address||"Unnamed"}</td>
                       <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">{active.length}</td>
@@ -1449,8 +1449,8 @@ function PropertiesPage({ data, update }) {
           const holdingMo=prop.monthlyHolding??500;
 
           return (
-            <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"border border-slate-200 dark:border-zinc-800 opacity-60":"border border-slate-200 dark:border-zinc-800 shadow-sm hover:shadow-md dark:shadow-none transition-shadow"}`}>
-              <div className={`cursor-pointer ${prop.dateSold?"bg-slate-50 dark:bg-zinc-800/30":"bg-white dark:bg-zinc-900"}`} onClick={()=>toggle(prop.id)}>
+            <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"bg-white dark:bg-[#1C1C1E] opacity-50":"bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] dark:hover:shadow-none transition-shadow"}`}>
+              <div className="cursor-pointer" onClick={()=>toggle(prop.id)}>
                 <div className="px-5 pt-4 pb-3 flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -1508,20 +1508,20 @@ function PropertiesPage({ data, update }) {
               </div>
 
               {isOpen&&(
-                <div className="border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/20 px-5 py-4">
+                <div className="border-t border-black/[0.06] dark:border-white/[0.06] bg-[#F9F9FB] dark:bg-black/20 px-5 py-4">
                   <div className="flex justify-between items-center mb-3">
                     <span className="text-[11px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Loans · {prop.loans.length}</span>
                     <Btn onClick={()=>setModal({type:"addMoney",propId:prop.id})} color="green" sm>+ Add Money</Btn>
                   </div>
                   {prop.loans.length===0&&<div className="text-center py-8 text-slate-400 dark:text-zinc-500 text-sm">No loans on this property yet</div>}
-                  <div className="space-y-2">
+                  <div className="rounded-xl overflow-hidden bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.05] dark:divide-white/[0.06] shadow-[0_1px_6px_rgba(0,0,0,0.05)] dark:shadow-none">
                     {prop.loans.map(loan=>{
                       const bal=calcBalance(loan);
                       const earned=calcIntEarned(loan);
                       const monthly=monthlyLoanPayment(loan);
                       const drawn=(loan.drawFacility?.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
                       return (
-                        <div key={loan.id} className={`rounded-xl p-4 border text-sm transition-all ${loan.endDate?"bg-white/50 dark:bg-zinc-900/30 border-slate-100 dark:border-zinc-800/60 opacity-70":"bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700 shadow-sm"}`}>
+                        <div key={loan.id} className={`p-4 text-sm transition-all ${loan.endDate?"opacity-55":""}`}>
                           <div className="flex justify-between items-start gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -1665,7 +1665,7 @@ function LenderDashboard({ data }) {
           {label:"Hard Money",  val:hardPrin, num:"text-amber-600 dark:text-amber-400"},
           {label:"Total Payoff", val:totalBal, num:"text-blue-600 dark:text-blue-400"},
         ].map(({label,val,num})=>(
-          <div key={label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-4 text-center">
+          <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 text-center shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
             <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{label}</div>
             <div className={`text-xl font-bold tabular-nums ${num}`}>{$$c(val)}</div>
           </div>
@@ -1706,18 +1706,18 @@ function LenderDashboard({ data }) {
           {h:"Started",  left:false, sort:true},
         ];
         return (
-          <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
+          <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
             {allActive.length===0&&<div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">No active loans on properties.</div>}
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="bg-slate-50 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">
+                  <tr className="bg-[#F9F9FB] dark:bg-black/20 text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-wider text-[10px] border-b border-black/[0.05] dark:border-white/[0.05]">
                     {COLS.map(({h,left,sort:canSort})=>{
                       const isActive=sort.col===h;
                       return (
                         <th key={h}
                           onClick={canSort?()=>toggleSort(h):undefined}
-                          className={`py-3 px-3 ${left?"text-left":"text-right"} ${canSort?"cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors":""} ${isActive?"text-slate-700 dark:text-zinc-200":""}`}>
+                          className={`py-3 px-3 ${left?"text-left":"text-right"} ${canSort?"cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-colors":""} ${isActive?"text-slate-700 dark:text-zinc-200":""}`}>
                           <span className={`inline-flex items-center gap-0.5 ${left?"":"justify-end w-full"}`}>
                             {h}
                             {canSort&&(isActive
@@ -1730,9 +1730,9 @@ function LenderDashboard({ data }) {
                     })}
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-zinc-900 divide-y divide-slate-50 dark:divide-zinc-800">
+                <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
                   {sortedLoans.map(l=>(
-                    <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
+                    <tr key={l.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
                       <td className="py-3 px-3 font-bold text-slate-900 dark:text-zinc-100 whitespace-nowrap">{l.lenderName}</td>
                       <td className="py-3 px-3"><TypeBadge type={l.loanType} sm/></td>
                       <td className="py-3 px-3 text-slate-500 dark:text-zinc-400 max-w-[130px] truncate">{l.propAddress}</td>
@@ -1772,7 +1772,7 @@ function LenderDashboard({ data }) {
             if(lenderSort==="low")return a.totalBal-b.totalBal;
             return a.name.localeCompare(b.name);
           }).map(ld=>(
-            <div key={ld.name} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-md dark:shadow-none transition-shadow">
+            <div key={ld.name} className="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] dark:hover:shadow-none transition-shadow">
               <div className="px-5 py-4 flex justify-between items-start">
                 <div>
                   <div className="font-bold text-slate-900 dark:text-zinc-100 text-[15px]">{ld.name}</div>
@@ -1784,7 +1784,7 @@ function LenderDashboard({ data }) {
                   <div className="font-bold text-blue-700 dark:text-blue-400 text-2xl tabular-nums">{$$(ld.totalBal)}</div>
                 </div>
               </div>
-              <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-zinc-800 border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50">
+              <div className="grid grid-cols-3 divide-x divide-black/[0.05] dark:divide-white/[0.05] border-t border-black/[0.05] dark:border-white/[0.05] bg-[#F9F9FB] dark:bg-black/20">
                 {[["Principal",$$(ld.totalPrin),"text-slate-800 dark:text-zinc-100"],["Interest",$$(ld.totalInt),"text-emerald-600 dark:text-emerald-400"],["Avg Rate",ld.avgRate.toFixed(1)+"%","text-slate-800 dark:text-zinc-100"]].map(([l,v,c])=>(
                   <div key={l} className="px-4 py-3 text-center">
                     <div className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-widest mb-1">{l}</div>
@@ -1834,7 +1834,7 @@ function PropertyDashboard({ data }) {
 
       {/* Monthly burn banner */}
       {totalMonthlyBurn>0&&(
-        <div className="mb-4 rounded-2xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 px-5 py-4 flex items-center justify-between">
+        <div className="mb-4 rounded-2xl bg-orange-50 dark:bg-orange-950/30 px-5 py-4 flex items-center justify-between shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
           <div>
             <div className="text-[10px] font-semibold text-orange-500 dark:text-orange-400 uppercase tracking-widest mb-0.5">Monthly Cash Needed</div>
             <div className="text-[11px] text-orange-400 dark:text-orange-500">{$$(monthlyLenderBurn)}/mo interest · {$$(monthlyHoldingBurn)}/mo holding</div>
@@ -1863,7 +1863,7 @@ function PropertyDashboard({ data }) {
       </div>
 
       {/* Capital calculator */}
-      <div className="rounded-2xl border border-slate-200 dark:border-zinc-700 overflow-hidden mb-5 shadow-sm">
+      <div className="rounded-2xl overflow-hidden mb-5 shadow-[0_2px_16px_rgba(0,0,0,0.10)] dark:shadow-none">
         <div className="bg-slate-900 dark:bg-zinc-800 px-6 py-5">
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -1918,8 +1918,8 @@ function PropertyDashboard({ data }) {
       {active.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-12 text-sm">No active properties.</div>}
       <div className="space-y-3">
         {rows.map(({prop,loans,funded,needed,short,under})=>(
-          <div key={prop.id} className={`rounded-2xl border overflow-hidden ${under?"border-red-200 dark:border-red-800":"border-slate-200 dark:border-zinc-800"}`}>
-            <div className={`px-5 py-3.5 border-b ${under?"bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-800":"bg-slate-50 dark:bg-zinc-800 border-slate-100 dark:border-zinc-700"}`}>
+          <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+            <div className={`px-5 py-3.5 border-b border-black/[0.06] dark:border-white/[0.06] ${under?"bg-red-50/60 dark:bg-red-950/15":""}`}>
               <div className="flex justify-between items-center mb-2">
                 <span className="font-semibold text-slate-900 dark:text-zinc-100">{prop.address}</span>
                 {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{$$(short)}</span>}
@@ -1933,10 +1933,10 @@ function PropertyDashboard({ data }) {
               </div>
             </div>
             {loans.length>0&&(
-              <table className="w-full text-xs bg-white dark:bg-zinc-900">
-                <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
+              <table className="w-full text-xs bg-white dark:bg-[#1C1C1E]">
+                <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                   {loans.map(l=>(
-                    <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
+                    <tr key={l.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
                       <td className="px-5 py-2.5 font-semibold text-slate-800 dark:text-zinc-100">{l.lenderName}</td>
                       <td className="px-3 py-2.5"><TypeBadge type={l.loanType} sm/></td>
                       <td className="px-3 py-2.5 text-right text-slate-600 dark:text-zinc-300 tabular-nums">{$$(l.principal)}</td>
@@ -2006,8 +2006,8 @@ function ClosedDealsPage({ data }) {
           const profit=cd?.profit??null;
 
           return (
-            <div key={prop.id} className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden shadow-sm">
-              <div onClick={()=>toggle(prop.id)} className="cursor-pointer px-5 py-4 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
+            <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+              <div onClick={()=>toggle(prop.id)} className="cursor-pointer px-5 py-4 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{prop.address||"Unnamed"}</div>
@@ -2036,20 +2036,20 @@ function ClosedDealsPage({ data }) {
               </div>
 
               {isOpen&&(
-                <div className="border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/30 px-5 py-4">
+                <div className="border-t border-black/[0.06] dark:border-white/[0.06] bg-[#F9F9FB] dark:bg-black/20 px-5 py-4">
                   <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Lenders</div>
                   {prop.loans.length===0
                     ?<div className="text-xs text-slate-400 dark:text-zinc-500">No loans recorded</div>
                     :<table className="w-full text-xs">
                       <thead>
-                        <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-200 dark:border-zinc-700">
+                        <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-black/[0.06] dark:border-white/[0.06]">
                           <th className="pb-1.5 text-left font-semibold">Lender</th>
                           <th className="pb-1.5 text-right font-semibold">Amount</th>
                           <th className="pb-1.5 text-right font-semibold">Rate</th>
                           <th className="pb-1.5 text-right font-semibold">Type</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                      <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                         {prop.loans.map(l=>(
                           <tr key={l.id}>
                             <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100">{l.lenderName}</td>
@@ -2130,15 +2130,15 @@ function HistoryPage({ data }) {
         <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{filtered.length} events</span>
       </div>
       <div className="flex gap-2 mb-4">
-        <select value={lf} onChange={e=>setLf(e.target.value)} className="flex-1 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <select value={lf} onChange={e=>setLf(e.target.value)} className="flex-1 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
           <option value="all">All Lenders</option>{allL.map(l=><option key={l} value={l}>{l}</option>)}
         </select>
-        <select value={tf} onChange={e=>setTf(e.target.value)} className="border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <select value={tf} onChange={e=>setTf(e.target.value)} className="rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
           <option value="all">All Types</option><option value="private">Private</option><option value="hard">Hard</option>
         </select>
       </div>
       {!filtered.length&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">📋</div><p className="font-semibold">No transactions yet</p></div>}
-      <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden divide-y divide-slate-100 dark:divide-zinc-800">
+      <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none divide-y divide-black/[0.05] dark:divide-white/[0.05]">
         {filtered.map((ev,i)=>{
           const c=cfg[ev.etype]??cfg.closed;const pos=ev.nc>=0;const roll=ev.etype==="start"&&ev.pp>0;
           const rateLabel=ev.interestType==="fixed"?"$"+Math.round(ev.rate).toLocaleString()+" fixed":ev.rate+"%/yr";
@@ -2149,7 +2149,7 @@ function HistoryPage({ data }) {
             const wireLenders=(cd.lenderPayoffs||[]).filter(lp=>(lp.wireAmount||0)>0.01);
             const profitAtClose=(cd.profit||0)-(cd.overageRefund||0);
             return(
-              <div key={ev.loanId} className="bg-blue-50 dark:bg-blue-950/20 border-l-4 border-blue-400 dark:border-blue-600 px-5 py-4">
+              <div key={ev.loanId} className="bg-blue-50/70 dark:bg-blue-950/15 border-l-4 border-blue-400 dark:border-blue-500 px-5 py-4">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-lg">🏡</span>
                   <div>
@@ -2162,15 +2162,15 @@ function HistoryPage({ data }) {
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-xs">
-                  <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
+                  <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
                     <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Total Disbursed</div>
                     {cd.cashToClose>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Cash to Close</span><span className="tabular-nums">{$$(cd.cashToClose)}</span></div>}
                     {cd.rehab>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Rehab</span><span className="tabular-nums">{$$(cd.rehab)}</span></div>}
                     {cd.moneyCosts>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Money Costs</span><span className="tabular-nums">{$$(cd.moneyCosts)}</span></div>}
                     {cd.misc>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Misc / Holding</span><span className="tabular-nums">{$$(cd.misc)}</span></div>}
-                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.totalCosts)}</span></div>
+                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.totalCosts)}</span></div>
                   </div>
-                  <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
+                  <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
                     <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Funded By</div>
                     {(cd.lenderPayoffs||[]).map(lp=>(
                       <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
@@ -2179,9 +2179,9 @@ function HistoryPage({ data }) {
                       </div>
                     ))}
                     {nexusFunded>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{$$(nexusFunded)}</span></div>}
-                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.totalCosts)}</span></div>
+                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.totalCosts)}</span></div>
                   </div>
-                  <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
+                  <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
                     <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Wire Breakdown</div>
                     {wireLenders.map(lp=>(
                       <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
@@ -2200,14 +2200,14 @@ function HistoryPage({ data }) {
                         <span className="tabular-nums">{$$(cd.overageRefund)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{$$(cd.wire)}</span></div>
+                    <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{$$(cd.wire)}</span></div>
                   </div>
                 </div>
               </div>
             );
           }
           return(
-            <div key={`${ev.loanId}-${ev.etype}-${i}`} className="flex items-start gap-3 px-5 py-4 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
+            <div key={`${ev.loanId}-${ev.etype}-${i}`} className="flex items-start gap-3 px-5 py-4 bg-white dark:bg-[#1C1C1E] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
               <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 ${c.cls}`}>{c.icon}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
@@ -2286,44 +2286,43 @@ export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
   }
 
   if(loading) return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex items-center justify-center">
+    <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
         <div className="w-8 h-8 rounded-full border-2 border-slate-200 dark:border-zinc-700 border-t-blue-500 animate-spin"/>
-        <div className="text-slate-400 dark:text-zinc-500 text-sm font-medium tracking-wide">Loading…</div>
+        <div className="text-slate-400 dark:text-zinc-500 text-sm font-medium">Loading…</div>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 transition-colors duration-200">
-      {/* Header */}
-      <div className="bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 sticky top-0 z-40 shadow-[0_1px_12px_rgba(0,0,0,0.06)] dark:shadow-none">
-        <div className="px-5 pt-3.5 pb-0">
+    <div className="min-h-screen bg-[#F2F2F7] dark:bg-black transition-colors duration-300">
+      {/* Header — frosted glass */}
+      <div className="bg-white/85 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.07] sticky top-0 z-40">
+        <div className="px-5 pt-3.5 pb-0 max-w-2xl mx-auto">
           <div className="flex items-center gap-3 mb-3">
             {/* Logo mark */}
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-slate-900 dark:from-blue-500 dark:to-zinc-800 flex items-center justify-center shrink-0 shadow-md shadow-blue-200/50 dark:shadow-none">
+            <div className="w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/30">
               <span className="text-white font-black text-sm tracking-tight">N</span>
             </div>
             <div>
-              <div className="font-black text-slate-900 dark:text-zinc-100 leading-none tracking-tight">Nexus Homes</div>
-              <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 uppercase tracking-widest font-semibold">Private Money Tracker</div>
+              <div className="font-semibold text-[15px] text-slate-900 dark:text-white leading-none tracking-[-0.3px]">Nexus Homes</div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5 font-medium">Private Money Tracker</div>
             </div>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-2.5">
               <button onClick={onToggleDark}
-                className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/15 transition-all"
                 title={dark?"Switch to light":"Switch to dark"}>
-                {dark?"☀️":"🌙"}
+                <span className="text-[15px] leading-none">{dark?"☀️":"🌙"}</span>
               </button>
-              <span className="text-xs text-slate-400 dark:text-zinc-500 hidden sm:block max-w-[120px] truncate">{userEmail}</span>
-              <button onClick={onSignOut} className="text-xs font-medium text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 border border-slate-200 dark:border-zinc-700 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800">Sign out</button>
+              <button onClick={onSignOut} className="text-[12px] font-semibold text-blue-600 dark:text-blue-400 hover:opacity-75 transition-opacity">Sign out</button>
             </div>
           </div>
           {/* Tabs */}
           <div className="flex overflow-x-auto -mb-px gap-0">
             {TABS.map(t=>(
               <button key={t.id} onClick={()=>setTab(t.id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-all shrink-0 ${tab===t.id?"border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400":"border-transparent text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300 hover:border-slate-300 dark:hover:border-zinc-600"}`}>
-                <span>{t.label}</span><span>{t.full}</span>
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-[12px] font-semibold whitespace-nowrap border-b-2 transition-all shrink-0 ${tab===t.id?"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400":"border-transparent text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
+                <span>{t.label}</span><span className="tracking-[-0.1px]">{t.full}</span>
               </button>
             ))}
           </div>
@@ -2331,7 +2330,7 @@ export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
       </div>
 
       {/* Page content */}
-      <div className="p-4 max-w-2xl mx-auto pb-16">
+      <div className="px-4 pt-5 max-w-2xl mx-auto pb-20">
         {tab==="Properties" &&<PropertiesPage data={data} update={update}/>}
         {tab==="LenderDash"&&<LenderDashboard data={data}/>}
         {tab==="PropDash"  &&<PropertyDashboard data={data}/>}
