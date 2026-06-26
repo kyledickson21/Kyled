@@ -1961,11 +1961,12 @@ function ClosedDealsPage({ data }) {
 
   const closed=[...data.properties.filter(p=>p.dateSold)].sort((a,b)=>(b.dateSold||"").localeCompare(a.dateSold||""));
   const withData=closed.filter(p=>p.closingData);
+  const n=withData.length||1;
 
-  const totalWire=withData.reduce((s,p)=>s+(p.closingData.wire||0),0);
-  const totalCosts=withData.reduce((s,p)=>s+(p.closingData.totalCosts||0),0);
+  const avgC2C=Math.round(withData.reduce((s,p)=>s+(p.closingData.cashToClose||0),0)/n);
+  const avgRehab=Math.round(withData.reduce((s,p)=>s+(p.closingData.rehab||0),0)/n);
+  const avgProfit=Math.round(withData.reduce((s,p)=>s+(p.closingData.profit||0),0)/n);
   const totalProfit=withData.reduce((s,p)=>s+(p.closingData.profit||0),0);
-  const avgRoi=totalWire>0?Math.round(totalProfit/totalWire*100):0;
 
   return (
     <div>
@@ -1983,17 +1984,17 @@ function ClosedDealsPage({ data }) {
             <div className="text-2xl font-bold">{withData.length}</div>
           </div>
           <div className="bg-blue-600 rounded-2xl p-4 text-center text-white">
-            <div className="text-[9px] font-semibold text-blue-200 uppercase tracking-widest mb-2">Total Wire In</div>
-            <div className="text-xl font-bold tabular-nums">{$$c(totalWire)}</div>
+            <div className="text-[9px] font-semibold text-blue-200 uppercase tracking-widest mb-2">Avg Cash to Close</div>
+            <div className="text-xl font-bold tabular-nums">{$$c(avgC2C)}</div>
           </div>
           <div className="bg-slate-700 dark:bg-zinc-700 rounded-2xl p-4 text-center text-white">
-            <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Total Costs</div>
-            <div className="text-xl font-bold tabular-nums">{$$c(totalCosts)}</div>
+            <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Avg Rehab</div>
+            <div className="text-xl font-bold tabular-nums">{$$c(avgRehab)}</div>
           </div>
           <div className={`${totalProfit>=0?"bg-emerald-600":"bg-red-600"} rounded-2xl p-4 text-center text-white`}>
-            <div className="text-[9px] font-semibold text-white/70 uppercase tracking-widest mb-2">Total Profit</div>
-            <div className="text-xl font-bold tabular-nums">{$$c(totalProfit)}</div>
-            <div className="text-[10px] text-white/60 mt-1">{avgRoi}% avg ROI</div>
+            <div className="text-[9px] font-semibold text-white/70 uppercase tracking-widest mb-2">Avg Profit</div>
+            <div className="text-xl font-bold tabular-nums">{$$c(avgProfit)}</div>
+            <div className="text-[10px] text-white/60 mt-1">Total {$$c(totalProfit)}</div>
           </div>
         </div>
       )}
@@ -2003,11 +2004,6 @@ function ClosedDealsPage({ data }) {
           const cd=prop.closingData;
           const isOpen=!!expanded[prop.id];
           const profit=cd?.profit??null;
-          const roi=cd?.wire>0?Math.round((cd.profit/cd.wire)*100):null;
-          const lenderPrincipals=(cd?.lenderPayoffs||[]).reduce((s,lp)=>s+(lp.principalPayoff||0),0);
-          const nexusFunded=Math.max(0,(cd?.totalCosts||0)-lenderPrincipals);
-          const wireLenders=(cd?.lenderPayoffs||[]).filter(lp=>(lp.wireAmount||0)>0.01);
-          const profitAtClose=(cd?.profit||0)-(cd?.overageRefund||0);
 
           return (
             <div key={prop.id} className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden shadow-sm">
@@ -2020,69 +2016,51 @@ function ClosedDealsPage({ data }) {
                   {cd?(
                     <div className="flex items-center gap-4 shrink-0">
                       <div className="text-right">
-                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Wire</div>
-                        <div className="text-sm font-bold text-blue-700 dark:text-blue-400 tabular-nums">{$$(cd.wire)}</div>
+                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Cash to Close</div>
+                        <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.cashToClose||0)}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Costs</div>
-                        <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.totalCosts)}</div>
+                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Rehab</div>
+                        <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.rehab||0)}</div>
                       </div>
                       <div className="text-right">
                         <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Profit</div>
                         <div className={`text-sm font-bold tabular-nums ${profit>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{$$s(profit)}</div>
-                        {roi!==null&&<div className="text-[9px] text-slate-400 dark:text-zinc-500 tabular-nums">{roi}% ROI</div>}
                       </div>
                       <span className="text-slate-300 dark:text-zinc-600 text-xs">{isOpen?"▲":"▼"}</span>
                     </div>
                   ):(
-                    <div className="text-xs text-slate-400 dark:text-zinc-500 italic">No closing data</div>
+                    <div className="text-xs text-slate-400 dark:text-zinc-500 italic shrink-0">No closing data</div>
                   )}
                 </div>
               </div>
 
-              {isOpen&&cd&&(
-                <div className="border-t border-slate-100 dark:border-zinc-800 bg-blue-50 dark:bg-blue-950/20 px-5 py-4">
-                  <div className="grid grid-cols-3 gap-3 text-xs">
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
-                      <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Total Disbursed</div>
-                      {cd.cashToClose>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Cash to Close</span><span className="tabular-nums">{$$(cd.cashToClose)}</span></div>}
-                      {cd.rehab>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Rehab</span><span className="tabular-nums">{$$(cd.rehab)}</span></div>}
-                      {cd.moneyCosts>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Money Costs</span><span className="tabular-nums">{$$(cd.moneyCosts)}</span></div>}
-                      {cd.misc>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Misc / Holding</span><span className="tabular-nums">{$$(cd.misc)}</span></div>}
-                      <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.totalCosts)}</span></div>
-                    </div>
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
-                      <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Funded By</div>
-                      {(cd.lenderPayoffs||[]).map(lp=>(
-                        <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
-                          <span className="truncate mr-1">{lp.lenderName}{lp.type==="waiveInterest"&&<span className="text-amber-500 ml-1 text-[10px]">(waived int.)</span>}</span>
-                          <span className="tabular-nums shrink-0">{$$(lp.principalPayoff)}</span>
-                        </div>
-                      ))}
-                      {nexusFunded>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{$$(nexusFunded)}</span></div>}
-                      <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.totalCosts)}</span></div>
-                    </div>
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
-                      <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Wire Breakdown</div>
-                      {wireLenders.map(lp=>(
-                        <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
-                          <span className="truncate mr-1">{lp.lenderName}</span>
-                          <span className="tabular-nums shrink-0">{$$(lp.wireAmount)}</span>
-                        </div>
-                      ))}
-                      {(cd.selfFunded||0)>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{$$(cd.selfFunded)}</span></div>}
-                      <div className="flex justify-between font-semibold text-emerald-600 dark:text-emerald-400">
-                        <span>Profit</span><span className="tabular-nums">{$$(profitAtClose)}</span>
-                      </div>
-                      {(cd.overageRefund||0)>0.01&&(
-                        <div className="flex justify-between text-amber-600 dark:text-amber-400 text-[10px]">
-                          <span>+ Overage <span className="opacity-70">(post-close)</span></span>
-                          <span className="tabular-nums">{$$(cd.overageRefund)}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{$$(cd.wire)}</span></div>
-                    </div>
-                  </div>
+              {isOpen&&(
+                <div className="border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/30 px-5 py-4">
+                  <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Lenders</div>
+                  {prop.loans.length===0
+                    ?<div className="text-xs text-slate-400 dark:text-zinc-500">No loans recorded</div>
+                    :<table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-200 dark:border-zinc-700">
+                          <th className="pb-1.5 text-left font-semibold">Lender</th>
+                          <th className="pb-1.5 text-right font-semibold">Amount</th>
+                          <th className="pb-1.5 text-right font-semibold">Rate</th>
+                          <th className="pb-1.5 text-right font-semibold">Type</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                        {prop.loans.map(l=>(
+                          <tr key={l.id}>
+                            <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100">{l.lenderName}</td>
+                            <td className="py-2 text-right tabular-nums text-slate-700 dark:text-zinc-200">{$$(l.principal)}</td>
+                            <td className="py-2 text-right tabular-nums text-slate-500 dark:text-zinc-400">{fmtRate(l)}</td>
+                            <td className="py-2 text-right"><TypeBadge type={l.loanType} sm/></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  }
                 </div>
               )}
             </div>
