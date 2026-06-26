@@ -222,7 +222,7 @@ const Btn = ({onClick,children,color="blue",full,sm,disabled}) => {
     blue:  "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm shadow-blue-200 dark:shadow-none",
     green: "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-sm shadow-emerald-200 dark:shadow-none",
     purple:"bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white shadow-sm shadow-violet-200 dark:shadow-none",
-    red:   "bg-red-500 hover:bg-red-600 text-white",
+    red:   "bg-red-500 hover:bg-red-600 active:bg-red-700 text-white shadow-sm shadow-red-200 dark:shadow-none",
     ghost: "bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200",
     navy:  "bg-slate-900 hover:bg-slate-800 text-white dark:bg-zinc-700 dark:hover:bg-zinc-600",
   };
@@ -255,8 +255,8 @@ function LenderAutocomplete({ value, onChange, properties }) {
         <div className="absolute z-50 mt-1 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden">
           {matches.map(name => (
             <button key={name} onMouseDown={e=>{ e.preventDefault(); onChange(name); setShow(false); }}
-              className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors border-b border-slate-50 dark:border-zinc-800 last:border-0 flex items-center gap-2">
-              <span className="text-slate-300 dark:text-zinc-600 text-xs">👤</span>{name}
+              className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors border-b border-slate-50 dark:border-zinc-800 last:border-0 flex items-center gap-2.5">
+              <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 flex items-center justify-center text-[10px] font-bold shrink-0">{name[0]?.toUpperCase()}</span>{name}
             </button>
           ))}
         </div>
@@ -1338,7 +1338,7 @@ function PropertiesPage({ data, update }) {
 
       <button onClick={()=>setModal("addMoney")}
         className="w-full mb-5 py-4 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-all flex items-center justify-center gap-3 group">
-        <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-lg font-bold group-hover:scale-105 transition-transform shadow-sm">+</div>
+        <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-lg font-bold group-hover:scale-105 transition-transform shadow-sm shadow-blue-200 dark:shadow-none">+</div>
         <div className="text-left">
           <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">Add Lender Money</div>
           <div className="text-xs text-slate-400 dark:text-zinc-500">Place on a property or hold as unassigned</div>
@@ -1396,7 +1396,7 @@ function PropertiesPage({ data, update }) {
                             {h}
                             {isActive
                               ? <span className="text-blue-500 ml-0.5">{propSort.dir==="asc"?"↑":"↓"}</span>
-                              : <span className="opacity-25 ml-0.5">↕</span>
+                              : <span className="opacity-40 ml-0.5">↕</span>
                             }
                           </span>
                         </th>
@@ -1420,10 +1420,10 @@ function PropertiesPage({ data, update }) {
                         {!prop.dateSold&&!full&&!under&&funded===0&&<span className="text-slate-300 dark:text-zinc-600">—</span>}
                       </td>
                       <td className="py-2.5 px-2 text-right">
-                        <div className="flex gap-0.5 justify-end">
-                          {!prop.dateSold&&<button onClick={()=>setModal({type:"markSold",prop})} className="p-1 text-slate-300 dark:text-zinc-600 hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors text-[11px] font-bold" title="Mark Sold">$</button>}
-                          <button onClick={()=>setModal({type:"editProp",prop})} className="p-1 text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors">✏️</button>
-                          <button onClick={()=>delProp(prop.id)} className="p-1 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors">🗑</button>
+                        <div className="flex gap-0.5 justify-end items-center">
+                          {!prop.dateSold&&<button onClick={()=>setModal({type:"markSold",prop})} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all text-[11px] font-bold" title="Mark Sold">$</button>}
+                          <button onClick={()=>setModal({type:"editProp",prop})} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs">✏️</button>
+                          <button onClick={()=>delProp(prop.id)} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs">🗑</button>
                         </div>
                       </td>
                     </tr>
@@ -1491,15 +1491,15 @@ function PropertiesPage({ data, update }) {
                         Mark Sold
                       </button>
                     )}
-                    <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors">✏️</button>
-                    <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors">🗑</button>
-                    <span className="p-1.5 text-slate-300 dark:text-zinc-600 text-xs">{isOpen?"▲":"▼"}</span>
+                    <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit">✏️</button>
+                    <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm" title="Delete">🗑</button>
+                    <span className="w-6 h-6 flex items-center justify-center rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 text-[10px] font-bold">{isOpen?"▲":"▼"}</span>
                   </div>
                 </div>
                 {!isOpen&&active.length>0&&(
                   <div className="px-5 pb-3 flex flex-wrap gap-1.5">
                     {active.map(l=>(
-                      <span key={l.id} className="text-[11px] bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-full px-2.5 py-1 font-medium tabular-nums">
+                      <span key={l.id} className="text-[11px] bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 rounded-full px-2.5 py-1 font-medium tabular-nums">
                         {l.lenderName} · {$$(l.principal)}
                       </span>
                     ))}
@@ -1508,12 +1508,12 @@ function PropertiesPage({ data, update }) {
               </div>
 
               {isOpen&&(
-                <div className="border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 px-5 py-4">
+                <div className="border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/20 px-5 py-4">
                   <div className="flex justify-between items-center mb-3">
-                    <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Loans · {prop.loans.length}</span>
+                    <span className="text-[11px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Loans · {prop.loans.length}</span>
                     <Btn onClick={()=>setModal({type:"addMoney",propId:prop.id})} color="green" sm>+ Add Money</Btn>
                   </div>
-                  {prop.loans.length===0&&<div className="text-center py-6 text-slate-400 dark:text-zinc-500 text-sm">No loans yet</div>}
+                  {prop.loans.length===0&&<div className="text-center py-8 text-slate-400 dark:text-zinc-500 text-sm">No loans on this property yet</div>}
                   <div className="space-y-2">
                     {prop.loans.map(loan=>{
                       const bal=calcBalance(loan);
@@ -1521,7 +1521,7 @@ function PropertiesPage({ data, update }) {
                       const monthly=monthlyLoanPayment(loan);
                       const drawn=(loan.drawFacility?.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
                       return (
-                        <div key={loan.id} className={`rounded-xl p-4 border text-sm ${loan.endDate?"bg-white/40 dark:bg-zinc-900/40 border-slate-100 dark:border-zinc-800":"bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700"}`}>
+                        <div key={loan.id} className={`rounded-xl p-4 border text-sm transition-all ${loan.endDate?"bg-white/50 dark:bg-zinc-900/30 border-slate-100 dark:border-zinc-800/60 opacity-70":"bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700 shadow-sm"}`}>
                           <div className="flex justify-between items-start gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -1579,11 +1579,11 @@ function PropertiesPage({ data, update }) {
                                 </div>
                               )}
                             </div>
-                            <div className="flex gap-1 shrink-0">
-                              <button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-violet-500 dark:hover:text-violet-400 transition-colors" title="Move">⇄</button>
-                              <button onClick={()=>setModal({type:"editLoan",propId:prop.id,loan})} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors" title="Edit">✏️</button>
-                              <button onClick={()=>setModal({type:"closeLoan",propId:prop.id,loan})} className="px-2 py-1 text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-orange-500 dark:hover:text-orange-400 border border-slate-200 dark:border-zinc-700 hover:border-orange-300 dark:hover:border-orange-700 rounded-lg transition-colors" title="Close Loan">Close Loan</button>
-                              <button onClick={()=>delLoan(prop.id,loan.id)} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Delete">🗑</button>
+                            <div className="flex gap-1 shrink-0 items-center">
+                              <button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-violet-500 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-all text-base" title="Move">⇄</button>
+                              <button onClick={()=>setModal({type:"editLoan",propId:prop.id,loan})} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit">✏️</button>
+                              {!loan.endDate&&<button onClick={()=>setModal({type:"closeLoan",propId:prop.id,loan})} className="px-2 py-1 text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-orange-600 dark:hover:text-orange-400 bg-slate-50 dark:bg-zinc-800 hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-slate-200 dark:border-zinc-700 hover:border-orange-200 dark:hover:border-orange-800 rounded-lg transition-all" title="Close Loan">Close Loan</button>}
+                              <button onClick={()=>delLoan(prop.id,loan.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm" title="Delete">🗑</button>
                             </div>
                           </div>
                         </div>
@@ -1722,7 +1722,7 @@ function LenderDashboard({ data }) {
                             {h}
                             {canSort&&(isActive
                               ? <span className="text-blue-500 ml-0.5">{sort.dir==="asc"?"↑":"↓"}</span>
-                              : <span className="opacity-25 ml-0.5">↕</span>
+                              : <span className="opacity-40 ml-0.5">↕</span>
                             )}
                           </span>
                         </th>
@@ -2208,7 +2208,7 @@ function HistoryPage({ data }) {
           }
           return(
             <div key={`${ev.loanId}-${ev.etype}-${i}`} className="flex items-start gap-3 px-5 py-4 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0 mt-0.5 ${c.cls}`}>{c.icon}</div>
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 ${c.cls}`}>{c.icon}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -2224,10 +2224,10 @@ function HistoryPage({ data }) {
                     {ev.disposition==="waiveInterest"&&(ev.interest||0)>0.01&&<div className="text-xs text-amber-500 dark:text-amber-400 mt-0.5 tabular-nums">{$$(ev.interest)} interest waived</div>}
                     {roll&&ev.pp>0&&<div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">Rolled from {$$(ev.pp)}</div>}
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="text-right shrink-0 min-w-[80px]">
                     <div className="font-bold text-slate-900 dark:text-zinc-100 tabular-nums">{$$(ev.amount)}</div>
                     <div className={`text-sm font-bold tabular-nums ${pos?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{$$s(ev.nc)}</div>
-                    <div className="text-[10px] text-slate-400 dark:text-zinc-500">net change</div>
+                    <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">net change</div>
                   </div>
                 </div>
               </div>
@@ -2287,18 +2287,21 @@ export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
 
   if(loading) return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex items-center justify-center">
-      <div className="text-slate-400 dark:text-zinc-500 text-sm">Loading…</div>
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 rounded-full border-2 border-slate-200 dark:border-zinc-700 border-t-blue-500 animate-spin"/>
+        <div className="text-slate-400 dark:text-zinc-500 text-sm font-medium tracking-wide">Loading…</div>
+      </div>
     </div>
   );
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 transition-colors duration-200">
       {/* Header */}
-      <div className="bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 sticky top-0 z-40" style={{boxShadow:"0 1px 12px rgba(0,0,0,0.06)"}}>
+      <div className="bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 sticky top-0 z-40 shadow-[0_1px_12px_rgba(0,0,0,0.06)] dark:shadow-none">
         <div className="px-5 pt-3.5 pb-0">
           <div className="flex items-center gap-3 mb-3">
             {/* Logo mark */}
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-700 to-slate-950 dark:from-zinc-600 dark:to-zinc-800 flex items-center justify-center shrink-0 shadow-md">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-slate-900 dark:from-blue-500 dark:to-zinc-800 flex items-center justify-center shrink-0 shadow-md shadow-blue-200/50 dark:shadow-none">
               <span className="text-white font-black text-sm tracking-tight">N</span>
             </div>
             <div>
@@ -2319,7 +2322,7 @@ export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
           <div className="flex overflow-x-auto -mb-px gap-0">
             {TABS.map(t=>(
               <button key={t.id} onClick={()=>setTab(t.id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-all shrink-0 ${tab===t.id?"border-slate-900 dark:border-zinc-100 text-slate-900 dark:text-zinc-100":"border-transparent text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-all shrink-0 ${tab===t.id?"border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400":"border-transparent text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300 hover:border-slate-300 dark:hover:border-zinc-600"}`}>
                 <span>{t.label}</span><span>{t.full}</span>
               </button>
             ))}
