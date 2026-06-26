@@ -1954,6 +1954,145 @@ function PropertyDashboard({ data }) {
   );
 }
 
+// ─── Closed Deals ─────────────────────────────────────────────────────────────
+function ClosedDealsPage({ data }) {
+  const [expanded,setExpanded]=useState({});
+  const toggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
+
+  const closed=[...data.properties.filter(p=>p.dateSold)].sort((a,b)=>(b.dateSold||"").localeCompare(a.dateSold||""));
+  const withData=closed.filter(p=>p.closingData);
+
+  const totalWire=withData.reduce((s,p)=>s+(p.closingData.wire||0),0);
+  const totalCosts=withData.reduce((s,p)=>s+(p.closingData.totalCosts||0),0);
+  const totalProfit=withData.reduce((s,p)=>s+(p.closingData.profit||0),0);
+  const avgRoi=totalWire>0?Math.round(totalProfit/totalWire*100):0;
+
+  return (
+    <div>
+      <div className="mb-5">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Closed Deals</h2>
+        <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">{closed.length} propert{closed.length===1?"y":"ies"} sold</p>
+      </div>
+
+      {closed.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-16 text-sm">No closed properties yet.</div>}
+
+      {withData.length>0&&(
+        <div className="grid grid-cols-4 gap-2 mb-5">
+          <div className="bg-slate-900 dark:bg-zinc-800 rounded-2xl p-4 text-center text-white">
+            <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Deals Closed</div>
+            <div className="text-2xl font-bold">{withData.length}</div>
+          </div>
+          <div className="bg-blue-600 rounded-2xl p-4 text-center text-white">
+            <div className="text-[9px] font-semibold text-blue-200 uppercase tracking-widest mb-2">Total Wire In</div>
+            <div className="text-xl font-bold tabular-nums">{$$c(totalWire)}</div>
+          </div>
+          <div className="bg-slate-700 dark:bg-zinc-700 rounded-2xl p-4 text-center text-white">
+            <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Total Costs</div>
+            <div className="text-xl font-bold tabular-nums">{$$c(totalCosts)}</div>
+          </div>
+          <div className={`${totalProfit>=0?"bg-emerald-600":"bg-red-600"} rounded-2xl p-4 text-center text-white`}>
+            <div className="text-[9px] font-semibold text-white/70 uppercase tracking-widest mb-2">Total Profit</div>
+            <div className="text-xl font-bold tabular-nums">{$$c(totalProfit)}</div>
+            <div className="text-[10px] text-white/60 mt-1">{avgRoi}% avg ROI</div>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {closed.map(prop=>{
+          const cd=prop.closingData;
+          const isOpen=!!expanded[prop.id];
+          const profit=cd?.profit??null;
+          const roi=cd?.wire>0?Math.round((cd.profit/cd.wire)*100):null;
+          const lenderPrincipals=(cd?.lenderPayoffs||[]).reduce((s,lp)=>s+(lp.principalPayoff||0),0);
+          const nexusFunded=Math.max(0,(cd?.totalCosts||0)-lenderPrincipals);
+          const wireLenders=(cd?.lenderPayoffs||[]).filter(lp=>(lp.wireAmount||0)>0.01);
+          const profitAtClose=(cd?.profit||0)-(cd?.overageRefund||0);
+
+          return (
+            <div key={prop.id} className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden shadow-sm">
+              <div onClick={()=>toggle(prop.id)} className="cursor-pointer px-5 py-4 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{prop.address||"Unnamed"}</div>
+                    <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Sold {prop.dateSold}</div>
+                  </div>
+                  {cd?(
+                    <div className="flex items-center gap-4 shrink-0">
+                      <div className="text-right">
+                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Wire</div>
+                        <div className="text-sm font-bold text-blue-700 dark:text-blue-400 tabular-nums">{$$(cd.wire)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Costs</div>
+                        <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.totalCosts)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Profit</div>
+                        <div className={`text-sm font-bold tabular-nums ${profit>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{$$s(profit)}</div>
+                        {roi!==null&&<div className="text-[9px] text-slate-400 dark:text-zinc-500 tabular-nums">{roi}% ROI</div>}
+                      </div>
+                      <span className="text-slate-300 dark:text-zinc-600 text-xs">{isOpen?"▲":"▼"}</span>
+                    </div>
+                  ):(
+                    <div className="text-xs text-slate-400 dark:text-zinc-500 italic">No closing data</div>
+                  )}
+                </div>
+              </div>
+
+              {isOpen&&cd&&(
+                <div className="border-t border-slate-100 dark:border-zinc-800 bg-blue-50 dark:bg-blue-950/20 px-5 py-4">
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
+                      <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Total Disbursed</div>
+                      {cd.cashToClose>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Cash to Close</span><span className="tabular-nums">{$$(cd.cashToClose)}</span></div>}
+                      {cd.rehab>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Rehab</span><span className="tabular-nums">{$$(cd.rehab)}</span></div>}
+                      {cd.moneyCosts>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Money Costs</span><span className="tabular-nums">{$$(cd.moneyCosts)}</span></div>}
+                      {cd.misc>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Misc / Holding</span><span className="tabular-nums">{$$(cd.misc)}</span></div>}
+                      <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.totalCosts)}</span></div>
+                    </div>
+                    <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
+                      <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Funded By</div>
+                      {(cd.lenderPayoffs||[]).map(lp=>(
+                        <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
+                          <span className="truncate mr-1">{lp.lenderName}{lp.type==="waiveInterest"&&<span className="text-amber-500 ml-1 text-[10px]">(waived int.)</span>}</span>
+                          <span className="tabular-nums shrink-0">{$$(lp.principalPayoff)}</span>
+                        </div>
+                      ))}
+                      {nexusFunded>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{$$(nexusFunded)}</span></div>}
+                      <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.totalCosts)}</span></div>
+                    </div>
+                    <div className="bg-white dark:bg-zinc-900 rounded-lg p-3 space-y-1.5">
+                      <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Wire Breakdown</div>
+                      {wireLenders.map(lp=>(
+                        <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
+                          <span className="truncate mr-1">{lp.lenderName}</span>
+                          <span className="tabular-nums shrink-0">{$$(lp.wireAmount)}</span>
+                        </div>
+                      ))}
+                      {(cd.selfFunded||0)>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{$$(cd.selfFunded)}</span></div>}
+                      <div className="flex justify-between font-semibold text-emerald-600 dark:text-emerald-400">
+                        <span>Profit</span><span className="tabular-nums">{$$(profitAtClose)}</span>
+                      </div>
+                      {(cd.overageRefund||0)>0.01&&(
+                        <div className="flex justify-between text-amber-600 dark:text-amber-400 text-[10px]">
+                          <span>+ Overage <span className="opacity-70">(post-close)</span></span>
+                          <span className="tabular-nums">{$$(cd.overageRefund)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-slate-100 dark:border-zinc-800 pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{$$(cd.wire)}</span></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── History ──────────────────────────────────────────────────────────────────
 function HistoryPage({ data }) {
   const [lf,setLf]=useState("all");
@@ -2123,7 +2262,7 @@ function HistoryPage({ data }) {
 }
 
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
-const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"History",label:"📋",full:"History"}];
+const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"}];
 
 export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
@@ -2215,6 +2354,7 @@ export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
         {tab==="Properties" &&<PropertiesPage data={data} update={update}/>}
         {tab==="LenderDash"&&<LenderDashboard data={data}/>}
         {tab==="PropDash"  &&<PropertyDashboard data={data}/>}
+        {tab==="Closed"    &&<ClosedDealsPage data={data}/>}
         {tab==="History"   &&<HistoryPage data={data}/>}
       </div>
     </div>
