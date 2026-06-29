@@ -24,3 +24,15 @@ input[type=number]::-webkit-outer-spin-button {
 input[type=number] {
   -moz-appearance: textfield;
 }
+
+/* iOS-style "jiggle" for home screen icons in edit mode */
+@keyframes icon-jiggle {
+  0%, 100% { transform: rotate(0deg); }
+  20%      { transform: rotate(-2.5deg); }
+  40%      { transform: rotate(2.5deg); }
+  60%      { transform: rotate(-2.5deg); }
+  80%      { transform: rotate(2.5deg); }
+}
+.icon-jiggle {
+  animation: icon-jiggle 0.32s ease-in-out infinite;
+}
