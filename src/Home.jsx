@@ -14,16 +14,34 @@ const COLORS = {
 
 const normalizeUrl = u => /^https?:\/\//i.test(u) ? u : `https://${u}`;
 
-function AppIcon({ label, emoji, gradient, onClick, jiggle, onDelete, dashed, delay = 0 }) {
+// Pull a site's favicon from Google's public favicon service — no API key needed.
+const faviconUrl = u => {
+  try {
+    const { hostname } = new URL(normalizeUrl(u));
+    return `https://www.google.com/s2/favicons?sz=128&domain=${hostname}`;
+  } catch {
+    return null;
+  }
+};
+
+function AppIcon({ label, emoji, logoUrl, gradient, onClick, jiggle, onDelete, dashed, delay = 0 }) {
+  const [logoFailed, setLogoFailed] = useState(false);
+  useEffect(() => setLogoFailed(false), [logoUrl]);
+  const showLogo = !!logoUrl && !logoFailed;
+
   return (
     <div className="flex flex-col items-center gap-1.5">
       <button onClick={onClick} style={jiggle ? { animationDelay: `${delay}ms` } : undefined}
         className={`relative w-16 h-16 rounded-[18px] flex items-center justify-center text-[28px] active:scale-90 transition-transform duration-150 ${jiggle ? "icon-jiggle" : ""} ${
           dashed
             ? "border-2 border-dashed border-slate-300 dark:border-zinc-600 text-slate-300 dark:text-zinc-500 bg-white/40 dark:bg-white/[0.03]"
-            : `bg-gradient-to-br ${gradient} shadow-[0_3px_8px_rgba(0,0,0,0.25)] dark:shadow-[0_3px_10px_rgba(0,0,0,0.55)]`
+            : showLogo
+              ? "bg-white dark:bg-zinc-100 shadow-[0_3px_8px_rgba(0,0,0,0.25)] dark:shadow-[0_3px_10px_rgba(0,0,0,0.55)]"
+              : `bg-gradient-to-br ${gradient} shadow-[0_3px_8px_rgba(0,0,0,0.25)] dark:shadow-[0_3px_10px_rgba(0,0,0,0.55)]`
         }`}>
-        <span style={{textShadow: dashed?undefined:"0 1px 2px rgba(0,0,0,0.15)"}}>{emoji}</span>
+        {showLogo
+          ? <img src={logoUrl} alt="" className="w-9 h-9 object-contain" onError={()=>setLogoFailed(true)}/>
+          : <span style={{textShadow: dashed?undefined:"0 1px 2px rgba(0,0,0,0.15)"}}>{emoji}</span>}
         {onDelete && (
           <span onClick={e=>{e.stopPropagation();onDelete();}}
             className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full bg-zinc-400 dark:bg-zinc-500 text-white flex items-center justify-center text-[14px] font-bold shadow-md leading-none">
@@ -41,11 +59,15 @@ function LinkModal({ init, onSave, onClose }) {
   const [url, setUrl] = useState(init?.url || "");
   const [icon, setIcon] = useState(init?.icon || "🔗");
   const [color, setColor] = useState(init?.color || "blue");
+  const [useLogo, setUseLogo] = useState(init?.useLogo ?? true);
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  const preview = useLogo ? faviconUrl(url) : null;
 
   const submit = e => {
     e.preventDefault();
     if (!label.trim() || !url.trim()) return;
-    onSave({ id: init?.id || uid(), label: label.trim(), url: normalizeUrl(url.trim()), icon: icon.trim() || "🔗", color });
+    onSave({ id: init?.id || uid(), label: label.trim(), url: normalizeUrl(url.trim()), icon: icon.trim() || "🔗", color, useLogo });
   };
 
   return (
@@ -57,7 +79,11 @@ function LinkModal({ init, onSave, onClose }) {
         </div>
         <form onSubmit={submit} className="px-6 py-5 space-y-4">
           <div className="flex justify-center mb-1">
-            <div className={`w-16 h-16 rounded-[18px] bg-gradient-to-br ${COLORS[color]} flex items-center justify-center text-[28px] shadow-[0_3px_8px_rgba(0,0,0,0.25)]`}>{icon || "🔗"}</div>
+            <div className={`w-16 h-16 rounded-[18px] flex items-center justify-center text-[28px] shadow-[0_3px_8px_rgba(0,0,0,0.25)] ${preview && !logoFailed ? "bg-white" : `bg-gradient-to-br ${COLORS[color]}`}`}>
+              {preview && !logoFailed
+                ? <img src={preview} alt="" className="w-9 h-9 object-contain" onError={()=>setLogoFailed(true)}/>
+                : (icon || "🔗")}
+            </div>
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Label</label>
@@ -66,12 +92,16 @@ function LinkModal({ init, onSave, onClose }) {
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">URL</label>
-            <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="docs.google.com/..."
+            <input value={url} onChange={e=>{setUrl(e.target.value); setLogoFailed(false);}} placeholder="docs.google.com/..."
               className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
           </div>
+          <label className="flex items-center gap-2 text-[13px] font-medium text-slate-600 dark:text-zinc-300 select-none">
+            <input type="checkbox" checked={useLogo} onChange={e=>setUseLogo(e.target.checked)} className="w-4 h-4 accent-blue-600"/>
+            Use the site's icon automatically
+          </label>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Icon</label>
+              <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Icon{useLogo && " (fallback)"}</label>
               <input value={icon} onChange={e=>setIcon(e.target.value)} placeholder="📊" maxLength={4}
                 className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-center text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
             </div>
@@ -142,22 +172,21 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
         </div>
       </div>
 
-      <div className="px-6 pt-8 pb-32 max-w-3xl mx-auto">
+      <div className="px-6 pt-8 pb-16 max-w-3xl mx-auto">
         {data===null && <div className="text-center py-16 text-slate-400 dark:text-zinc-500 text-sm">Loading…</div>}
-
-        {data!==null && links.length===0 && !editMode && (
-          <div className="text-center py-10 text-slate-400 dark:text-zinc-500 text-sm">
-            Tap <span className="font-semibold text-blue-600 dark:text-blue-400">Edit</span> or the <span className="font-semibold">+</span> tile below to add your spreadsheets and tools.
-          </div>
-        )}
 
         {data!==null && (
           <div className="grid grid-cols-4 sm:grid-cols-5 gap-x-4 gap-y-7">
+            <AppIcon label="Money Tracker" emoji="💰" gradient="from-blue-500 to-blue-700"
+              jiggle={editMode} onClick={editMode ? undefined : onOpenTracker}/>
+
             {links.map((link,i)=>{
               const grad = COLORS[link.color] || COLORS.blue;
               return (
-                <AppIcon key={link.id} label={link.label} emoji={link.icon} gradient={grad}
-                  jiggle={editMode} delay={(i%5)*70}
+                <AppIcon key={link.id} label={link.label} emoji={link.icon}
+                  logoUrl={link.useLogo!==false ? faviconUrl(link.url) : null}
+                  gradient={grad}
+                  jiggle={editMode} delay={((i+1)%5)*70}
                   onDelete={editMode ? ()=>deleteLink(link.id) : undefined}
                   onClick={()=> editMode ? setModal({type:"edit",link}) : window.open(link.url, "_blank", "noopener,noreferrer")}/>
               );
@@ -165,13 +194,6 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
             <AppIcon label="Add" emoji="+" dashed onClick={()=>setModal("add")}/>
           </div>
         )}
-      </div>
-
-      {/* Dock — pinned core app, like the iOS home screen dock */}
-      <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pb-[max(env(safe-area-inset-bottom),18px)] pt-3 px-6">
-        <div className="bg-white/60 dark:bg-[#1C1C1E]/60 backdrop-blur-2xl rounded-[28px] shadow-[0_8px_30px_rgba(0,0,0,0.15)] px-7 py-3">
-          <AppIcon label="Money" emoji="💰" gradient="from-blue-500 to-blue-700" onClick={onOpenTracker}/>
-        </div>
       </div>
 
       {(modal==="add"||modal?.type==="edit") && (
