@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 import Tracker from './Tracker'
+import Home from './Home'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -10,6 +11,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [signingIn, setSigningIn] = useState(false)
   const [dark, setDark] = useState(() => localStorage.getItem('nexus-theme') === 'dark')
+  const [view, setView] = useState('home')
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
@@ -76,5 +78,7 @@ export default function App() {
     </div>
   )
 
-  return <Tracker onSignOut={signOut} userEmail={session.user.email} dark={dark} onToggleDark={() => setDark(d => !d)} />
+  if (view === 'tracker') return <Tracker onSignOut={signOut} onHome={() => setView('home')} userEmail={session.user.email} dark={dark} onToggleDark={() => setDark(d => !d)} />
+
+  return <Home onOpenTracker={() => setView('tracker')} onSignOut={signOut} dark={dark} onToggleDark={() => setDark(d => !d)} />
 }

@@ -2242,7 +2242,7 @@ function HistoryPage({ data }) {
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
 const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"}];
 
-export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
+export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
   const [tab,setTab]=useState("Properties");
   const [loading,setLoading]=useState(true);
@@ -2309,6 +2309,11 @@ export default function Tracker({ onSignOut, userEmail, dark, onToggleDark }) {
               <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5 font-medium">Private Money Tracker</div>
             </div>
             <div className="ml-auto flex items-center gap-2.5">
+              <button onClick={onHome}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/15 transition-all"
+                title="Home">
+                <span className="text-[15px] leading-none">🏠</span>
+              </button>
               <button onClick={onToggleDark}
                 className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/15 transition-all"
                 title={dark?"Switch to light":"Switch to dark"}>
