@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { loadData, saveData, subscribeToChanges } from "./supabase";
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -77,6 +80,25 @@ function FolderIcon({ folder, members, onClick, jiggle, onDelete, delay = 0 }) {
         )}
       </button>
       <span className="text-[11px] font-medium text-slate-700 dark:text-zinc-200 text-center leading-tight line-clamp-2 max-w-[68px]">{folder.name}</span>
+    </div>
+  );
+}
+
+// Drag handle wrapper — only active in edit mode, matching the iPhone "press Edit, then drag" flow.
+function SortableTile({ id, editMode, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !editMode });
+  return (
+    <div ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+        zIndex: isDragging ? 10 : undefined,
+        touchAction: editMode ? "none" : undefined,
+      }}
+      {...(editMode ? attributes : {})}
+      {...(editMode ? listeners : {})}>
+      {children}
     </div>
   );
 }
@@ -260,6 +282,7 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
   const [data, setData] = useState(null);
   const [modal, setModal] = useState(null); // null | "add" | {type:"editLink", link} | "addFolder" | {type:"folder", folder}
   const [editMode, setEditMode] = useState(false);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   useEffect(() => {
     loadData().then(setData);
@@ -271,6 +294,19 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
   const folders = data?.folders || [];
   const folderedIds = new Set(folders.flatMap(f => f.linkIds));
   const looseLinks = links.filter(l => !folderedIds.has(l.id));
+
+  // Money Tracker is a virtual item ("money") so it can be reordered alongside real apps/folders.
+  const allItems = [
+    { key: "money", type: "money" },
+    ...folders.map(f => ({ key: `folder:${f.id}`, type: "folder", folder: f })),
+    ...looseLinks.map(l => ({ key: `link:${l.id}`, type: "link", link: l })),
+  ];
+  const savedOrder = data?.homeOrder || [];
+  const byKey = new Map(allItems.map(it => [it.key, it]));
+  const orderedItems = [
+    ...savedOrder.map(k => byKey.get(k)).filter(Boolean),
+    ...allItems.filter(it => !savedOrder.includes(it.key)),
+  ];
 
   // Always re-fetch the latest blob right before writing, so this never clobbers
   // changes made elsewhere (e.g. the Tracker) since this component last loaded.
@@ -294,6 +330,7 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
     ...fresh,
     quickLinks: (fresh.quickLinks || []).filter(l=>l.id!==id),
     folders: (fresh.folders || []).map(f => ({ ...f, linkIds: f.linkIds.filter(lid=>lid!==id) })),
+    homeOrder: (fresh.homeOrder || []).filter(k => k !== `link:${id}`),
   }));
 
   const saveFolder = folder => {
@@ -304,11 +341,24 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
     setModal(null);
   };
 
-  const deleteFolder = id => mutate(fresh => ({ ...fresh, folders: (fresh.folders || []).filter(f=>f.id!==id) }));
+  const deleteFolder = id => mutate(fresh => ({
+    ...fresh,
+    folders: (fresh.folders || []).filter(f=>f.id!==id),
+    homeOrder: (fresh.homeOrder || []).filter(k => k !== `folder:${id}`),
+  }));
 
   const renameFolder = (id, name) => mutate(fresh => ({ ...fresh, folders: (fresh.folders || []).map(f=>f.id===id?{...f,name}:f) }));
 
   const updateFolderMembers = (id, linkIds) => mutate(fresh => ({ ...fresh, folders: (fresh.folders || []).map(f=>f.id===id?{...f,linkIds}:f) }));
+
+  const handleDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    const oldIndex = orderedItems.findIndex(it=>it.key===active.id);
+    const newIndex = orderedItems.findIndex(it=>it.key===over.id);
+    if (oldIndex===-1 || newIndex===-1) return;
+    const newOrder = arrayMove(orderedItems, oldIndex, newIndex).map(it=>it.key);
+    mutate(fresh => ({ ...fresh, homeOrder: newOrder }));
+  };
 
   const liveFolder = modal?.type === "folder" ? folders.find(f=>f.id===modal.folder.id) : null;
 
@@ -333,29 +383,37 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
         {data===null && <div className="text-center py-16 text-slate-400 dark:text-zinc-500 text-sm">Loading…</div>}
 
         {data!==null && (
-          <div className="grid grid-cols-4 sm:grid-cols-5 gap-x-4 gap-y-7">
-            <AppIcon label="Money Tracker" emoji="💰" gradient="from-blue-500 to-blue-700"
-              jiggle={editMode} onClick={editMode ? undefined : onOpenTracker}/>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={orderedItems.map(it=>it.key)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-4 sm:grid-cols-5 gap-x-4 gap-y-7">
+                {orderedItems.map((item, i) => (
+                  <SortableTile key={item.key} id={item.key} editMode={editMode}>
+                    {item.type === "money" && (
+                      <AppIcon label="Money Tracker" emoji="💰" gradient="from-blue-500 to-blue-700"
+                        jiggle={editMode} delay={(i%5)*70} onClick={editMode ? undefined : onOpenTracker}/>
+                    )}
+                    {item.type === "folder" && (
+                      <FolderIcon folder={item.folder} members={links.filter(l=>item.folder.linkIds.includes(l.id))}
+                        jiggle={editMode} delay={(i%5)*70}
+                        onDelete={editMode ? ()=>deleteFolder(item.folder.id) : undefined}
+                        onClick={()=>setModal({type:"folder", folder:item.folder})}/>
+                    )}
+                    {item.type === "link" && (
+                      <AppIcon label={item.link.label} emoji={item.link.icon}
+                        logoUrl={item.link.useLogo!==false ? faviconUrl(item.link.url) : null}
+                        gradient={COLORS[item.link.color] || COLORS.blue}
+                        jiggle={editMode} delay={(i%5)*70}
+                        onDelete={editMode ? ()=>deleteLink(item.link.id) : undefined}
+                        onClick={()=> editMode ? setModal({type:"editLink", link:item.link}) : window.open(item.link.url, "_blank", "noopener,noreferrer")}/>
+                    )}
+                  </SortableTile>
+                ))}
 
-            {folders.map((folder,i) => (
-              <FolderIcon key={folder.id} folder={folder} members={links.filter(l=>folder.linkIds.includes(l.id))}
-                jiggle={editMode} delay={((i+1)%5)*70}
-                onDelete={editMode ? ()=>deleteFolder(folder.id) : undefined}
-                onClick={()=>setModal({type:"folder", folder})}/>
-            ))}
-
-            {looseLinks.map((link,i) => (
-              <AppIcon key={link.id} label={link.label} emoji={link.icon}
-                logoUrl={link.useLogo!==false ? faviconUrl(link.url) : null}
-                gradient={COLORS[link.color] || COLORS.blue}
-                jiggle={editMode} delay={((folders.length+i+1)%5)*70}
-                onDelete={editMode ? ()=>deleteLink(link.id) : undefined}
-                onClick={()=> editMode ? setModal({type:"editLink", link}) : window.open(link.url, "_blank", "noopener,noreferrer")}/>
-            ))}
-
-            <AppIcon label="Add" emoji="+" dashed onClick={()=>setModal("add")}/>
-            {editMode && <AppIcon label="New Folder" emoji="📁" dashed onClick={()=>setModal("addFolder")}/>}
-          </div>
+                <AppIcon label="Add" emoji="+" dashed onClick={()=>setModal("add")}/>
+                {editMode && <AppIcon label="New Folder" emoji="📁" dashed onClick={()=>setModal("addFolder")}/>}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 
