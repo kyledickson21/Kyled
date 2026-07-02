@@ -451,21 +451,21 @@ function CloseLoanModal({ loan, onConfirm, onClose }) {
         <div className="rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-700 p-4 space-y-2 text-sm">
           <div className="flex justify-between text-slate-600 dark:text-zinc-300">
             <span>Principal</span>
-            <span className="tabular-nums font-medium">{$p(loan.principal)}</span>
+            <span className="tabular-nums font-medium">{$$p(loan.principal)}</span>
           </div>
           {intEarned > 0 && (
             <div className="flex justify-between text-slate-600 dark:text-zinc-300">
               <span>Accrued Interest</span>
-              <span className="tabular-nums font-medium text-emerald-600 dark:text-emerald-400">+{$p(intEarned)}</span>
+              <span className="tabular-nums font-medium text-emerald-600 dark:text-emerald-400">+{$$p(intEarned)}</span>
             </div>
           )}
           <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-200 dark:border-zinc-700 pt-2">
             <span>Total Payoff</span>
-            <span className="tabular-nums">{$p(payoff)}</span>
+            <span className="tabular-nums">{$$p(payoff)}</span>
           </div>
           {intEarned > 0 && (
             <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1">
-              Use <span className="font-semibold">{$p(payoff)}</span> as the new loan principal when you re-add this lender's funds.
+              Use <span className="font-semibold">{$$p(payoff)}</span> as the new loan principal when you re-add this lender's funds.
             </p>
           )}
         </div>
