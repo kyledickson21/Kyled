@@ -1337,7 +1337,7 @@ function PropertiesPage({ data, update }) {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Properties</h2>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Active Properties</h2>
           <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
             <span className="font-semibold text-slate-600 dark:text-zinc-300">{activeCount} active</span>
             {totalCount>activeCount&&<span> · {totalCount-activeCount} sold</span>}
@@ -1472,7 +1472,6 @@ function PropertiesPage({ data, update }) {
                       </td>
                       <td className="py-2.5 px-2 text-right">
                         <div className="flex gap-0.5 justify-end items-center">
-                          {!prop.dateSold&&<button onClick={()=>setModal({type:"markSold",prop})} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all text-[11px] font-bold" title="Mark Sold">$</button>}
                           <button onClick={()=>setModal({type:"editProp",prop})} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs">✏️</button>
                           <button onClick={()=>delProp(prop.id)} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs">🗑</button>
                         </div>
@@ -1536,12 +1535,6 @@ function PropertiesPage({ data, update }) {
                     )}
                   </div>
                   <div className="flex gap-1 shrink-0 items-center">
-                    {!prop.dateSold&&(
-                      <button onClick={e=>{e.stopPropagation();setModal({type:"markSold",prop});}}
-                        className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800 rounded-lg px-2.5 py-1 transition-colors whitespace-nowrap">
-                        Mark Sold
-                      </button>
-                    )}
                     <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit">✏️</button>
                     <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm" title="Delete">🗑</button>
                     <span className="w-6 h-6 flex items-center justify-center rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 text-[10px] font-bold">{isOpen?"▲":"▼"}</span>
@@ -1667,7 +1660,6 @@ function PropertiesPage({ data, update }) {
       </Modal>}
       {modal?.type==="place"&&<PlaceOnPropertyModal fund={modal.fund} properties={data.properties} onPlace={propId=>placeOnProperty(modal.fund,propId)} onClose={()=>setModal(null)}/>}
       {modal?.type==="closeLoan"&&<CloseLoanModal loan={modal.loan} onConfirm={date=>handleCloseLoan(modal.propId,modal.loan,date)} onClose={()=>setModal(null)}/>}
-      {modal?.type==="markSold"&&<MarkSoldModal prop={modal.prop} allProperties={data.properties} onConfirm={(d,disp,cd,ir)=>handleMarkSold(modal.prop,d,disp,cd,ir)} onClose={()=>setModal(null)}/>}
       {modal?.type==="moveLoan"&&<MoveModal item={{type:"loan",propId:modal.propId,loan:modal.loan}} properties={data.properties} onMove={dest=>handleMove({type:"loan",propId:modal.propId,loan:modal.loan},dest)} onClose={()=>setModal(null)}/>}
       {modal?.type==="moveUnassigned"&&<MoveModal item={{type:"unassigned",fund:modal.fund}} properties={data.properties} onMove={dest=>{placeOnProperty(modal.fund,dest);setModal(null);}} onClose={()=>setModal(null)}/>}
     </div>
@@ -2012,19 +2004,136 @@ function PropertyDashboard({ data }) {
   );
 }
 
+// ─── Edit Closing Modal ───────────────────────────────────────────────────────
+function EditClosingModal({ prop, onSave, onClose }) {
+  const cd=prop.closingData||{};
+  const [dateSold,setDateSold]=useState(prop.dateSold||"");
+  const [isRental,setIsRental]=useState(prop.isRental||false);
+  const [wireIn,setWireIn]=useState(String(cd.wire||""));
+  const [cashToCloseIn,setCashToCloseIn]=useState(String(cd.cashToClose||""));
+  const [rehabIn,setRehabIn]=useState(String(cd.rehab||""));
+  const [miscIn,setMiscIn]=useState(String(cd.misc||""));
+  const [overageIn,setOverageIn]=useState(String(cd.overageRefund||""));
+
+  const wire=parseFloat(wireIn)||0;
+  const cashToClose=parseFloat(cashToCloseIn)||0;
+  const rehab=parseFloat(rehabIn)||0;
+  const misc=parseFloat(miscIn)||0;
+  const overage=parseFloat(overageIn)||0;
+  const moneyCosts=cd.moneyCosts||0;
+  const titleTotal=cd.titleTotal||0;
+  const totalCosts=cashToClose+rehab+moneyCosts+misc;
+  const profit=(wire+titleTotal)-totalCosts+overage;
+
+  const numCls="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums text-slate-800 dark:text-zinc-100";
+  const row=(label,val,setVal)=>(
+    <div>
+      <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
+      <input type="number" value={val} onChange={e=>setVal(e.target.value)} className={numCls} placeholder="0"/>
+    </div>
+  );
+
+  return (
+    <Modal title={`Edit Closing: ${prop.address}`} onClose={onClose}>
+      <div className="space-y-3">
+        <DateInp label="Date Sold" value={dateSold} onChange={setDateSold}/>
+
+        {/* Rental toggle */}
+        <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3">
+          <div>
+            <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Rental Property</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Excludes from flip stats</div>
+          </div>
+          <div onClick={()=>setIsRental(r=>!r)}
+            className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer shrink-0 ml-4 ${isRental?"bg-purple-500":"bg-slate-200 dark:bg-zinc-600"}`}>
+            <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${isRental?"translate-x-5":""}`}/>
+          </div>
+        </div>
+
+        {row("Wire Received",wireIn,setWireIn)}
+        {row("Cash to Close",cashToCloseIn,setCashToCloseIn)}
+        {row("Rehab",rehabIn,setRehabIn)}
+        {row("Misc / Holding",miscIn,setMiscIn)}
+        {row("Overage Refund (post-close)",overageIn,setOverageIn)}
+
+        {moneyCosts>0&&(
+          <div className="flex justify-between text-sm bg-slate-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3">
+            <span className="text-slate-500 dark:text-zinc-400">Money costs (int. + fees) — from lender settlement</span>
+            <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$p(moneyCosts)}</span>
+          </div>
+        )}
+
+        <div className={`flex justify-between items-center rounded-xl px-4 py-3 ${profit>=0?"bg-emerald-50 dark:bg-emerald-900/20":"bg-red-50 dark:bg-red-900/20"}`}>
+          <span className="font-bold text-sm text-slate-800 dark:text-zinc-100">Deal Profit</span>
+          <span className={`text-xl font-bold tabular-nums ${profit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$ps(profit)}</span>
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <Btn onClick={()=>onSave({dateSold,isRental,closingData:{...cd,wire,cashToClose,rehab,misc,totalCosts,overageRefund:overage,profit}})} color="navy" full>Save Changes</Btn>
+          <Btn onClick={onClose} color="ghost">Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Closed Deals ─────────────────────────────────────────────────────────────
 function ClosedDealsPage({ data, update }) {
+  const [view,setView]=useState("flips");
   const [expanded,setExpanded]=useState({});
   const [search,setSearch]=useState("");
   const [sortMode,setSortMode]=useState("dateSold");
   const [flipSortDir,setFlipSortDir]=useState("desc");
   const [rentalSortDir,setRentalSortDir]=useState("desc");
+  const [editModal,setEditModal]=useState(null);
+  const [closeModal,setCloseModal]=useState(null);
+  const [showClosePicker,setShowClosePicker]=useState(false);
+
   const toggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
   const toggleRental=id=>update(d=>({...d,properties:d.properties.map(p=>p.id===id?{...p,isRental:!p.isRental}:p)}));
+
+  const handleMarkSold=(prop,soldDate,dispositions,closingData,isRental)=>{
+    const activeLoans=prop.loans.filter(l=>!l.endDate);
+    const newUnassigned=[];const newLoansForProps={};
+    activeLoans.forEach(loan=>{
+      const d=dispositions[loan.id];if(!d||d.type==="paidOut")return;
+      let np;
+      if(d.type==="rollFull")np=Math.round(calcBalance(loan,soldDate));
+      else if(d.type==="rollPrincipal")np=loan.principal;
+      else if(d.type==="payInterest")np=loan.principal;
+      else if(d.type==="waiveInterest")np=loan.principal;
+      else if(d.type==="custom")np=parseFloat(d.customRolling)||0;
+      else np=loan.principal;
+      const entry={id:uid(),lenderName:loan.lenderName,loanType:loan.loanType,principal:np,startDate:d.newStartDate||soldDate,interestRate:d.newRate!==""?parseFloat(d.newRate):(loan.interestRate||0),interestType:d.interestType||loan.interestType||"percentage",paymentType:d.paymentType||loan.paymentType||"closing",specialTerms:d.specialTerms||loan.specialTerms||"",endDate:null};
+      if(d.destination==="unassigned"){newUnassigned.push(entry);}
+      else{if(!newLoansForProps[d.destination])newLoansForProps[d.destination]=[];newLoansForProps[d.destination].push(entry);}
+    });
+    update(d=>({...d,
+      properties:d.properties.map(p=>{
+        if(p.id===prop.id)return{...p,dateSold:soldDate,isRental:isRental||false,closingData:closingData||null,loans:p.loans.map(l=>l.endDate?l:{...l,endDate:soldDate})};
+        if(newLoansForProps[p.id])return{...p,loans:[...p.loans,...newLoansForProps[p.id]]};
+        return p;
+      }),
+      unassigned:[...d.unassigned,...newUnassigned],
+    }));
+    setCloseModal(null);
+    setShowClosePicker(false);
+  };
+
+  const handleEditSave=(prop,updates)=>{
+    update(d=>({...d,
+      properties:d.properties.map(p=>p.id!==prop.id?p:{...p,dateSold:updates.dateSold,isRental:updates.isRental,closingData:updates.closingData})
+    }));
+    setEditModal(null);
+  };
 
   const allClosed=data.properties.filter(p=>p.dateSold);
   const flips=allClosed.filter(p=>!p.isRental);
   const rentals=allClosed.filter(p=>p.isRental);
+  const activeProps=data.properties.filter(p=>!p.dateSold);
+  const current=view==="flips"?flips:rentals;
+  const currentDir=view==="flips"?flipSortDir:rentalSortDir;
+  const setCurrentDir=view==="flips"?setFlipSortDir:setRentalSortDir;
 
   const applyFilter=(arr,dir)=>{
     const q=search.toLowerCase();
@@ -2043,55 +2152,59 @@ function ClosedDealsPage({ data, update }) {
       });
   };
 
-  const visFlips=applyFilter(flips,flipSortDir);
-  const visRentals=applyFilter(rentals,rentalSortDir);
-
-  // Stats only from flips with closing data
-  const flipsWithData=flips.filter(p=>p.closingData);
-  const n=flipsWithData.length||1;
-  const avgC2C=Math.round(flipsWithData.reduce((s,p)=>s+(p.closingData.cashToClose||0),0)/n);
-  const avgRehab=Math.round(flipsWithData.reduce((s,p)=>s+(p.closingData.rehab||0),0)/n);
-  const avgProfit=Math.round(flipsWithData.reduce((s,p)=>s+(p.closingData.profit||0),0)/n);
-  const totalProfit=flipsWithData.reduce((s,p)=>s+(p.closingData.profit||0),0);
+  const vis=applyFilter(current,currentDir);
+  const withData=current.filter(p=>p.closingData);
+  const n=withData.length||1;
+  const avgC2C=Math.round(withData.reduce((s,p)=>s+(p.closingData.cashToClose||0),0)/n);
+  const avgRehab=Math.round(withData.reduce((s,p)=>s+(p.closingData.rehab||0),0)/n);
+  const avgProfit=Math.round(withData.reduce((s,p)=>s+(p.closingData.profit||0),0)/n);
+  const totalProfit=withData.reduce((s,p)=>s+(p.closingData.profit||0),0);
 
   const PropCard=({prop})=>{
     const cd=prop.closingData;
     const isOpen=!!expanded[prop.id];
     const profit=cd?.profit??null;
-    return (
+    return(
       <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
-        <div onClick={()=>toggle(prop.id)} className="cursor-pointer px-5 py-4 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{prop.address||"Unnamed"}</div>
+        <div className="px-5 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{prop.address||"Unnamed"}</div>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-[11px] text-slate-400 dark:text-zinc-500">Sold {prop.dateSold}</span>
                 <button
                   onClick={e=>{e.stopPropagation();toggleRental(prop.id);}}
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all shrink-0 whitespace-nowrap ${prop.isRental?"bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-700":"bg-slate-50 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 border-slate-200 dark:border-zinc-600 hover:border-purple-300 dark:hover:border-purple-600 hover:text-purple-600 dark:hover:text-purple-400"}`}>
                   {prop.isRental?"● Rental":"○ Mark Rental"}
                 </button>
               </div>
-              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Sold {prop.dateSold}</div>
             </div>
-            {cd?(
-              <div className="flex items-center gap-4 shrink-0">
-                <div className="text-right">
-                  <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Cash to Close</div>
-                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.cashToClose||0)}</div>
+            <div className="flex items-center gap-2 shrink-0">
+              {cd?(
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Cash to Close</div>
+                    <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.cashToClose||0)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Rehab</div>
+                    <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.rehab||0)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Profit</div>
+                    <div className={`text-sm font-bold tabular-nums ${profit>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{$$s(profit)}</div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Rehab</div>
-                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.rehab||0)}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Profit</div>
-                  <div className={`text-sm font-bold tabular-nums ${profit>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{$$s(profit)}</div>
-                </div>
-                <span className="text-slate-300 dark:text-zinc-600 text-xs">{isOpen?"▲":"▼"}</span>
-              </div>
-            ):(
-              <div className="text-xs text-slate-400 dark:text-zinc-500 italic shrink-0">No closing data</div>
-            )}
+              ):(
+                <span className="text-xs text-slate-400 dark:text-zinc-500 italic">No data</span>
+              )}
+              <button onClick={()=>setEditModal(prop)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit closing">✏️</button>
+              <button onClick={()=>toggle(prop.id)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all text-[10px] font-bold">
+                {isOpen?"▲":"▼"}
+              </button>
+            </div>
           </div>
         </div>
         {isOpen&&(
@@ -2126,45 +2239,65 @@ function ClosedDealsPage({ data, update }) {
     );
   };
 
-  return (
+  return(
     <div>
-      <div className="mb-5">
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Closed Deals</h2>
-        <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">
-          {flips.length} flip{flips.length!==1?"s":""}{rentals.length>0&&` · ${rentals.length} rental${rentals.length!==1?"s":""}`}
-        </p>
-      </div>
-
-      {/* Search + Sort */}
-      <div className="mb-4 space-y-2">
-        <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
-          placeholder="Search by address or lender…"
-          className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
-          <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
-            {[["dateSold","Date Sold"],["dateAcquired","Acquired"],["profit","Profit"],["address","A–Z"]].map(([v,l])=>(
-              <button key={v} onClick={()=>setSortMode(v)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${sortMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
-                {l}
-              </button>
-            ))}
-          </div>
-          <button onClick={()=>setFlipSortDir(d=>d==="asc"?"desc":"asc")}
-            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-zinc-700 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-600 transition-all shrink-0">
-            {flipSortDir==="asc"?"↑ Asc":"↓ Desc"}
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Closed Deals</h2>
+          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">
+            {flips.length} flip{flips.length!==1?"s":""} · {rentals.length} rental{rentals.length!==1?"s":""}
+          </p>
+        </div>
+        <div className="relative">
+          <button onClick={()=>setShowClosePicker(v=>!v)}
+            className="text-[12px] font-semibold text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 rounded-xl px-3.5 py-2 transition-colors whitespace-nowrap shadow-sm">
+            + Close a Property
           </button>
+          {showClosePicker&&(
+            <div className="absolute right-0 top-full mt-2 bg-white dark:bg-[#2C2C2E] rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.08] z-30 min-w-[220px] overflow-hidden">
+              {activeProps.length===0?(
+                <div className="px-4 py-3 text-sm text-slate-400 dark:text-zinc-500 text-center">No active properties to close</div>
+              ):(
+                <>
+                  <div className="px-4 pt-3 pb-1.5 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Pick a property to close</div>
+                  {activeProps.map(p=>(
+                    <button key={p.id} onClick={()=>{setCloseModal(p);setShowClosePicker(false);}}
+                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-800 dark:text-zinc-100 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors border-t border-black/[0.04] dark:border-white/[0.04] first:border-t-0">
+                      {p.address||"Unnamed Property"}
+                    </button>
+                  ))}
+                </>
+              )}
+              <div className="border-t border-black/[0.06] dark:border-white/[0.06]">
+                <button onClick={()=>setShowClosePicker(false)}
+                  className="w-full text-center px-4 py-2.5 text-xs font-semibold text-slate-400 dark:text-zinc-500 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {allClosed.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-16 text-sm">No closed properties yet.</div>}
+      {/* Flip / Rental tabs */}
+      <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-2xl p-1 gap-1 mb-4">
+        <button onClick={()=>setView("flips")}
+          className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${view==="flips"?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
+          🏠 Flips <span className="text-[11px] opacity-60 ml-1">{flips.length}</span>
+        </button>
+        <button onClick={()=>setView("rentals")}
+          className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${view==="rentals"?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
+          🏘 Rentals <span className="text-[11px] opacity-60 ml-1">{rentals.length}</span>
+        </button>
+      </div>
 
-      {/* Flip stats — excludes rentals */}
-      {flipsWithData.length>0&&(
-        <div className="grid grid-cols-4 gap-2 mb-5">
+      {/* Per-tab stats */}
+      {withData.length>0&&(
+        <div className="grid grid-cols-4 gap-2 mb-4">
           <div className="bg-slate-900 dark:bg-zinc-800 rounded-2xl p-4 text-center text-white">
-            <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Flips Closed</div>
-            <div className="text-2xl font-bold">{flipsWithData.length}</div>
+            <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">{view==="flips"?"Flips":"Rentals"}</div>
+            <div className="text-2xl font-bold">{withData.length}</div>
           </div>
           <div className="bg-blue-600 rounded-2xl p-4 text-center text-white">
             <div className="text-[9px] font-semibold text-blue-200 uppercase tracking-widest mb-2">Avg Cash to Close</div>
@@ -2182,47 +2315,49 @@ function ClosedDealsPage({ data, update }) {
         </div>
       )}
 
-      {/* Flips list */}
-      {flips.length>0&&(
-        <div className="space-y-2 mb-6">
-          {visFlips.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-8 text-sm">No flips match your search.</div>}
-          {visFlips.map(prop=><PropCard key={prop.id} prop={prop}/>)}
+      {/* Empty states */}
+      {current.length===0&&(
+        <div className="text-center text-slate-400 dark:text-zinc-500 py-12 text-sm mb-4">
+          {view==="flips"?"No flips closed yet.":`No rentals yet. Close a property and toggle "● Rental" to add rentals here.`}
+        </div>
+      )}
+      {withData.length===0&&current.length>0&&(
+        <div className="text-center text-slate-400 dark:text-zinc-500 py-4 text-sm mb-2">No closing data recorded yet.</div>
+      )}
+
+      {/* Search + Sort */}
+      {current.length>0&&(
+        <div className="mb-4 space-y-2">
+          <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="Search by address or lender…"
+            className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
+            <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
+              {[["dateSold","Date Sold"],["dateAcquired","Acquired"],["profit","Profit"],["address","A–Z"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setSortMode(v)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${sortMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <button onClick={()=>setCurrentDir(d=>d==="asc"?"desc":"asc")}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-zinc-700 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-600 transition-all shrink-0">
+              {currentDir==="asc"?"↑ Asc":"↓ Desc"}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Rentals section — always visible so users know the feature exists */}
-      <div className="mt-2">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-px flex-1 bg-slate-200 dark:bg-zinc-700"/>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest">Rental Properties</span>
-            <span className="text-[10px] font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">{rentals.length}</span>
-          </div>
-          <div className="h-px flex-1 bg-slate-200 dark:bg-zinc-700"/>
-        </div>
-        {rentals.length>0&&(
-          <div className="flex justify-end mb-2">
-            <button onClick={()=>setRentalSortDir(d=>d==="asc"?"desc":"asc")}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-zinc-700 text-purple-600 dark:text-purple-400 shadow-sm hover:bg-purple-50 dark:hover:bg-zinc-600 transition-all">
-              {rentalSortDir==="asc"?"↑ Asc":"↓ Desc"}
-            </button>
-          </div>
-        )}
-        {rentals.length===0&&(
-          <p className="text-[11px] text-slate-400 dark:text-zinc-500 text-center mb-4 py-4">
-            No rental properties yet. Use the <span className="font-bold text-purple-600 dark:text-purple-400">○ Mark Rental</span> button on any closed deal above, or toggle it when closing a property.
-          </p>
-        )}
-        {rentals.length>0&&(
-          <>
-            <p className="text-[11px] text-slate-400 dark:text-zinc-500 text-center mb-3">Excluded from flip stats above</p>
-            <div className="space-y-2">
-              {visRentals.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-8 text-sm">No rentals match your search.</div>}
-              {visRentals.map(prop=><PropCard key={prop.id} prop={prop}/>)}
-            </div>
-          </>
-        )}
+      {/* List */}
+      <div className="space-y-2">
+        {vis.length===0&&current.length>0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-8 text-sm">No results match your search.</div>}
+        {vis.map(prop=><PropCard key={prop.id} prop={prop}/>)}
       </div>
+
+      {/* Modals */}
+      {editModal&&<EditClosingModal prop={editModal} onSave={updates=>handleEditSave(editModal,updates)} onClose={()=>setEditModal(null)}/>}
+      {closeModal&&<MarkSoldModal prop={closeModal} allProperties={data.properties} onConfirm={(d,disp,cd,ir)=>handleMarkSold(closeModal,d,disp,cd,ir)} onClose={()=>setCloseModal(null)}/>}
     </div>
   );
 }
@@ -2408,7 +2543,7 @@ function HistoryPage({ data }) {
 }
 
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
-const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"}];
+const TABS=[{id:"Properties",label:"🏠",full:"Active Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"}];
 
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
