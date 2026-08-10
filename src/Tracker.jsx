@@ -1190,6 +1190,7 @@ function PropertiesPage({ data, update }) {
   const [propSort,setPropSort]=useState({col:null,dir:"asc"});
   const [propSearch,setPropSearch]=useState("");
   const [propSortMode,setPropSortMode]=useState("estClose");
+  const [propSortDir,setPropSortDir]=useState("asc");
   const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt}
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
@@ -1323,10 +1324,11 @@ function PropertiesPage({ data, update }) {
       return p.address?.toLowerCase().includes(q)||p.loans.some(l=>l.lenderName?.toLowerCase().includes(q));
     })
     .sort((a,b)=>{
-      if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
-      if(propSortMode==="address")return(a.address||"").localeCompare(b.address||"");
-      if(propSortMode==="dateSold")return(b.dateSold||"0000").localeCompare(a.dateSold||"0000");
-      return propSellDate(a).localeCompare(propSellDate(b));
+      const d=propSortDir==="asc"?1:-1;
+      if(propSortMode==="dateAcquired")return d*propPurchaseDate(a).localeCompare(propPurchaseDate(b));
+      if(propSortMode==="address")return d*(a.address||"").localeCompare(b.address||"");
+      if(propSortMode==="dateSold")return d*(a.dateSold||"0000").localeCompare(b.dateSold||"0000");
+      return d*propSellDate(a).localeCompare(propSellDate(b));
     });
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
@@ -1372,6 +1374,10 @@ function PropertiesPage({ data, update }) {
               </button>
             ))}
           </div>
+          <button onClick={()=>setPropSortDir(d=>d==="asc"?"desc":"asc")}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-zinc-700 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-600 transition-all shrink-0">
+            {propSortDir==="asc"?"↑ Asc":"↓ Desc"}
+          </button>
         </div>
       </div>
 
@@ -2007,34 +2013,38 @@ function PropertyDashboard({ data }) {
 }
 
 // ─── Closed Deals ─────────────────────────────────────────────────────────────
-function ClosedDealsPage({ data }) {
+function ClosedDealsPage({ data, update }) {
   const [expanded,setExpanded]=useState({});
   const [search,setSearch]=useState("");
   const [sortMode,setSortMode]=useState("dateSold");
+  const [flipSortDir,setFlipSortDir]=useState("desc");
+  const [rentalSortDir,setRentalSortDir]=useState("desc");
   const toggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
+  const toggleRental=id=>update(d=>({...d,properties:d.properties.map(p=>p.id===id?{...p,isRental:!p.isRental}:p)}));
 
   const allClosed=data.properties.filter(p=>p.dateSold);
   const flips=allClosed.filter(p=>!p.isRental);
   const rentals=allClosed.filter(p=>p.isRental);
 
-  const applyFilter=arr=>{
+  const applyFilter=(arr,dir)=>{
     const q=search.toLowerCase();
+    const d=dir==="asc"?1:-1;
     return arr
       .filter(p=>!search||p.address?.toLowerCase().includes(q)||p.loans.some(l=>l.lenderName?.toLowerCase().includes(q)))
       .sort((a,b)=>{
-        if(sortMode==="profit")return(b.closingData?.profit||0)-(a.closingData?.profit||0);
-        if(sortMode==="address")return(a.address||"").localeCompare(b.address||"");
+        if(sortMode==="profit")return d*((a.closingData?.profit||0)-(b.closingData?.profit||0));
+        if(sortMode==="address")return d*(a.address||"").localeCompare(b.address||"");
         if(sortMode==="dateAcquired"){
           const da=a.purchaseDate||(a.loans.map(l=>l.startDate).filter(Boolean).sort()[0])||"";
           const db=b.purchaseDate||(b.loans.map(l=>l.startDate).filter(Boolean).sort()[0])||"";
-          return db.localeCompare(da);
+          return d*da.localeCompare(db);
         }
-        return(b.dateSold||"").localeCompare(a.dateSold||"");
+        return d*(a.dateSold||"").localeCompare(b.dateSold||"");
       });
   };
 
-  const visFlips=applyFilter(flips);
-  const visRentals=applyFilter(rentals);
+  const visFlips=applyFilter(flips,flipSortDir);
+  const visRentals=applyFilter(rentals,rentalSortDir);
 
   // Stats only from flips with closing data
   const flipsWithData=flips.filter(p=>p.closingData);
@@ -2052,10 +2062,14 @@ function ClosedDealsPage({ data }) {
       <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
         <div onClick={()=>toggle(prop.id)} className="cursor-pointer px-5 py-4 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
+            <div className="min-w-0flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
                 <div className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{prop.address||"Unnamed"}</div>
-                {prop.isRental&&<span className="text-[10px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded-full shrink-0">Rental</span>}
+                <button
+                  onClick={e=>{e.stopPropagation();toggleRental(prop.id);}}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all shrink-0 whitespace-nowrap ${prop.isRental?"bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-700":"bg-slate-50 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 border-slate-200 dark:border-zinc-600 hover:border-purple-300 dark:hover:border-purple-600 hover:text-purple-600 dark:hover:text-purple-400"}`}>
+                  {prop.isRental?"● Rental":"○ Mark Rental"}
+                </button>
               </div>
               <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Sold {prop.dateSold}</div>
             </div>
@@ -2126,7 +2140,7 @@ function ClosedDealsPage({ data }) {
         <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
           placeholder="Search by address or lender…"
           className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
             {[["dateSold","Date Sold"],["dateAcquired","Acquired"],["profit","Profit"],["address","A–Z"]].map(([v,l])=>(
@@ -2136,6 +2150,10 @@ function ClosedDealsPage({ data }) {
               </button>
             ))}
           </div>
+          <button onClick={()=>setFlipSortDir(d=>d==="asc"?"desc":"asc")}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-zinc-700 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-600 transition-all shrink-0">
+            {flipSortDir==="asc"?"↑ Asc":"↓ Desc"}
+          </button>
         </div>
       </div>
 
@@ -2172,24 +2190,39 @@ function ClosedDealsPage({ data }) {
         </div>
       )}
 
-      {/* Rentals section */}
-      {rentals.length>0&&(
-        <div>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="h-px flex-1 bg-slate-200 dark:bg-zinc-700"/>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest">Rental Properties</span>
-              <span className="text-[10px] font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">{rentals.length}</span>
-            </div>
-            <div className="h-px flex-1 bg-slate-200 dark:bg-zinc-700"/>
+      {/* Rentals section — always visible so users know the feature exists */}
+      <div className="mt-2">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="h-px flex-1 bg-slate-200 dark:bg-zinc-700"/>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest">Rental Properties</span>
+            <span className="text-[10px] font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">{rentals.length}</span>
           </div>
-          <p className="text-[11px] text-slate-400 dark:text-zinc-500 text-center mb-4">Rentals are held, not exited — excluded from flip stats above</p>
-          <div className="space-y-2">
-            {visRentals.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-8 text-sm">No rentals match your search.</div>}
-            {visRentals.map(prop=><PropCard key={prop.id} prop={prop}/>)}
-          </div>
+          <div className="h-px flex-1 bg-slate-200 dark:bg-zinc-700"/>
         </div>
-      )}
+        {rentals.length>0&&(
+          <div className="flex justify-end mb-2">
+            <button onClick={()=>setRentalSortDir(d=>d==="asc"?"desc":"asc")}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-zinc-700 text-purple-600 dark:text-purple-400 shadow-sm hover:bg-purple-50 dark:hover:bg-zinc-600 transition-all">
+              {rentalSortDir==="asc"?"↑ Asc":"↓ Desc"}
+            </button>
+          </div>
+        )}
+        {rentals.length===0&&(
+          <p className="text-[11px] text-slate-400 dark:text-zinc-500 text-center mb-4 py-4">
+            No rental properties yet. Use the <span className="font-bold text-purple-600 dark:text-purple-400">○ Mark Rental</span> button on any closed deal above, or toggle it when closing a property.
+          </p>
+        )}
+        {rentals.length>0&&(
+          <>
+            <p className="text-[11px] text-slate-400 dark:text-zinc-500 text-center mb-3">Excluded from flip stats above</p>
+            <div className="space-y-2">
+              {visRentals.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-8 text-sm">No rentals match your search.</div>}
+              {visRentals.map(prop=><PropCard key={prop.id} prop={prop}/>)}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -2234,7 +2267,13 @@ function HistoryPage({ data }) {
     return{...ev,nc,pp,cumLent:lc[ev.lender]};
   });
   const allL=[...new Set(events.map(e=>e.lender))].sort();
-  const filtered=events.filter(e=>(lf==="all"||e.lender===lf)&&(tf==="all"||e.loanType===tf)&&(!propSearch||e.property?.toLowerCase().includes(propSearch.toLowerCase())));
+  const filtered=events.filter(e=>{
+    if(lf!=="all"&&e.lender!==lf)return false;
+    if(tf!=="all"&&e.loanType!==tf)return false;
+    if(!propSearch)return true;
+    const q=propSearch.toLowerCase();
+    return[e.property,e.lender,e.date,e.etype,e.loanType,e.disposition,e.interestType].filter(Boolean).join(" ").toLowerCase().includes(q);
+  });
   const cfg={
     start:       {label:"Loan Started",  icon:"↗", cls:"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"},
     closed:      {label:"Loan Closed",   icon:"✓", cls:"bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"},
@@ -2255,7 +2294,7 @@ function HistoryPage({ data }) {
       </div>
       <div className="space-y-2 mb-4">
         <input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
-          placeholder="Search by address…"
+          placeholder="Search by address, lender, date, event type…"
           className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
         <div className="flex gap-2">
           <select value={lf} onChange={e=>setLf(e.target.value)} className="flex-1 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
@@ -2468,7 +2507,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         {tab==="Properties" &&<PropertiesPage data={data} update={update}/>}
         {tab==="LenderDash"&&<LenderDashboard data={data}/>}
         {tab==="PropDash"  &&<PropertyDashboard data={data}/>}
-        {tab==="Closed"    &&<ClosedDealsPage data={data}/>}
+        {tab==="Closed"    &&<ClosedDealsPage data={data} update={update}/>}
         {tab==="History"   &&<HistoryPage data={data}/>}
       </div>
     </div>
