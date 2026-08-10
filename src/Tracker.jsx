@@ -487,6 +487,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const otherProps=allProperties.filter(p=>!p.dateSold&&p.id!==prop.id);
   const [step,setStep]=useState(1);
   const [soldDate,setSoldDate]=useState(TODAY);
+  const [isRental,setIsRental]=useState(false);
 
   // Per-lender rows — includes principal/interest/fees breakdown
   const [rows,setRows]=useState(()=>activeLoans.map(l=>{
@@ -627,7 +628,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
         wireAmount:wireContrib(r),
         totalPayoff:(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0),
       })),
-    });
+    }, isRental);
   };
 
   const inputCls="flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums";
@@ -1042,6 +1043,18 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               </div>
             )}
 
+            {/* Rental toggle */}
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3 bg-white dark:bg-zinc-900">
+              <div>
+                <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Mark as Rental</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Rentals are tracked separately in Closed Deals and excluded from flip stats</div>
+              </div>
+              <div onClick={()=>setIsRental(r=>!r)}
+                className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer shrink-0 ml-4 ${isRental?"bg-purple-500":"bg-slate-200 dark:bg-zinc-600"}`}>
+                <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${isRental?"translate-x-5":""}`}/>
+              </div>
+            </div>
+
             <div className="flex gap-2 pt-1">
               <Btn onClick={handleConfirm} color="navy" full>✓ Confirm &amp; Close Property</Btn>
               <Btn onClick={()=>setStep(1)} color="ghost">← Back</Btn>
@@ -1175,6 +1188,8 @@ function PropertiesPage({ data, update }) {
   const [showSold,setShowSold]=useState(false);
   const [viewMode,setViewMode]=useState("expanded");
   const [propSort,setPropSort]=useState({col:null,dir:"asc"});
+  const [propSearch,setPropSearch]=useState("");
+  const [propSortMode,setPropSortMode]=useState("estClose");
   const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt}
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
@@ -1257,7 +1272,7 @@ function PropertiesPage({ data, update }) {
   const delLoan = (propId,loanId) => { if(!confirm("Delete this loan?"))return; update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:p.loans.filter(l=>l.id!==loanId)})})); };
   const delUnassigned = id => { if(!confirm("Remove this unassigned fund?"))return; update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==id)})); };
 
-  const handleMarkSold = (prop, soldDate, dispositions, closingData) => {
+  const handleMarkSold = (prop, soldDate, dispositions, closingData, isRental) => {
     const activeLoans=prop.loans.filter(l=>!l.endDate);
     const newUnassigned=[]; const newLoansForProps={};
     activeLoans.forEach(loan=>{
@@ -1283,7 +1298,7 @@ function PropertiesPage({ data, update }) {
     });
     update(d=>({...d,
       properties:d.properties.map(p=>{
-        if(p.id===prop.id)return{...p,dateSold:soldDate,closingData:closingData||null,loans:p.loans.map(l=>l.endDate?l:{...l,endDate:soldDate})};
+        if(p.id===prop.id)return{...p,dateSold:soldDate,isRental:isRental||false,closingData:closingData||null,loans:p.loans.map(l=>l.endDate?l:{...l,endDate:soldDate})};
         if(newLoansForProps[p.id])return{...p,loans:[...p.loans,...newLoansForProps[p.id]]};
         return p;
       }),
@@ -1300,7 +1315,19 @@ function PropertiesPage({ data, update }) {
     const dt=new Date(y,m-1+Math.round(effectiveMonths(p)),d);
     return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
   };
-  const visible=data.properties.filter(p=>showSold||!p.dateSold).sort((a,b)=>propSellDate(a).localeCompare(propSellDate(b)));
+  const visible=data.properties
+    .filter(p=>showSold||!p.dateSold)
+    .filter(p=>{
+      if(!propSearch)return true;
+      const q=propSearch.toLowerCase();
+      return p.address?.toLowerCase().includes(q)||p.loans.some(l=>l.lenderName?.toLowerCase().includes(q));
+    })
+    .sort((a,b)=>{
+      if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
+      if(propSortMode==="address")return(a.address||"").localeCompare(b.address||"");
+      if(propSortMode==="dateSold")return(b.dateSold||"0000").localeCompare(a.dateSold||"0000");
+      return propSellDate(a).localeCompare(propSellDate(b));
+    });
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
 
@@ -1327,6 +1354,24 @@ function PropertiesPage({ data, update }) {
             ))}
           </div>
           <Btn onClick={()=>setModal("addProp")} color="ghost" sm>+ Property</Btn>
+        </div>
+      </div>
+
+      {/* Search + Sort */}
+      <div className="mb-4 space-y-2">
+        <input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
+          placeholder="Search by address or lender…"
+          className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
+          <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
+            {[["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setPropSortMode(v)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${propSortMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
+                {l}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1616,7 +1661,7 @@ function PropertiesPage({ data, update }) {
       </Modal>}
       {modal?.type==="place"&&<PlaceOnPropertyModal fund={modal.fund} properties={data.properties} onPlace={propId=>placeOnProperty(modal.fund,propId)} onClose={()=>setModal(null)}/>}
       {modal?.type==="closeLoan"&&<CloseLoanModal loan={modal.loan} onConfirm={date=>handleCloseLoan(modal.propId,modal.loan,date)} onClose={()=>setModal(null)}/>}
-      {modal?.type==="markSold"&&<MarkSoldModal prop={modal.prop} allProperties={data.properties} onConfirm={(d,disp,cd)=>handleMarkSold(modal.prop,d,disp,cd)} onClose={()=>setModal(null)}/>}
+      {modal?.type==="markSold"&&<MarkSoldModal prop={modal.prop} allProperties={data.properties} onConfirm={(d,disp,cd,ir)=>handleMarkSold(modal.prop,d,disp,cd,ir)} onClose={()=>setModal(null)}/>}
       {modal?.type==="moveLoan"&&<MoveModal item={{type:"loan",propId:modal.propId,loan:modal.loan}} properties={data.properties} onMove={dest=>handleMove({type:"loan",propId:modal.propId,loan:modal.loan},dest)} onClose={()=>setModal(null)}/>}
       {modal?.type==="moveUnassigned"&&<MoveModal item={{type:"unassigned",fund:modal.fund}} properties={data.properties} onMove={dest=>{placeOnProperty(modal.fund,dest);setModal(null);}} onClose={()=>setModal(null)}/>}
     </div>
@@ -1628,6 +1673,7 @@ function LenderDashboard({ data }) {
   const [view,setView]=useState("loans");
   const [sort,setSort]=useState({col:null,dir:"asc"});
   const [lenderSort,setLenderSort]=useState("name");
+  const [search,setSearch]=useState("");
   const toggleSort = col => setSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const allActive=[
     ...data.properties.flatMap(prop=>
@@ -1648,6 +1694,8 @@ function LenderDashboard({ data }) {
   const privPrin=allActive.filter(l=>l.loanType==="private").reduce((s,l)=>s+l.principal,0);
   const hardPrin=allActive.filter(l=>l.loanType==="hard").reduce((s,l)=>s+l.principal,0);
   const totalBal=allActive.reduce((s,l)=>s+l.bal,0);
+  const searchedActive=search?allActive.filter(l=>{const q=search.toLowerCase();return l.lenderName?.toLowerCase().includes(q)||l.propAddress?.toLowerCase().includes(q);}):allActive;
+  const searchedLenders=search?lenders.filter(ld=>{const q=search.toLowerCase();return ld.name?.toLowerCase().includes(q)||ld.props.some(p=>p.toLowerCase().includes(q));}):lenders;
 
   return (
     <div>
@@ -1672,6 +1720,10 @@ function LenderDashboard({ data }) {
         ))}
       </div>
 
+      <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
+        placeholder="Search by lender or property…"
+        className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0 mb-4"/>
+
       <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 mb-4 gap-1">
         {[["loans","All Active Loans"],["lenders","By Lender"]].map(([v,l])=>(
           <button key={v} onClick={()=>setView(v)}
@@ -1680,7 +1732,7 @@ function LenderDashboard({ data }) {
       </div>
 
       {view==="loans"&&(()=>{
-        const sortedLoans=[...allActive].sort((a,b)=>{
+        const sortedLoans=[...searchedActive].sort((a,b)=>{
           if(!sort.col)return 0;
           const d=sort.dir==="asc"?1:-1;
           switch(sort.col){
@@ -1707,7 +1759,7 @@ function LenderDashboard({ data }) {
         ];
         return (
           <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
-            {allActive.length===0&&<div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">No active loans on properties.</div>}
+            {searchedActive.length===0&&<div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">{search?"No loans match your search.":"No active loans on properties."}</div>}
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -1752,7 +1804,7 @@ function LenderDashboard({ data }) {
 
       {view==="lenders"&&(
         <div>
-          {lenders.length>0&&(
+          {lenders.length>0&&searchedLenders.length>0&&(
             <div className="flex items-center gap-2 mb-3">
               <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
               <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
@@ -1766,8 +1818,8 @@ function LenderDashboard({ data }) {
             </div>
           )}
           <div className="space-y-3">
-          {lenders.length===0&&<div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">No active lenders.</div>}
-          {[...lenders].sort((a,b)=>{
+          {searchedLenders.length===0&&<div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">{search?"No lenders match your search.":"No active lenders."}</div>}
+          {[...searchedLenders].sort((a,b)=>{
             if(lenderSort==="high")return b.totalBal-a.totalBal;
             if(lenderSort==="low")return a.totalBal-b.totalBal;
             return a.name.localeCompare(b.name);
@@ -1957,31 +2009,144 @@ function PropertyDashboard({ data }) {
 // ─── Closed Deals ─────────────────────────────────────────────────────────────
 function ClosedDealsPage({ data }) {
   const [expanded,setExpanded]=useState({});
+  const [search,setSearch]=useState("");
+  const [sortMode,setSortMode]=useState("dateSold");
   const toggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
 
-  const closed=[...data.properties.filter(p=>p.dateSold)].sort((a,b)=>(b.dateSold||"").localeCompare(a.dateSold||""));
-  const withData=closed.filter(p=>p.closingData);
-  const n=withData.length||1;
+  const allClosed=data.properties.filter(p=>p.dateSold);
+  const flips=allClosed.filter(p=>!p.isRental);
+  const rentals=allClosed.filter(p=>p.isRental);
 
-  const avgC2C=Math.round(withData.reduce((s,p)=>s+(p.closingData.cashToClose||0),0)/n);
-  const avgRehab=Math.round(withData.reduce((s,p)=>s+(p.closingData.rehab||0),0)/n);
-  const avgProfit=Math.round(withData.reduce((s,p)=>s+(p.closingData.profit||0),0)/n);
-  const totalProfit=withData.reduce((s,p)=>s+(p.closingData.profit||0),0);
+  const applyFilter=arr=>{
+    const q=search.toLowerCase();
+    return arr
+      .filter(p=>!search||p.address?.toLowerCase().includes(q)||p.loans.some(l=>l.lenderName?.toLowerCase().includes(q)))
+      .sort((a,b)=>{
+        if(sortMode==="profit")return(b.closingData?.profit||0)-(a.closingData?.profit||0);
+        if(sortMode==="address")return(a.address||"").localeCompare(b.address||"");
+        if(sortMode==="dateAcquired"){
+          const da=a.purchaseDate||(a.loans.map(l=>l.startDate).filter(Boolean).sort()[0])||"";
+          const db=b.purchaseDate||(b.loans.map(l=>l.startDate).filter(Boolean).sort()[0])||"";
+          return db.localeCompare(da);
+        }
+        return(b.dateSold||"").localeCompare(a.dateSold||"");
+      });
+  };
+
+  const visFlips=applyFilter(flips);
+  const visRentals=applyFilter(rentals);
+
+  // Stats only from flips with closing data
+  const flipsWithData=flips.filter(p=>p.closingData);
+  const n=flipsWithData.length||1;
+  const avgC2C=Math.round(flipsWithData.reduce((s,p)=>s+(p.closingData.cashToClose||0),0)/n);
+  const avgRehab=Math.round(flipsWithData.reduce((s,p)=>s+(p.closingData.rehab||0),0)/n);
+  const avgProfit=Math.round(flipsWithData.reduce((s,p)=>s+(p.closingData.profit||0),0)/n);
+  const totalProfit=flipsWithData.reduce((s,p)=>s+(p.closingData.profit||0),0);
+
+  const PropCard=({prop})=>{
+    const cd=prop.closingData;
+    const isOpen=!!expanded[prop.id];
+    const profit=cd?.profit??null;
+    return (
+      <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+        <div onClick={()=>toggle(prop.id)} className="cursor-pointer px-5 py-4 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{prop.address||"Unnamed"}</div>
+                {prop.isRental&&<span className="text-[10px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded-full shrink-0">Rental</span>}
+              </div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Sold {prop.dateSold}</div>
+            </div>
+            {cd?(
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="text-right">
+                  <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Cash to Close</div>
+                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.cashToClose||0)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Rehab</div>
+                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.rehab||0)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Profit</div>
+                  <div className={`text-sm font-bold tabular-nums ${profit>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{$$s(profit)}</div>
+                </div>
+                <span className="text-slate-300 dark:text-zinc-600 text-xs">{isOpen?"▲":"▼"}</span>
+              </div>
+            ):(
+              <div className="text-xs text-slate-400 dark:text-zinc-500 italic shrink-0">No closing data</div>
+            )}
+          </div>
+        </div>
+        {isOpen&&(
+          <div className="border-t border-black/[0.06] dark:border-white/[0.06] bg-[#F9F9FB] dark:bg-black/20 px-5 py-4">
+            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Lenders</div>
+            {prop.loans.length===0
+              ?<div className="text-xs text-slate-400 dark:text-zinc-500">No loans recorded</div>
+              :<table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-black/[0.06] dark:border-white/[0.06]">
+                    <th className="pb-1.5 text-left font-semibold">Lender</th>
+                    <th className="pb-1.5 text-right font-semibold">Amount</th>
+                    <th className="pb-1.5 text-right font-semibold">Rate</th>
+                    <th className="pb-1.5 text-right font-semibold">Type</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+                  {prop.loans.map(l=>(
+                    <tr key={l.id}>
+                      <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100">{l.lenderName}</td>
+                      <td className="py-2 text-right tabular-nums text-slate-700 dark:text-zinc-200">{$$(l.principal)}</td>
+                      <td className="py-2 text-right tabular-nums text-slate-500 dark:text-zinc-400">{fmtRate(l)}</td>
+                      <td className="py-2 text-right"><TypeBadge type={l.loanType} sm/></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            }
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div>
       <div className="mb-5">
         <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Closed Deals</h2>
-        <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">{closed.length} propert{closed.length===1?"y":"ies"} sold</p>
+        <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">
+          {flips.length} flip{flips.length!==1?"s":""}{rentals.length>0&&` · ${rentals.length} rental${rentals.length!==1?"s":""}`}
+        </p>
       </div>
 
-      {closed.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-16 text-sm">No closed properties yet.</div>}
+      {/* Search + Sort */}
+      <div className="mb-4 space-y-2">
+        <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="Search by address or lender…"
+          className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
+          <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
+            {[["dateSold","Date Sold"],["dateAcquired","Acquired"],["profit","Profit"],["address","A–Z"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setSortMode(v)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${sortMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
-      {withData.length>0&&(
+      {allClosed.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-16 text-sm">No closed properties yet.</div>}
+
+      {/* Flip stats — excludes rentals */}
+      {flipsWithData.length>0&&(
         <div className="grid grid-cols-4 gap-2 mb-5">
           <div className="bg-slate-900 dark:bg-zinc-800 rounded-2xl p-4 text-center text-white">
-            <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Deals Closed</div>
-            <div className="text-2xl font-bold">{withData.length}</div>
+            <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Flips Closed</div>
+            <div className="text-2xl font-bold">{flipsWithData.length}</div>
           </div>
           <div className="bg-blue-600 rounded-2xl p-4 text-center text-white">
             <div className="text-[9px] font-semibold text-blue-200 uppercase tracking-widest mb-2">Avg Cash to Close</div>
@@ -1999,74 +2164,32 @@ function ClosedDealsPage({ data }) {
         </div>
       )}
 
-      <div className="space-y-2">
-        {closed.map(prop=>{
-          const cd=prop.closingData;
-          const isOpen=!!expanded[prop.id];
-          const profit=cd?.profit??null;
+      {/* Flips list */}
+      {flips.length>0&&(
+        <div className="space-y-2 mb-6">
+          {visFlips.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-8 text-sm">No flips match your search.</div>}
+          {visFlips.map(prop=><PropCard key={prop.id} prop={prop}/>)}
+        </div>
+      )}
 
-          return (
-            <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
-              <div onClick={()=>toggle(prop.id)} className="cursor-pointer px-5 py-4 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{prop.address||"Unnamed"}</div>
-                    <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Sold {prop.dateSold}</div>
-                  </div>
-                  {cd?(
-                    <div className="flex items-center gap-4 shrink-0">
-                      <div className="text-right">
-                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Cash to Close</div>
-                        <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.cashToClose||0)}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Rehab</div>
-                        <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.rehab||0)}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Profit</div>
-                        <div className={`text-sm font-bold tabular-nums ${profit>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{$$s(profit)}</div>
-                      </div>
-                      <span className="text-slate-300 dark:text-zinc-600 text-xs">{isOpen?"▲":"▼"}</span>
-                    </div>
-                  ):(
-                    <div className="text-xs text-slate-400 dark:text-zinc-500 italic shrink-0">No closing data</div>
-                  )}
-                </div>
-              </div>
-
-              {isOpen&&(
-                <div className="border-t border-black/[0.06] dark:border-white/[0.06] bg-[#F9F9FB] dark:bg-black/20 px-5 py-4">
-                  <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Lenders</div>
-                  {prop.loans.length===0
-                    ?<div className="text-xs text-slate-400 dark:text-zinc-500">No loans recorded</div>
-                    :<table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-black/[0.06] dark:border-white/[0.06]">
-                          <th className="pb-1.5 text-left font-semibold">Lender</th>
-                          <th className="pb-1.5 text-right font-semibold">Amount</th>
-                          <th className="pb-1.5 text-right font-semibold">Rate</th>
-                          <th className="pb-1.5 text-right font-semibold">Type</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
-                        {prop.loans.map(l=>(
-                          <tr key={l.id}>
-                            <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100">{l.lenderName}</td>
-                            <td className="py-2 text-right tabular-nums text-slate-700 dark:text-zinc-200">{$$(l.principal)}</td>
-                            <td className="py-2 text-right tabular-nums text-slate-500 dark:text-zinc-400">{fmtRate(l)}</td>
-                            <td className="py-2 text-right"><TypeBadge type={l.loanType} sm/></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  }
-                </div>
-              )}
+      {/* Rentals section */}
+      {rentals.length>0&&(
+        <div>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="h-px flex-1 bg-slate-200 dark:bg-zinc-700"/>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest">Rental Properties</span>
+              <span className="text-[10px] font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">{rentals.length}</span>
             </div>
-          );
-        })}
-      </div>
+            <div className="h-px flex-1 bg-slate-200 dark:bg-zinc-700"/>
+          </div>
+          <p className="text-[11px] text-slate-400 dark:text-zinc-500 text-center mb-4">Rentals are held, not exited — excluded from flip stats above</p>
+          <div className="space-y-2">
+            {visRentals.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-8 text-sm">No rentals match your search.</div>}
+            {visRentals.map(prop=><PropCard key={prop.id} prop={prop}/>)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2075,6 +2198,7 @@ function ClosedDealsPage({ data }) {
 function HistoryPage({ data }) {
   const [lf,setLf]=useState("all");
   const [tf,setTf]=useState("all");
+  const [propSearch,setPropSearch]=useState("");
   const raw=[];
   data.properties.forEach(prop=>{
     prop.loans.forEach(loan=>{
@@ -2110,7 +2234,7 @@ function HistoryPage({ data }) {
     return{...ev,nc,pp,cumLent:lc[ev.lender]};
   });
   const allL=[...new Set(events.map(e=>e.lender))].sort();
-  const filtered=events.filter(e=>(lf==="all"||e.lender===lf)&&(tf==="all"||e.loanType===tf));
+  const filtered=events.filter(e=>(lf==="all"||e.lender===lf)&&(tf==="all"||e.loanType===tf)&&(!propSearch||e.property?.toLowerCase().includes(propSearch.toLowerCase())));
   const cfg={
     start:       {label:"Loan Started",  icon:"↗", cls:"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"},
     closed:      {label:"Loan Closed",   icon:"✓", cls:"bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"},
@@ -2129,13 +2253,18 @@ function HistoryPage({ data }) {
         </div>
         <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{filtered.length} events</span>
       </div>
-      <div className="flex gap-2 mb-4">
-        <select value={lf} onChange={e=>setLf(e.target.value)} className="flex-1 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
-          <option value="all">All Lenders</option>{allL.map(l=><option key={l} value={l}>{l}</option>)}
-        </select>
-        <select value={tf} onChange={e=>setTf(e.target.value)} className="rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
-          <option value="all">All Types</option><option value="private">Private</option><option value="hard">Hard</option>
-        </select>
+      <div className="space-y-2 mb-4">
+        <input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
+          placeholder="Search by address…"
+          className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
+        <div className="flex gap-2">
+          <select value={lf} onChange={e=>setLf(e.target.value)} className="flex-1 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
+            <option value="all">All Lenders</option>{allL.map(l=><option key={l} value={l}>{l}</option>)}
+          </select>
+          <select value={tf} onChange={e=>setTf(e.target.value)} className="rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
+            <option value="all">All Types</option><option value="private">Private</option><option value="hard">Hard</option>
+          </select>
+        </div>
       </div>
       {!filtered.length&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">📋</div><p className="font-semibold">No transactions yet</p></div>}
       <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none divide-y divide-black/[0.05] dark:divide-white/[0.05]">
