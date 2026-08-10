@@ -2396,8 +2396,12 @@ function HistoryPage({ data }) {
     else if(ev.etype==="start"){lc[ev.lender]+=ev.amount;pp=lp[ev.lender];nc=pp>0?ev.amount-pp:ev.amount;lp[ev.lender]=0;}
     else{
       const waived=ev.disposition==="waiveInterest";
-      nc=waived?0:(ev.interest??0);
-      if(ev.etype==="rolled")lp[ev.lender]+=(waived?ev.principal:ev.amount);
+      if(ev.etype==="rolled"){
+        nc=0; // principal continues into next loan, no cash leaves the system
+        lp[ev.lender]+=(waived?ev.principal:ev.amount);
+      } else {
+        nc=-(ev.principal||0); // principal returned to lender (negative = cash out)
+      }
     }
     return{...ev,nc,pp,cumLent:lc[ev.lender]};
   });
@@ -2411,8 +2415,8 @@ function HistoryPage({ data }) {
   });
   const cfg={
     start:       {label:"Loan Started",  icon:"↗", cls:"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"},
-    closed:      {label:"Loan Closed",   icon:"✓", cls:"bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"},
-    sold:        {label:"Property Sold", icon:"🏡",cls:"bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"},
+    closed:      {label:"Paid Back",     icon:"↙", cls:"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"},
+    sold:        {label:"Paid Back",     icon:"↙", cls:"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"},
     saleSummary: {label:"Sale Closed",   icon:"🏡",cls:"bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"},
     rolled:      {label:"Rolled",        icon:"🔄",cls:"bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"},
   };
@@ -2523,14 +2527,40 @@ function HistoryPage({ data }) {
                     </div>
                     <div className="font-bold text-slate-900 dark:text-zinc-100">{ev.lender}</div>
                     <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{ev.property} · {rateLabel}</div>
-                    {ev.etype!=="start"&&ev.disposition!=="waiveInterest"&&(ev.interest||0)>0.01&&<div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5 tabular-nums">+{$$(ev.interest)} interest</div>}
-                    {ev.disposition==="waiveInterest"&&(ev.interest||0)>0.01&&<div className="text-xs text-amber-500 dark:text-amber-400 mt-0.5 tabular-nums">{$$(ev.interest)} interest waived</div>}
+                    {ev.etype!=="start"&&(ev.interest||0)>0.01&&(
+                      ev.disposition==="waiveInterest"?(
+                        <div className="text-xs text-amber-500 dark:text-amber-400 mt-0.5 tabular-nums">{$$(ev.interest)} interest waived</div>
+                      ):ev.etype==="rolled"?(
+                        <div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">{$$(ev.interest)} interest rolled in</div>
+                      ):(
+                        <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">incl. {$$(ev.interest)} interest earned</div>
+                      )
+                    )}
                     {roll&&ev.pp>0&&<div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">Rolled from {$$(ev.pp)}</div>}
                   </div>
-                  <div className="text-right shrink-0 min-w-[80px]">
-                    <div className="font-bold text-slate-900 dark:text-zinc-100 tabular-nums">{$$(ev.amount)}</div>
-                    <div className={`text-sm font-bold tabular-nums ${pos?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{$$s(ev.nc)}</div>
-                    <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">net change</div>
+                  <div className="text-right shrink-0 min-w-[90px]">
+                    {ev.etype==="start"?(
+                      <>
+                        <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">+{$$(ev.amount)}</div>
+                        {ev.nc>0
+                          ?<div className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{$$s(ev.nc)}</div>
+                          :<div className="text-sm font-bold tabular-nums text-violet-500 dark:text-violet-400">→ Rollover</div>
+                        }
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">{ev.nc>0?"lent in":"no new funds"}</div>
+                      </>
+                    ):ev.etype==="rolled"?(
+                      <>
+                        <div className="font-bold text-slate-900 dark:text-zinc-100 tabular-nums">{$$(ev.amount)}</div>
+                        <div className="text-sm font-bold tabular-nums text-violet-500 dark:text-violet-400">→ Continues</div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">no cash out</div>
+                      </>
+                    ):(
+                      <>
+                        <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{$$(ev.amount)}</div>
+                        <div className="text-sm font-bold tabular-nums text-red-500 dark:text-red-400">{$$s(ev.nc)}</div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">returned</div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2538,6 +2568,18 @@ function HistoryPage({ data }) {
           );
         })}
       </div>
+      {filtered.length>0&&(()=>{
+        const principalNet=filtered.reduce((s,e)=>e.etype==="saleSummary"?s:s+(e.nc||0),0);
+        return(
+          <div className="mt-3 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none px-5 py-4 flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Net Outstanding{lf!=="all"?` — ${lf}`:""}</div>
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Sum of principal in/out for events shown above</div>
+            </div>
+            <div className={`text-2xl font-bold tabular-nums ${principalNet>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$s(principalNet)}</div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
