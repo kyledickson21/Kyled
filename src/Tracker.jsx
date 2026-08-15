@@ -1419,7 +1419,8 @@ function PropertiesPage({ data, update }) {
           const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
           const needed=propNeeded(prop,active);
           const short=Math.max(0,needed-funded);
-          return{prop,active,funded,needed,short,under:!prop.dateSold&&short>0,full:!prop.dateSold&&funded>0&&short===0};
+          const _f=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
+          return{prop,active,funded,needed,short,full:_f,under:!prop.dateSold&&short>0&&!_f};
         });
         const sorted=[...rows].sort((a,b)=>{
           if(!propSort.col) return propSellDate(a.prop).localeCompare(propSellDate(b.prop));
@@ -1500,8 +1501,8 @@ function PropertiesPage({ data, update }) {
           const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
           const needed=propNeeded(prop,active);
           const short=Math.max(0,needed-funded);
-          const under=!prop.dateSold&&short>0;
-          const full=!prop.dateSold&&funded>0&&short===0;
+          const full=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
+          const under=!prop.dateSold&&short>0&&!full;
           const isOpen=!!expanded[prop.id];
           const months=effectiveMonths(prop);
           const monthlyInt=active.reduce((s,l)=>s+monthlyLoanPayment(l),0);
@@ -1869,7 +1870,7 @@ function PropertyDashboard({ data }) {
     const funded=loans.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
     const needed=propNeeded(prop,loans);
     const short=Math.max(0,needed-funded);
-    return{prop,loans,funded,needed,short,under:short>0};
+    return{prop,loans,funded,needed,short,under:short>0&&pct(funded,needed)<95};
   }).sort((a,b)=>b.under-a.under);
 
   const totalDeployed=rows.reduce((s,r)=>s+r.funded,0);
@@ -1984,7 +1985,7 @@ function PropertyDashboard({ data }) {
                 {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{$$(short)}</span>}
               </div>
               <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5">
-                <div className={`h-full rounded-full ${under?"bg-red-400":pct(funded,needed)===100?"bg-emerald-500":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
+                <div className={`h-full rounded-full ${under?"bg-red-400":pct(funded,needed)>=95?"bg-emerald-500":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
               </div>
               <div className="flex justify-between text-[10px]">
                 <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{$$(funded)} funded</span>
