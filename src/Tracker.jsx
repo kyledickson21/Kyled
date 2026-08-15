@@ -1528,12 +1528,12 @@ function PropertiesPage({ data, update }) {
                       return (
                         <div>
                           <div className="flex items-center gap-2 mb-0.5">
-                            <div className="flex-1 h-1 rounded-full overflow-hidden flex bg-slate-100 dark:bg-zinc-700">
+                            <div className="flex-1 h-1 rounded-full overflow-hidden flex gap-[2px] bg-slate-100 dark:bg-zinc-700">
                               {hasBreakdown?(
                                 <>
-                                  {purchaseAmt>0&&<div className="bg-blue-500 h-full shrink-0" style={{width:`${purchaseAmt/needed*100}%`}}/>}
-                                  {rehabAmt>0&&<div className="bg-orange-400 h-full shrink-0" style={{width:`${rehabAmt/needed*100}%`}}/>}
-                                  {holdIntAmt>0&&<div className="bg-violet-400 h-full shrink-0" style={{width:`${holdIntAmt/needed*100}%`}}/>}
+                                  {purchaseAmt>0&&<div className={`h-full shrink-0 ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${purchaseAmt/needed*100}%`}}/>}
+                                  {rehabAmt>0&&<div className={`h-full shrink-0 ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${rehabAmt/needed*100}%`}}/>}
+                                  {holdIntAmt>0&&<div className={`h-full shrink-0 ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${holdIntAmt/needed*100}%`}}/>}
                                 </>
                               ):(
                                 <div className={`h-full rounded-full transition-all ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
