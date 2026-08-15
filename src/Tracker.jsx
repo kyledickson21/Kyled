@@ -1511,52 +1511,38 @@ function PropertiesPage({ data, update }) {
           const holdingMo=prop.monthlyHolding??500;
 
           return (
-            <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"bg-white dark:bg-[#1C1C1E] opacity-50":"bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] dark:hover:shadow-none transition-shadow"}`}>
+            <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"bg-white dark:bg-[#1C1C1E] opacity-50":"bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] dark:hover:shadow-none"}`}>
               <div className="cursor-pointer" onClick={()=>toggle(prop.id)}>
-                <div className="px-5 pt-4 pb-3 flex items-start gap-3">
+                <div className="px-4 py-3 flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-300 dark:text-zinc-600 tabular-nums shrink-0">#{visIdx+1}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-[10px] font-bold text-slate-300 dark:text-zinc-600 tabular-nums">#{visIdx+1}</span>
-                      <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[15px]">{prop.address||"Unnamed Property"}</span>
-                    </div>
-                    {(()=>{const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);return pd?<div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Purchased {pd}</div>:null;})()}
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {prop.dateSold && <Chip color="gray">Sold {prop.dateSold}</Chip>}
-                      {full&&short===0 && <Chip color="green">✓ Fully Funded</Chip>}
-                      {full&&short>0   && <Chip color="green">⚠ Short {$$(short)}</Chip>}
-                      {under           && <Chip color="red">⚠ Short {$$(short)}</Chip>}
-                      {!prop.dateSold&&funded>0&&<span className="text-xs text-slate-400 dark:text-zinc-500 tabular-nums">{$$(funded)} placed</span>}
+                    <div className="flex items-center gap-2 min-w-0 mb-1">
+                      <span className="font-semibold text-slate-900 dark:text-zinc-100 text-sm truncate">{prop.address||"Unnamed Property"}</span>
+                      {(()=>{const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);return pd?<span className="text-[10px] text-slate-400 dark:text-zinc-500 shrink-0">{pd}</span>:null;})()}
                     </div>
                     {needed>0&&!prop.dateSold&&(
-                      <div className="mt-3">
-                        <div className="h-1.5 bg-slate-100 dark:bg-zinc-700 rounded-full overflow-hidden">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1 bg-slate-100 dark:bg-zinc-700 rounded-full overflow-hidden">
                           <div className={`h-full rounded-full transition-all ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
                         </div>
-                        <div className="flex justify-between text-[10px] mt-1">
-                          <span className={`font-semibold tabular-nums ${full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{$$(funded)} / {$$(needed)}</span>
-                          <span className={`font-semibold ${full?"text-emerald-600 dark:text-emerald-400":under?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{rawPct}%</span>
-                        </div>
-                        {(prop.purchasePrice||prop.rehabBudget)&&(
-                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-400 dark:text-zinc-500">
-                            {prop.purchasePrice>0&&<span>Cash to Close <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(prop.purchasePrice)}</span></span>}
-                            {prop.rehabBudget>0&&<span>Rehab <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(prop.rehabBudget)}</span></span>}
-                            <span>Holding <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdingMo*months)}</span> <span className="opacity-70">({months}mo×${holdingMo}/mo)</span></span>
-                            {monthlyInt>0&&<span>Interest <span className="font-semibold text-orange-500 dark:text-orange-400 tabular-nums">{$$c(monthlyInt*months)}</span> <span className="opacity-70">({months}mo×{$$(monthlyInt)}/mo)</span></span>}
-                          </div>
-                        )}
+                        <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${full?"text-emerald-600 dark:text-emerald-400":under?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{rawPct}%</span>
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-1 shrink-0 items-center">
-                    <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit">✏️</button>
-                    <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm" title="Delete">🗑</button>
-                    <span className="w-6 h-6 flex items-center justify-center rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 text-[10px] font-bold">{isOpen?"▲":"▼"}</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {prop.dateSold&&<Chip color="gray">Sold</Chip>}
+                    {full&&short===0&&<span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">✓ Full</span>}
+                    {full&&short>0&&<span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">−{$$(short)}</span>}
+                    {under&&<span className="text-[11px] font-bold text-red-500 dark:text-red-400 tabular-nums">−{$$(short)}</span>}
+                    <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all" title="Edit">✏️</button>
+                    <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Delete">🗑</button>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 w-4 text-center">{isOpen?"▲":"▼"}</span>
                   </div>
                 </div>
                 {!isOpen&&active.length>0&&(
-                  <div className="px-5 pb-3 flex flex-wrap gap-1.5">
+                  <div className="px-4 pb-2.5 flex flex-wrap gap-1">
                     {active.map(l=>(
-                      <span key={l.id} className="text-[11px] bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 rounded-full px-2.5 py-1 font-medium tabular-nums">
+                      <span key={l.id} className="text-[11px] bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 rounded-full px-2 py-0.5 font-medium tabular-nums">
                         {l.lenderName} · {$$(l.principal)}
                       </span>
                     ))}
@@ -1565,36 +1551,36 @@ function PropertiesPage({ data, update }) {
               </div>
 
               {isOpen&&(
-                <div className="border-t border-black/[0.06] dark:border-white/[0.06] bg-[#F9F9FB] dark:bg-black/20 px-5 py-4">
-                  <div className="flex justify-between items-center mb-3">
+                <div className="border-t border-black/[0.06] dark:border-white/[0.06]">
+                  <div className="px-4 py-2.5 flex justify-between items-center bg-[#F9F9FB] dark:bg-black/20">
                     <span className="text-[11px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Loans · {prop.loans.length}</span>
                     <Btn onClick={()=>setModal({type:"addMoney",propId:prop.id})} color="green" sm>+ Add Money</Btn>
                   </div>
-                  {prop.loans.length===0&&<div className="text-center py-8 text-slate-400 dark:text-zinc-500 text-sm">No loans on this property yet</div>}
-                  <div className="rounded-xl overflow-hidden bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.05] dark:divide-white/[0.06] shadow-[0_1px_6px_rgba(0,0,0,0.05)] dark:shadow-none">
+                  {prop.loans.length===0&&<div className="text-center py-8 text-slate-400 dark:text-zinc-500 text-sm bg-[#F9F9FB] dark:bg-black/20">No loans on this property yet</div>}
+                  <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
                     {prop.loans.map(loan=>{
                       const bal=calcBalance(loan);
                       const earned=calcIntEarned(loan);
                       const monthly=monthlyLoanPayment(loan);
                       const drawn=(loan.drawFacility?.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
                       return (
-                        <div key={loan.id} className={`p-4 text-sm transition-all ${loan.endDate?"opacity-55":""}`}>
-                          <div className="flex justify-between items-start gap-2">
+                        <div key={loan.id} className={`px-4 py-3 bg-white dark:bg-[#1C1C1E] transition-all ${loan.endDate?"opacity-55":""}`}>
+                          <div className="flex items-start gap-2">
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap mb-2">
-                                <span className="font-bold text-slate-900 dark:text-zinc-100">{loan.lenderName}</span>
+                              <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px]">{loan.lenderName}</span>
                                 <TypeBadge type={loan.loanType} sm/>
                                 {loan.endDate&&<Chip color="gray">Closed {loan.endDate}</Chip>}
                               </div>
-                              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-                                <span className="text-slate-500 dark:text-zinc-400">Principal <strong className="text-slate-800 dark:text-zinc-100 tabular-nums">{$$(loan.principal)}</strong></span>
-                                <span className="text-slate-500 dark:text-zinc-400">Rate <strong className="text-slate-800 dark:text-zinc-100">{fmtRate(loan)}</strong></span>
-                                <span className="text-slate-500 dark:text-zinc-400">Start <strong className="text-slate-800 dark:text-zinc-100">{loan.startDate}</strong></span>
-                                <span className="text-slate-500 dark:text-zinc-400">Payoff Bal <strong className="text-blue-700 dark:text-blue-400 tabular-nums">{$$(bal)}</strong></span>
-                                {monthly>0&&<span className="text-slate-500 dark:text-zinc-400">Monthly Pmt <strong className="text-orange-600 dark:text-orange-400 tabular-nums">{$$(monthly)}/mo</strong></span>}
-                                <span className="text-slate-500 dark:text-zinc-400">Int {monthly>0?"Paid":"Earned"} <strong className="text-emerald-600 dark:text-emerald-400 tabular-nums">{$$(earned)}</strong></span>
-                                {loan.specialTerms&&<span className="col-span-2 text-slate-400 dark:text-zinc-500 italic">{loan.specialTerms}</span>}
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+                                <span className="text-slate-500 dark:text-zinc-400"><strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{$$(loan.principal)}</strong> principal</span>
+                                <span className="text-slate-400 dark:text-zinc-500">{fmtRate(loan)}</span>
+                                <span className="text-slate-400 dark:text-zinc-500">from {loan.startDate}</span>
+                                <span className="text-slate-500 dark:text-zinc-400">bal <strong className="text-blue-600 dark:text-blue-400 tabular-nums">{$$(bal)}</strong></span>
+                                {monthly>0&&<span className="text-slate-400 dark:text-zinc-500"><strong className="text-orange-500 dark:text-orange-400 tabular-nums">{$$(monthly)}/mo</strong></span>}
+                                <span className="text-slate-400 dark:text-zinc-500">{monthly>0?"paid":"earned"} <strong className="text-emerald-600 dark:text-emerald-400 tabular-nums">{$$(earned)}</strong></span>
                               </div>
+                              {loan.specialTerms&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 italic mt-1">{loan.specialTerms}</div>}
                               {loan.drawFacility&&(
                                 <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-100 dark:border-blue-900/50">
                                   <div className="flex items-center justify-between mb-2">
