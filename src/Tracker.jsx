@@ -78,6 +78,15 @@ const fmtRate = (l) => {
   return (l.interestRate||0) + "%/yr";
 };
 
+// ─── Persisted state helper ───────────────────────────────────────────────────
+const usePersistedState = (key, def) => {
+  const [val, setVal] = useState(() => {
+    try { const s=localStorage.getItem(key); return s!==null?JSON.parse(s):def; } catch { return def; }
+  });
+  const set = v => { setVal(v); try { localStorage.setItem(key, JSON.stringify(v)); } catch {} };
+  return [val, set];
+};
+
 // ─── Address autocomplete ─────────────────────────────────────────────────────
 const STATE_ABBR={"Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA","Colorado":"CO","Connecticut":"CT","Delaware":"DE","Florida":"FL","Georgia":"GA","Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS","Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA","Michigan":"MI","Minnesota":"MN","Mississippi":"MS","Missouri":"MO","Montana":"MT","Nebraska":"NE","Nevada":"NV","New Hampshire":"NH","New Jersey":"NJ","New Mexico":"NM","New York":"NY","North Carolina":"NC","North Dakota":"ND","Ohio":"OH","Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI","South Carolina":"SC","South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT","Virginia":"VA","Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY"};
 const fmtAddr = item => {
@@ -1186,11 +1195,11 @@ function PropertiesPage({ data, update }) {
   const [modal,setModal]=useState(null);
   const [expanded,setExpanded]=useState({});
   const [showSold,setShowSold]=useState(false);
-  const [viewMode,setViewMode]=useState("expanded");
-  const [propSort,setPropSort]=useState({col:null,dir:"asc"});
+  const [viewMode,setViewMode]=usePersistedState("nx-propViewMode","expanded");
+  const [propSort,setPropSort]=usePersistedState("nx-propSort",{col:null,dir:"asc"});
   const [propSearch,setPropSearch]=useState("");
-  const [propSortMode,setPropSortMode]=useState("estClose");
-  const [propSortDir,setPropSortDir]=useState("asc");
+  const [propSortMode,setPropSortMode]=usePersistedState("nx-propSortMode","estClose");
+  const [propSortDir,setPropSortDir]=usePersistedState("nx-propSortDir","asc");
   const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt}
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
@@ -1668,9 +1677,9 @@ function PropertiesPage({ data, update }) {
 
 // ─── Lender Dashboard ─────────────────────────────────────────────────────────
 function LenderDashboard({ data }) {
-  const [view,setView]=useState("loans");
-  const [sort,setSort]=useState({col:null,dir:"asc"});
-  const [lenderSort,setLenderSort]=useState("name");
+  const [view,setView]=usePersistedState("nx-lenderView","loans");
+  const [sort,setSort]=usePersistedState("nx-lenderSort",{col:null,dir:"asc"});
+  const [lenderSort,setLenderSort]=usePersistedState("nx-lenderSortBy","name");
   const [search,setSearch]=useState("");
   const toggleSort = col => setSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const allActive=[
@@ -2079,12 +2088,12 @@ function EditClosingModal({ prop, onSave, onClose }) {
 
 // ─── Closed Deals ─────────────────────────────────────────────────────────────
 function ClosedDealsPage({ data, update }) {
-  const [view,setView]=useState("flips");
+  const [view,setView]=usePersistedState("nx-closedView","flips");
   const [expanded,setExpanded]=useState({});
   const [search,setSearch]=useState("");
-  const [sortMode,setSortMode]=useState("dateSold");
-  const [flipSortDir,setFlipSortDir]=useState("desc");
-  const [rentalSortDir,setRentalSortDir]=useState("desc");
+  const [sortMode,setSortMode]=usePersistedState("nx-closedSortMode","dateSold");
+  const [flipSortDir,setFlipSortDir]=usePersistedState("nx-flipSortDir","desc");
+  const [rentalSortDir,setRentalSortDir]=usePersistedState("nx-rentalSortDir","desc");
   const [editModal,setEditModal]=useState(null);
   const [closeModal,setCloseModal]=useState(null);
   const [showClosePicker,setShowClosePicker]=useState(false);
@@ -2364,8 +2373,8 @@ function ClosedDealsPage({ data, update }) {
 
 // ─── History ──────────────────────────────────────────────────────────────────
 function HistoryPage({ data }) {
-  const [lf,setLf]=useState("all");
-  const [tf,setTf]=useState("all");
+  const [lf,setLf]=usePersistedState("nx-histLender","all");
+  const [tf,setTf]=usePersistedState("nx-histType","all");
   const [propSearch,setPropSearch]=useState("");
   const raw=[];
   data.properties.forEach(prop=>{
@@ -2589,7 +2598,7 @@ const TABS=[{id:"Properties",label:"🏠",full:"Active Properties"},{id:"LenderD
 
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
-  const [tab,setTab]=useState("Properties");
+  const [tab,setTab]=usePersistedState("nx-activeTab","Properties");
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
