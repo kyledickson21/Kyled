@@ -1561,21 +1561,15 @@ function PropertiesPage({ data, update }) {
                 )}
               </div>
 
-              {/* Collapsed: PropDash-style loan table */}
+              {/* Collapsed: lender pills */}
               {!isOpen&&active.length>0&&(
-                <table className="w-full text-xs bg-white dark:bg-[#1C1C1E] border-t border-black/[0.05] dark:border-white/[0.05]">
-                  <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
-                    {active.map(l=>(
-                      <tr key={l.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-                        <td className="px-5 py-2 font-semibold text-slate-800 dark:text-zinc-100">{l.lenderName}</td>
-                        <td className="px-3 py-2"><TypeBadge type={l.loanType} sm/></td>
-                        <td className="px-3 py-2 text-right text-slate-600 dark:text-zinc-300 tabular-nums">{$$(l.principal)}</td>
-                        <td className="px-3 py-2 text-right text-slate-400 dark:text-zinc-500 whitespace-nowrap">{fmtRate(l)}</td>
-                        <td className="px-5 py-2 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{$$(calcBalance(l))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="px-5 pb-3 flex flex-wrap gap-1.5">
+                  {active.map(l=>(
+                    <span key={l.id} className="text-[11px] bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 rounded-full px-2.5 py-1 font-medium tabular-nums">
+                      {l.lenderName} · {$$(l.principal)}
+                    </span>
+                  ))}
+                </div>
               )}
 
               {isOpen&&(
