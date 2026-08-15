@@ -83,7 +83,7 @@ const usePersistedState = (key, def) => {
   const [val, setVal] = useState(() => {
     try { const s=localStorage.getItem(key); return s!==null?JSON.parse(s):def; } catch { return def; }
   });
-  const set = v => { setVal(v); try { localStorage.setItem(key, JSON.stringify(v)); } catch {} };
+  const set = v => { setVal(prev => { const next=typeof v==="function"?v(prev):v; try{localStorage.setItem(key,JSON.stringify(next));}catch{} return next; }); };
   return [val, set];
 };
 
