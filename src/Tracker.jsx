@@ -1521,22 +1521,15 @@ function PropertiesPage({ data, update }) {
           return (
             <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none"} bg-white dark:bg-[#1C1C1E]`}>
 
-              {/* Header — PropDash style, always visible */}
+              {/* Header — clean PropDash style, click anywhere to expand */}
               <div className={`px-5 py-3.5 cursor-pointer ${under?"bg-red-50/60 dark:bg-red-950/15":""}`} onClick={()=>toggle(prop.id)}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-[10px] font-bold text-slate-300 dark:text-zinc-600 tabular-nums shrink-0">#{visIdx+1}</span>
-                    <span className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{prop.address||"Unnamed Property"}</span>
-                    {daysOwned!==null&&<span className="text-[10px] text-slate-400 dark:text-zinc-500 shrink-0">{daysOwned}d</span>}
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-semibold text-slate-900 dark:text-zinc-100 truncate mr-3">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</span>
+                  <div className="shrink-0 flex items-center gap-1.5">
                     {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 text-xs font-semibold">Sold</span>}
-                    {full&&short===0&&<span className="text-emerald-600 dark:text-emerald-400 text-sm font-semibold">✓ Full</span>}
-                    {(full&&short>0)&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums text-sm">-{$$(short)}</span>}
-                    {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums text-sm">-{$$(short)}</span>}
-                    <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all" title="Edit">✏️</button>
-                    <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Delete">🗑</button>
-                    <button onClick={e=>{e.stopPropagation();toggle(prop.id);}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all text-[10px] font-bold">{isOpen?"▲":"▼"}</button>
+                    {full&&short===0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ Full</span>}
+                    {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">-{$$(short)}</span>}
+                    {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{$$(short)}</span>}
                   </div>
                 </div>
                 {needed>0&&!prop.dateSold&&(
@@ -1548,15 +1541,8 @@ function PropertiesPage({ data, update }) {
                     </div>
                     <div className="flex justify-between text-[10px]">
                       <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{$$(funded)} funded</span>
-                      <span className="text-slate-400 dark:text-zinc-500 tabular-nums">{$$(needed)} needed · {rawPct}%</span>
+                      <span className="text-slate-400 dark:text-zinc-500 tabular-nums">{$$(needed)} needed</span>
                     </div>
-                    {hasBreakdown&&(
-                      <div className="flex text-[9px] text-slate-400 dark:text-zinc-500 mt-0.5">
-                        {purchaseAmt>0&&<div className="shrink-0 overflow-hidden whitespace-nowrap" style={{width:`${d1}%`}}>Purchase <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(purchaseAmt)}</span></div>}
-                        {rehabAmt>0&&<div className="shrink-0 overflow-hidden whitespace-nowrap" style={{width:`${rehabAmt/needed*100}%`}}>Rehab <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(rehabAmt)}</span></div>}
-                        {holdIntAmt>0&&<div className="flex-1 text-right whitespace-nowrap">Hold+Int <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdIntAmt)}</span></div>}
-                      </div>
-                    )}
                   </>
                 )}
               </div>
@@ -1574,8 +1560,25 @@ function PropertiesPage({ data, update }) {
 
               {isOpen&&(
                 <div className="border-t border-black/[0.06] dark:border-white/[0.06]">
+                  {/* Cost breakdown — only shown when expanded */}
+                  {hasBreakdown&&(
+                    <div className="px-5 py-3 bg-[#F9F9FB] dark:bg-black/20 border-b border-black/[0.04] dark:border-white/[0.04]">
+                      <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Cost Breakdown</div>
+                      <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
+                        {purchaseAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Purchase <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{$$(purchaseAmt)}</strong></span>}
+                        {rehabAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Rehab <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{$$(rehabAmt)}</strong></span>}
+                        {holdIntAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Hold+Int <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{$$c(holdIntAmt)}</strong><span className="opacity-60 ml-1">({months}mo)</span></span>}
+                        {daysOwned!==null&&<span className="text-slate-400 dark:text-zinc-500">{daysOwned} days owned</span>}
+                      </div>
+                    </div>
+                  )}
+                  {/* Loans header with edit/delete */}
                   <div className="px-4 py-2.5 flex justify-between items-center bg-[#F9F9FB] dark:bg-black/20">
-                    <span className="text-[11px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Loans · {prop.loans.length}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Loans · {prop.loans.length}</span>
+                      <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs" title="Edit Property">✏️</button>
+                      <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs" title="Delete Property">🗑</button>
+                    </div>
                     <Btn onClick={()=>setModal({type:"addMoney",propId:prop.id})} color="green" sm>+ Add Money</Btn>
                   </div>
                   {prop.loans.length===0&&<div className="text-center py-8 text-slate-400 dark:text-zinc-500 text-sm bg-[#F9F9FB] dark:bg-black/20">No loans on this property yet</div>}
