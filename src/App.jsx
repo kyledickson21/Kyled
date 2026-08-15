@@ -11,7 +11,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [signingIn, setSigningIn] = useState(false)
   const [dark, setDark] = useState(() => localStorage.getItem('nexus-theme') === 'dark')
-  const [view, setView] = useState('home')
+  const [view, setView] = useState('tracker')
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
