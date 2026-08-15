@@ -1509,66 +1509,74 @@ function PropertiesPage({ data, update }) {
           const months=effectiveMonths(prop);
           const monthlyInt=active.reduce((s,l)=>s+monthlyLoanPayment(l),0);
           const holdingMo=prop.monthlyHolding??500;
+          const purchaseAmt=prop.purchasePrice||0;
+          const rehabAmt=prop.rehabBudget||0;
+          const holdIntAmt=holdingMo*months+monthlyInt*months;
+          const d1=purchaseAmt/needed*100;
+          const d2=(purchaseAmt+rehabAmt)/needed*100;
+          const hasBreakdown=purchaseAmt>0||rehabAmt>0||holdIntAmt>0;
+          const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);
+          const daysOwned=pd?Math.floor((new Date(TODAY)-new Date(pd))/86400000):null;
 
           return (
-            <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"bg-white dark:bg-[#1C1C1E] opacity-50":"bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] dark:hover:shadow-none"}`}>
-              <div className="cursor-pointer" onClick={()=>toggle(prop.id)}>
-                <div className="px-4 py-3 flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-300 dark:text-zinc-600 tabular-nums shrink-0">#{visIdx+1}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 min-w-0 mb-1">
-                      <span className="font-semibold text-slate-900 dark:text-zinc-100 text-sm truncate">{prop.address||"Unnamed Property"}</span>
-                      {(()=>{const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);if(!pd)return null;const days=Math.floor((new Date(TODAY)-new Date(pd))/86400000);return <span className="text-[10px] text-slate-400 dark:text-zinc-500 shrink-0">{days}d owned</span>;})()}
-                    </div>
-                    {needed>0&&!prop.dateSold&&(()=>{
-                      const purchaseAmt=prop.purchasePrice||0;
-                      const rehabAmt=prop.rehabBudget||0;
-                      const holdIntAmt=holdingMo*months+monthlyInt*months;
-                      const hasBreakdown=purchaseAmt>0||rehabAmt>0||holdIntAmt>0;
-                      const barColor=full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500";
-                      const d1=purchaseAmt/needed*100;
-                      const d2=(purchaseAmt+rehabAmt)/needed*100;
-                      return (
-                        <div>
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <div className="flex-1 h-1 bg-slate-100 dark:bg-zinc-700 rounded-full overflow-hidden relative">
-                              <div className={`h-full absolute left-0 top-0 transition-all ${barColor}`} style={{width:`${pct(funded,needed)}%`}}/>
-                              {hasBreakdown&&purchaseAmt>0&&(rehabAmt>0||holdIntAmt>0)&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/50" style={{left:`${d1}%`}}/>}
-                              {hasBreakdown&&(purchaseAmt+rehabAmt)>0&&holdIntAmt>0&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/50" style={{left:`${d2}%`}}/>}
-                            </div>
-                            <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${full?"text-emerald-600 dark:text-emerald-400":under?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{rawPct}%</span>
-                          </div>
-                          {hasBreakdown&&(
-                            <div className="flex text-[9px] text-slate-400 dark:text-zinc-500">
-                              {purchaseAmt>0&&<div className="shrink-0 overflow-hidden whitespace-nowrap" style={{width:`${d1}%`}}>Purchase <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(purchaseAmt)}</span></div>}
-                              {rehabAmt>0&&<div className="shrink-0 overflow-hidden whitespace-nowrap" style={{width:`${rehabAmt/needed*100}%`}}>Rehab <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(rehabAmt)}</span></div>}
-                              {holdIntAmt>0&&<div className="flex-1 text-right whitespace-nowrap">Hold+Int <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdIntAmt)}</span></div>}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+            <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none"} bg-white dark:bg-[#1C1C1E]`}>
+
+              {/* Header — PropDash style, always visible */}
+              <div className={`px-5 py-3.5 cursor-pointer ${under?"bg-red-50/60 dark:bg-red-950/15":""}`} onClick={()=>toggle(prop.id)}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold text-slate-300 dark:text-zinc-600 tabular-nums shrink-0">#{visIdx+1}</span>
+                    <span className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{prop.address||"Unnamed Property"}</span>
+                    {daysOwned!==null&&<span className="text-[10px] text-slate-400 dark:text-zinc-500 shrink-0">{daysOwned}d</span>}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {prop.dateSold&&<Chip color="gray">Sold</Chip>}
-                    {full&&short===0&&<span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">✓ Full</span>}
-                    {full&&short>0&&<span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">−{$$(short)}</span>}
-                    {under&&<span className="text-[11px] font-bold text-red-500 dark:text-red-400 tabular-nums">−{$$(short)}</span>}
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 text-xs font-semibold">Sold</span>}
+                    {full&&short===0&&<span className="text-emerald-600 dark:text-emerald-400 text-sm font-semibold">✓ Full</span>}
+                    {(full&&short>0)&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums text-sm">-{$$(short)}</span>}
+                    {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums text-sm">-{$$(short)}</span>}
                     <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all" title="Edit">✏️</button>
                     <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Delete">🗑</button>
-                    <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 w-4 text-center">{isOpen?"▲":"▼"}</span>
+                    <button onClick={e=>{e.stopPropagation();toggle(prop.id);}} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all text-[10px] font-bold">{isOpen?"▲":"▼"}</button>
                   </div>
                 </div>
-                {!isOpen&&active.length>0&&(
-                  <div className="px-4 pb-2.5 flex flex-wrap gap-1">
-                    {active.map(l=>(
-                      <span key={l.id} className="text-[11px] bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 rounded-full px-2 py-0.5 font-medium tabular-nums">
-                        {l.lenderName} · {$$(l.principal)}
-                      </span>
-                    ))}
-                  </div>
+                {needed>0&&!prop.dateSold&&(
+                  <>
+                    <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5 relative">
+                      <div className={`h-full absolute left-0 top-0 transition-all rounded-full ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
+                      {hasBreakdown&&purchaseAmt>0&&(rehabAmt>0||holdIntAmt>0)&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/40" style={{left:`${d1}%`}}/>}
+                      {hasBreakdown&&(purchaseAmt+rehabAmt)>0&&holdIntAmt>0&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/40" style={{left:`${d2}%`}}/>}
+                    </div>
+                    <div className="flex justify-between text-[10px]">
+                      <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{$$(funded)} funded</span>
+                      <span className="text-slate-400 dark:text-zinc-500 tabular-nums">{$$(needed)} needed · {rawPct}%</span>
+                    </div>
+                    {hasBreakdown&&(
+                      <div className="flex text-[9px] text-slate-400 dark:text-zinc-500 mt-0.5">
+                        {purchaseAmt>0&&<div className="shrink-0 overflow-hidden whitespace-nowrap" style={{width:`${d1}%`}}>Purchase <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(purchaseAmt)}</span></div>}
+                        {rehabAmt>0&&<div className="shrink-0 overflow-hidden whitespace-nowrap" style={{width:`${rehabAmt/needed*100}%`}}>Rehab <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(rehabAmt)}</span></div>}
+                        {holdIntAmt>0&&<div className="flex-1 text-right whitespace-nowrap">Hold+Int <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdIntAmt)}</span></div>}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
+
+              {/* Collapsed: PropDash-style loan table */}
+              {!isOpen&&active.length>0&&(
+                <table className="w-full text-xs bg-white dark:bg-[#1C1C1E] border-t border-black/[0.05] dark:border-white/[0.05]">
+                  <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+                    {active.map(l=>(
+                      <tr key={l.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+                        <td className="px-5 py-2 font-semibold text-slate-800 dark:text-zinc-100">{l.lenderName}</td>
+                        <td className="px-3 py-2"><TypeBadge type={l.loanType} sm/></td>
+                        <td className="px-3 py-2 text-right text-slate-600 dark:text-zinc-300 tabular-nums">{$$(l.principal)}</td>
+                        <td className="px-3 py-2 text-right text-slate-400 dark:text-zinc-500 whitespace-nowrap">{fmtRate(l)}</td>
+                        <td className="px-5 py-2 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{$$(calcBalance(l))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
 
               {isOpen&&(
                 <div className="border-t border-black/[0.06] dark:border-white/[0.06]">
@@ -1880,7 +1888,7 @@ function PropertyDashboard({ data }) {
     const needed=propNeeded(prop,loans);
     const short=Math.max(0,needed-funded);
     return{prop,loans,funded,needed,short,under:short>0&&pct(funded,needed)<95};
-  }).sort((a,b)=>b.under-a.under);
+  }).sort((a,b)=>b.short-a.short);
 
   const totalDeployed=rows.reduce((s,r)=>s+r.funded,0);
   const unassignedTotal=data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
