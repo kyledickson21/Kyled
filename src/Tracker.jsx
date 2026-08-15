@@ -1518,16 +1518,39 @@ function PropertiesPage({ data, update }) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 min-w-0 mb-1">
                       <span className="font-semibold text-slate-900 dark:text-zinc-100 text-sm truncate">{prop.address||"Unnamed Property"}</span>
-                      {(()=>{const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);return pd?<span className="text-[10px] text-slate-400 dark:text-zinc-500 shrink-0">{pd}</span>:null;})()}
+                      {(()=>{const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);if(!pd)return null;const days=Math.floor((new Date(TODAY)-new Date(pd))/86400000);return <span className="text-[10px] text-slate-400 dark:text-zinc-500 shrink-0">{days}d owned</span>;})()}
                     </div>
-                    {needed>0&&!prop.dateSold&&(
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1 bg-slate-100 dark:bg-zinc-700 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
+                    {needed>0&&!prop.dateSold&&(()=>{
+                      const purchaseAmt=prop.purchasePrice||0;
+                      const rehabAmt=prop.rehabBudget||0;
+                      const holdIntAmt=holdingMo*months+monthlyInt*months;
+                      const hasBreakdown=purchaseAmt>0||rehabAmt>0||holdIntAmt>0;
+                      return (
+                        <div>
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <div className="flex-1 h-1 rounded-full overflow-hidden flex bg-slate-100 dark:bg-zinc-700">
+                              {hasBreakdown?(
+                                <>
+                                  {purchaseAmt>0&&<div className="bg-blue-500 h-full shrink-0" style={{width:`${purchaseAmt/needed*100}%`}}/>}
+                                  {rehabAmt>0&&<div className="bg-orange-400 h-full shrink-0" style={{width:`${rehabAmt/needed*100}%`}}/>}
+                                  {holdIntAmt>0&&<div className="bg-violet-400 h-full shrink-0" style={{width:`${holdIntAmt/needed*100}%`}}/>}
+                                </>
+                              ):(
+                                <div className={`h-full rounded-full transition-all ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
+                              )}
+                            </div>
+                            <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${full?"text-emerald-600 dark:text-emerald-400":under?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{rawPct}%</span>
+                          </div>
+                          {hasBreakdown&&(
+                            <div className="flex gap-2.5 text-[9px] text-slate-400 dark:text-zinc-500">
+                              {purchaseAmt>0&&<span><span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-0.5 align-middle"/>Purchase <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(purchaseAmt)}</span></span>}
+                              {rehabAmt>0&&<span><span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400 mr-0.5 align-middle"/>Rehab <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(rehabAmt)}</span></span>}
+                              {holdIntAmt>0&&<span><span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-400 mr-0.5 align-middle"/>Hold+Int <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdIntAmt)}</span></span>}
+                            </div>
+                          )}
                         </div>
-                        <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${full?"text-emerald-600 dark:text-emerald-400":under?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{rawPct}%</span>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {prop.dateSold&&<Chip color="gray">Sold</Chip>}
