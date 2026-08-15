@@ -1198,7 +1198,7 @@ function PropertiesPage({ data, update }) {
   const [viewMode,setViewMode]=usePersistedState("nx-propViewMode","expanded");
   const [propSort,setPropSort]=usePersistedState("nx-propSort",{col:null,dir:"asc"});
   const [propSearch,setPropSearch]=useState("");
-  const [propSortMode,setPropSortMode]=usePersistedState("nx-propSortMode","estClose");
+  const [propSortMode,setPropSortMode]=usePersistedState("nx-propSortMode","shortage");
   const [propSortDir,setPropSortDir]=usePersistedState("nx-propSortDir","asc");
   const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt}
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
@@ -1334,6 +1334,10 @@ function PropertiesPage({ data, update }) {
     })
     .sort((a,b)=>{
       const d=propSortDir==="asc"?1:-1;
+      if(propSortMode==="shortage"){
+        const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};
+        return d*(shortOf(b)-shortOf(a));
+      }
       if(propSortMode==="dateAcquired")return d*propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return d*(a.address||"").localeCompare(b.address||"");
       if(propSortMode==="dateSold")return d*(a.dateSold||"0000").localeCompare(b.dateSold||"0000");
@@ -1376,7 +1380,7 @@ function PropertiesPage({ data, update }) {
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
-            {[["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]].map(([v,l])=>(
+            {[["shortage","Shortage"],["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]].map(([v,l])=>(
               <button key={v} onClick={()=>setPropSortMode(v)}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${propSortMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
                 {l}
