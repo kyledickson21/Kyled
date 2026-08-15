@@ -1525,27 +1525,24 @@ function PropertiesPage({ data, update }) {
                       const rehabAmt=prop.rehabBudget||0;
                       const holdIntAmt=holdingMo*months+monthlyInt*months;
                       const hasBreakdown=purchaseAmt>0||rehabAmt>0||holdIntAmt>0;
+                      const barColor=full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500";
+                      const d1=purchaseAmt/needed*100;
+                      const d2=(purchaseAmt+rehabAmt)/needed*100;
                       return (
                         <div>
                           <div className="flex items-center gap-2 mb-0.5">
-                            <div className="flex-1 h-1 rounded-full overflow-hidden flex gap-[2px] bg-slate-100 dark:bg-zinc-700">
-                              {hasBreakdown?(
-                                <>
-                                  {purchaseAmt>0&&<div className={`h-full shrink-0 ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${purchaseAmt/needed*100}%`}}/>}
-                                  {rehabAmt>0&&<div className={`h-full shrink-0 ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${rehabAmt/needed*100}%`}}/>}
-                                  {holdIntAmt>0&&<div className={`h-full shrink-0 ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${holdIntAmt/needed*100}%`}}/>}
-                                </>
-                              ):(
-                                <div className={`h-full rounded-full transition-all ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
-                              )}
+                            <div className="flex-1 h-1 bg-slate-100 dark:bg-zinc-700 rounded-full overflow-hidden relative">
+                              <div className={`h-full absolute left-0 top-0 transition-all ${barColor}`} style={{width:`${pct(funded,needed)}%`}}/>
+                              {hasBreakdown&&purchaseAmt>0&&(rehabAmt>0||holdIntAmt>0)&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/50" style={{left:`${d1}%`}}/>}
+                              {hasBreakdown&&(purchaseAmt+rehabAmt)>0&&holdIntAmt>0&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/50" style={{left:`${d2}%`}}/>}
                             </div>
                             <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${full?"text-emerald-600 dark:text-emerald-400":under?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{rawPct}%</span>
                           </div>
                           {hasBreakdown&&(
-                            <div className="flex gap-[2px] text-[9px] text-slate-400 dark:text-zinc-500 overflow-hidden">
-                              {purchaseAmt>0&&<div className="shrink-0 overflow-hidden whitespace-nowrap" style={{width:`${purchaseAmt/needed*100}%`}}>Purchase <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(purchaseAmt)}</span></div>}
+                            <div className="flex text-[9px] text-slate-400 dark:text-zinc-500">
+                              {purchaseAmt>0&&<div className="shrink-0 overflow-hidden whitespace-nowrap" style={{width:`${d1}%`}}>Purchase <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(purchaseAmt)}</span></div>}
                               {rehabAmt>0&&<div className="shrink-0 overflow-hidden whitespace-nowrap" style={{width:`${rehabAmt/needed*100}%`}}>Rehab <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(rehabAmt)}</span></div>}
-                              {holdIntAmt>0&&<div className="shrink-0 overflow-hidden whitespace-nowrap" style={{width:`${holdIntAmt/needed*100}%`}}>Hold+Int <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdIntAmt)}</span></div>}
+                              {holdIntAmt>0&&<div className="flex-1 text-right whitespace-nowrap">Hold+Int <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdIntAmt)}</span></div>}
                             </div>
                           )}
                         </div>
