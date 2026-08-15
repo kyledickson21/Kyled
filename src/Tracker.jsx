@@ -1542,10 +1542,10 @@ function PropertiesPage({ data, update }) {
                             <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${full?"text-emerald-600 dark:text-emerald-400":under?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{rawPct}%</span>
                           </div>
                           {hasBreakdown&&(
-                            <div className="flex gap-2.5 text-[9px] text-slate-400 dark:text-zinc-500">
-                              {purchaseAmt>0&&<span><span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-0.5 align-middle"/>Purchase <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(purchaseAmt)}</span></span>}
-                              {rehabAmt>0&&<span><span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400 mr-0.5 align-middle"/>Rehab <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(rehabAmt)}</span></span>}
-                              {holdIntAmt>0&&<span><span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-400 mr-0.5 align-middle"/>Hold+Int <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdIntAmt)}</span></span>}
+                            <div className="flex text-[9px] text-slate-400 dark:text-zinc-500 overflow-hidden">
+                              {purchaseAmt>0&&<div className="shrink-0 overflow-hidden" style={{width:`${purchaseAmt/needed*100}%`}}>Purchase <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(purchaseAmt)}</span></div>}
+                              {rehabAmt>0&&<div className="shrink-0 overflow-hidden" style={{width:`${rehabAmt/needed*100}%`}}>Rehab <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(rehabAmt)}</span></div>}
+                              {holdIntAmt>0&&<div className="shrink-0 overflow-hidden" style={{width:`${holdIntAmt/needed*100}%`}}>Hold+Int <span className="font-semibold text-slate-600 dark:text-zinc-300 tabular-nums">{$$c(holdIntAmt)}</span></div>}
                             </div>
                           )}
                         </div>
