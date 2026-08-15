@@ -1552,8 +1552,9 @@ function PropertiesPage({ data, update }) {
               </div>
 
               {/* Collapsed: lender pills */}
-              {!isOpen&&active.length>0&&(
+              {!isOpen&&(active.length>0||daysOwned!==null)&&(
                 <div className="px-5 pb-3 flex flex-wrap gap-1.5">
+                  {daysOwned!==null&&<span className="text-[11px] bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 rounded-full px-2.5 py-1 font-medium tabular-nums">{daysOwned}d</span>}
                   {active.map(l=>(
                     <span key={l.id} className="text-[11px] bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 rounded-full px-2.5 py-1 font-medium tabular-nums">
                       {l.lenderName} · {$$(l.principal)}
