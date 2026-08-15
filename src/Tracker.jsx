@@ -1476,7 +1476,8 @@ function PropertiesPage({ data, update }) {
                       <td className="py-2.5 px-4 text-right tabular-nums text-slate-400 dark:text-zinc-500">{needed>0?$$(needed):"—"}</td>
                       <td className="py-2.5 px-4 text-right whitespace-nowrap">
                         {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 font-semibold">Sold</span>}
-                        {full&&<span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Full</span>}
+                        {full&&short===0&&<span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Full</span>}
+                        {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">−{$$(short)}</span>}
                         {under&&<span className="text-red-500 dark:text-red-400 font-bold tabular-nums">−{$$(short)}</span>}
                         {!prop.dateSold&&!full&&!under&&funded===0&&<span className="text-slate-300 dark:text-zinc-600">—</span>}
                       </td>
@@ -1503,6 +1504,7 @@ function PropertiesPage({ data, update }) {
           const short=Math.max(0,needed-funded);
           const full=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
           const under=!prop.dateSold&&short>0&&!full;
+          const rawPct=needed>0?Math.round(funded/needed*100):0;
           const isOpen=!!expanded[prop.id];
           const months=effectiveMonths(prop);
           const monthlyInt=active.reduce((s,l)=>s+monthlyLoanPayment(l),0);
@@ -1520,8 +1522,9 @@ function PropertiesPage({ data, update }) {
                     {(()=>{const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);return pd?<div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Purchased {pd}</div>:null;})()}
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {prop.dateSold && <Chip color="gray">Sold {prop.dateSold}</Chip>}
-                      {full   && <Chip color="green">✓ Fully Funded</Chip>}
-                      {under  && <Chip color="red">⚠ Short {$$(short)}</Chip>}
+                      {full&&short===0 && <Chip color="green">✓ Fully Funded</Chip>}
+                      {full&&short>0   && <Chip color="green">⚠ Short {$$(short)}</Chip>}
+                      {under           && <Chip color="red">⚠ Short {$$(short)}</Chip>}
                       {!prop.dateSold&&funded>0&&<span className="text-xs text-slate-400 dark:text-zinc-500 tabular-nums">{$$(funded)} placed</span>}
                     </div>
                     {needed>0&&!prop.dateSold&&(
@@ -1531,7 +1534,7 @@ function PropertiesPage({ data, update }) {
                         </div>
                         <div className="flex justify-between text-[10px] mt-1">
                           <span className={`font-semibold tabular-nums ${full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{$$(funded)} / {$$(needed)}</span>
-                          <span className={`font-semibold ${under?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{pct(funded,needed)}%</span>
+                          <span className={`font-semibold ${full?"text-emerald-600 dark:text-emerald-400":under?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{rawPct}%</span>
                         </div>
                         {(prop.purchasePrice||prop.rehabBudget)&&(
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-400 dark:text-zinc-500">
