@@ -1,0 +1,24 @@
+services:
+  - type: worker
+    name: buch-listing-sync
+    runtime: node
+    plan: starter
+    rootDir: buch-listing-sync
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    disk:
+      name: buch-listing-sync-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: POLL_INTERVAL_MINUTES
+        value: "15"
+      - key: SPARK_API_BASE
+        value: https://sparkapi.com/v1
+      - key: STATE_FILE
+        value: /data/state.json
+      - key: SPARK_ACCESS_TOKEN
+        sync: false
+      - key: ZAPIER_WEBHOOK_URL
+        sync: false

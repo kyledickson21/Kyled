@@ -1,0 +1,8 @@
+{
+  "name": "buch-listing-sync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "In-between service: Spark API (Columbus REALTORS MLS) -> Zapier webhook -> REsimpli",
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node listing-sync.js", "selftest": "node selftest.js" }
+}
