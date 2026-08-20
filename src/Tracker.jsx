@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { loadData, saveData, subscribeToChanges } from './supabase'
 
 const load = loadData
@@ -77,6 +77,10 @@ const fmtRate = (l) => {
   if (pt==="monthly_fixed") return "$" + Math.round(l.monthlyPayment||0).toLocaleString() + "/mo";
   return (l.interestRate||0) + "%/yr";
 };
+
+// ─── Privacy context ──────────────────────────────────────────────────────────
+const PrivacyContext = createContext(false);
+const usePrivacy = () => useContext(PrivacyContext);
 
 // ─── Persisted state helper ───────────────────────────────────────────────────
 const usePersistedState = (key, def) => {
@@ -1192,6 +1196,11 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
 
 // ─── Properties Page ──────────────────────────────────────────────────────────
 function PropertiesPage({ data, update }) {
+  const prv=usePrivacy();
+  const h$=v=>prv?"••••":$$(v);
+  const hc=v=>prv?"••••":$$c(v);
+  const hn=n=>prv?"••••••":(n??"");
+  const hr=l=>prv?"••••":fmtRate(l);
   const [modal,setModal]=useState(null);
   const [expanded,setExpanded]=useState({});
   const [showSold,setShowSold]=useState(false);
@@ -1532,8 +1541,8 @@ function PropertiesPage({ data, update }) {
                   <div className="shrink-0 flex items-center gap-1.5">
                     {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 text-xs font-semibold">Sold</span>}
                     {full&&short===0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ Full</span>}
-                    {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">-{$$(short)}</span>}
-                    {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{$$(short)}</span>}
+                    {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">-{h$(short)}</span>}
+                    {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{h$(short)}</span>}
                   </div>
                 </div>
                 {needed>0&&!prop.dateSold&&(
@@ -1544,8 +1553,8 @@ function PropertiesPage({ data, update }) {
                       {hasBreakdown&&(purchaseAmt+rehabAmt)>0&&holdIntAmt>0&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/40" style={{left:`${d2}%`}}/>}
                     </div>
                     <div className="flex justify-between text-[10px]">
-                      <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{$$(funded)} funded</span>
-                      <span className="text-slate-400 dark:text-zinc-500 tabular-nums">{$$(needed)} needed</span>
+                      <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{h$(funded)} funded</span>
+                      <span className="text-slate-400 dark:text-zinc-500 tabular-nums">{h$(needed)} needed</span>
                     </div>
                   </>
                 )}
@@ -1557,7 +1566,7 @@ function PropertiesPage({ data, update }) {
                   {daysOwned!==null&&<span className="text-[11px] bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 rounded-full px-2.5 py-1 font-medium tabular-nums">{daysOwned}d</span>}
                   {active.map(l=>(
                     <span key={l.id} className="text-[11px] bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 rounded-full px-2.5 py-1 font-medium tabular-nums">
-                      {l.lenderName} · {$$(l.principal)}
+                      {hn(l.lenderName)} · {h$(l.principal)}
                     </span>
                   ))}
                 </div>
@@ -1570,9 +1579,9 @@ function PropertiesPage({ data, update }) {
                     <div className="px-5 py-3 bg-[#F9F9FB] dark:bg-black/20 border-b border-black/[0.04] dark:border-white/[0.04]">
                       <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Cost Breakdown</div>
                       <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
-                        {purchaseAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Purchase <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{$$(purchaseAmt)}</strong></span>}
-                        {rehabAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Rehab <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{$$(rehabAmt)}</strong></span>}
-                        {holdIntAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Hold+Int <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{$$c(holdIntAmt)}</strong><span className="opacity-60 ml-1">({months}mo)</span></span>}
+                        {purchaseAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Purchase <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{h$(purchaseAmt)}</strong></span>}
+                        {rehabAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Rehab <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{h$(rehabAmt)}</strong></span>}
+                        {holdIntAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Hold+Int <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{hc(holdIntAmt)}</strong><span className="opacity-60 ml-1">({months}mo)</span></span>}
                         {daysOwned!==null&&<span className="text-slate-400 dark:text-zinc-500">{daysOwned} days owned</span>}
                       </div>
                     </div>
@@ -1598,17 +1607,17 @@ function PropertiesPage({ data, update }) {
                           <div className="flex items-start gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                                <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px]">{loan.lenderName}</span>
+                                <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px]">{hn(loan.lenderName)}</span>
                                 <TypeBadge type={loan.loanType} sm/>
                                 {loan.endDate&&<Chip color="gray">Closed {loan.endDate}</Chip>}
                               </div>
                               <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
-                                <span className="text-slate-500 dark:text-zinc-400"><strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{$$(loan.principal)}</strong> principal</span>
-                                <span className="text-slate-400 dark:text-zinc-500">{fmtRate(loan)}</span>
+                                <span className="text-slate-500 dark:text-zinc-400"><strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{h$(loan.principal)}</strong> principal</span>
+                                <span className="text-slate-400 dark:text-zinc-500">{hr(loan)}</span>
                                 <span className="text-slate-400 dark:text-zinc-500">from {loan.startDate}</span>
-                                <span className="text-slate-500 dark:text-zinc-400">bal <strong className="text-blue-600 dark:text-blue-400 tabular-nums">{$$(bal)}</strong></span>
-                                {monthly>0&&<span className="text-slate-400 dark:text-zinc-500"><strong className="text-orange-500 dark:text-orange-400 tabular-nums">{$$(monthly)}/mo</strong></span>}
-                                <span className="text-slate-400 dark:text-zinc-500">{monthly>0?"paid":"earned"} <strong className="text-emerald-600 dark:text-emerald-400 tabular-nums">{$$(earned)}</strong></span>
+                                <span className="text-slate-500 dark:text-zinc-400">bal <strong className="text-blue-600 dark:text-blue-400 tabular-nums">{h$(bal)}</strong></span>
+                                {monthly>0&&<span className="text-slate-400 dark:text-zinc-500"><strong className="text-orange-500 dark:text-orange-400 tabular-nums">{h$(monthly)}/mo</strong></span>}
+                                <span className="text-slate-400 dark:text-zinc-500">{monthly>0?"paid":"earned"} <strong className="text-emerald-600 dark:text-emerald-400 tabular-nums">{h$(earned)}</strong></span>
                               </div>
                               {loan.specialTerms&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 italic mt-1">{loan.specialTerms}</div>}
                               {loan.drawFacility&&(
@@ -1621,13 +1630,13 @@ function PropertiesPage({ data, update }) {
                                     )}
                                   </div>
                                   <div className="grid grid-cols-3 gap-2 text-center text-xs mb-2">
-                                    {[["Committed",$$(loan.drawFacility.committed),"text-blue-700 dark:text-blue-300"],["Drawn",$$(drawn),"text-slate-700 dark:text-zinc-200"],["Available",$$(drawRemaining(loan)),"text-emerald-600 dark:text-emerald-400"]].map(([l,v,c])=>(
+                                    {[["Committed",h$(loan.drawFacility.committed),"text-blue-700 dark:text-blue-300"],["Drawn",h$(drawn),"text-slate-700 dark:text-zinc-200"],["Available",h$(drawRemaining(loan)),"text-emerald-600 dark:text-emerald-400"]].map(([l,v,c])=>(
                                       <div key={l}><div className="text-[9px] text-blue-400 dark:text-blue-500 uppercase mb-1">{l}</div><div className={`font-bold tabular-nums ${c}`}>{v}</div></div>
                                     ))}
                                   </div>
                                   {(loan.drawFacility.draws||[]).map(d=>(
                                     <div key={d.id} className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400 pt-1 border-t border-blue-100 dark:border-blue-900/40 first:border-0 mt-1">
-                                      <span>{d.date}</span><span className="tabular-nums">{$$(d.amount)} drawn</span>
+                                      <span>{d.date}</span><span className="tabular-nums">{h$(d.amount)} drawn</span>
                                     </div>
                                   ))}
                                   {inlineDraw?.loanId===loan.id&&(
@@ -1697,6 +1706,11 @@ function PropertiesPage({ data, update }) {
 
 // ─── Lender Dashboard ─────────────────────────────────────────────────────────
 function LenderDashboard({ data }) {
+  const prv=usePrivacy();
+  const h$=v=>prv?"••••":$$(v);
+  const hc=v=>prv?"••••":$$c(v);
+  const hn=n=>prv?"••••••":(n??"");
+  const hr=l=>prv?"••••":fmtRate(l);
   const [view,setView]=usePersistedState("nx-lenderView","loans");
   const [sort,setSort]=usePersistedState("nx-lenderSort",{col:null,dir:"asc"});
   const [lenderSort,setLenderSort]=usePersistedState("nx-lenderSortBy","name");
@@ -1742,7 +1756,7 @@ function LenderDashboard({ data }) {
         ].map(({label,val,num})=>(
           <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 text-center shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
             <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{label}</div>
-            <div className={`text-xl font-bold tabular-nums ${num}`}>{$$c(val)}</div>
+            <div className={`text-xl font-bold tabular-nums ${num}`}>{hc(val)}</div>
           </div>
         ))}
       </div>
@@ -1812,13 +1826,13 @@ function LenderDashboard({ data }) {
                 <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
                   {sortedLoans.map(l=>(
                     <tr key={l.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
-                      <td className="py-3 px-3 font-bold text-slate-900 dark:text-zinc-100 whitespace-nowrap">{l.lenderName}</td>
+                      <td className="py-3 px-3 font-bold text-slate-900 dark:text-zinc-100 whitespace-nowrap">{hn(l.lenderName)}</td>
                       <td className="py-3 px-3"><TypeBadge type={l.loanType} sm/></td>
                       <td className="py-3 px-3 text-slate-500 dark:text-zinc-400 max-w-[130px] truncate">{l.propAddress}</td>
-                      <td className="py-3 px-3 text-right text-slate-700 dark:text-zinc-200 tabular-nums">{$$(l.principal)}</td>
-                      <td className="py-3 px-3 text-right text-slate-500 dark:text-zinc-400 whitespace-nowrap">{fmtRate(l)}</td>
-                      <td className="py-3 px-3 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{$$(l.bal)}</td>
-                      <td className="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400 tabular-nums">{$$(l.intEarned)}</td>
+                      <td className="py-3 px-3 text-right text-slate-700 dark:text-zinc-200 tabular-nums">{h$(l.principal)}</td>
+                      <td className="py-3 px-3 text-right text-slate-500 dark:text-zinc-400 whitespace-nowrap">{hr(l)}</td>
+                      <td className="py-3 px-3 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{h$(l.bal)}</td>
+                      <td className="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400 tabular-nums">{h$(l.intEarned)}</td>
                       <td className="py-3 px-3 text-right text-slate-500 dark:text-zinc-400 whitespace-nowrap tabular-nums">{l.startDate||"—"}</td>
                     </tr>
                   ))}
@@ -1854,17 +1868,17 @@ function LenderDashboard({ data }) {
             <div key={ld.name} className="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] dark:hover:shadow-none transition-shadow">
               <div className="px-5 py-4 flex justify-between items-start">
                 <div>
-                  <div className="font-bold text-slate-900 dark:text-zinc-100 text-[15px]">{ld.name}</div>
+                  <div className="font-bold text-slate-900 dark:text-zinc-100 text-[15px]">{hn(ld.name)}</div>
                   <div className="flex gap-1.5 mt-1.5 flex-wrap">{ld.types.map(t=><TypeBadge key={t} type={t} sm/>)}</div>
-                  <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">{ld.loans.length} loan{ld.loans.length!==1?"s":""} · {ld.props.join(" / ")}</div>
+                  <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">{ld.loans.length} loan{ld.loans.length!==1?"s":""} · {prv?"••••••":ld.props.join(" / ")}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1">Current Payoff</div>
-                  <div className="font-bold text-blue-700 dark:text-blue-400 text-2xl tabular-nums">{$$(ld.totalBal)}</div>
+                  <div className="font-bold text-blue-700 dark:text-blue-400 text-2xl tabular-nums">{h$(ld.totalBal)}</div>
                 </div>
               </div>
               <div className="grid grid-cols-3 divide-x divide-black/[0.05] dark:divide-white/[0.05] border-t border-black/[0.05] dark:border-white/[0.05] bg-[#F9F9FB] dark:bg-black/20">
-                {[["Principal",$$(ld.totalPrin),"text-slate-800 dark:text-zinc-100"],["Interest",$$(ld.totalInt),"text-emerald-600 dark:text-emerald-400"],["Avg Rate",ld.avgRate.toFixed(1)+"%","text-slate-800 dark:text-zinc-100"]].map(([l,v,c])=>(
+                {[["Principal",h$(ld.totalPrin),"text-slate-800 dark:text-zinc-100"],["Interest",h$(ld.totalInt),"text-emerald-600 dark:text-emerald-400"],["Avg Rate",prv?"••••":ld.avgRate.toFixed(1)+"%","text-slate-800 dark:text-zinc-100"]].map(([l,v,c])=>(
                   <div key={l} className="px-4 py-3 text-center">
                     <div className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-widest mb-1">{l}</div>
                     <div className={`font-bold tabular-nums ${c}`}>{v}</div>
@@ -1882,6 +1896,11 @@ function LenderDashboard({ data }) {
 
 // ─── Property Dashboard ───────────────────────────────────────────────────────
 function PropertyDashboard({ data }) {
+  const prv=usePrivacy();
+  const h$=v=>prv?"••••":$$(v);
+  const hc=v=>prv?"••••":$$c(v);
+  const hn=n=>prv?"••••••":(n??"");
+  const hr=l=>prv?"••••":fmtRate(l);
   const [deployPct,setDeployPct]=useState(75);
   const active=data.properties.filter(p=>!p.dateSold);
   const rows=active.map(prop=>{
@@ -1916,9 +1935,9 @@ function PropertyDashboard({ data }) {
         <div className="mb-4 rounded-2xl bg-orange-50 dark:bg-orange-950/30 px-5 py-4 flex items-center justify-between shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
           <div>
             <div className="text-[10px] font-semibold text-orange-500 dark:text-orange-400 uppercase tracking-widest mb-0.5">Monthly Cash Needed</div>
-            <div className="text-[11px] text-orange-400 dark:text-orange-500">{$$(monthlyLenderBurn)}/mo interest · {$$(monthlyHoldingBurn)}/mo holding</div>
+            <div className="text-[11px] text-orange-400 dark:text-orange-500">{h$(monthlyLenderBurn)}/mo interest · {h$(monthlyHoldingBurn)}/mo holding</div>
           </div>
-          <div className="text-2xl font-black text-orange-600 dark:text-orange-400 tabular-nums">{$$(totalMonthlyBurn)}<span className="text-sm font-semibold">/mo</span></div>
+          <div className="text-2xl font-black text-orange-600 dark:text-orange-400 tabular-nums">{h$(totalMonthlyBurn)}<span className="text-sm font-semibold">/mo</span></div>
         </div>
       )}
 
@@ -1926,17 +1945,17 @@ function PropertyDashboard({ data }) {
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="bg-slate-900 dark:bg-zinc-800 rounded-2xl p-4 text-white text-center">
           <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Under Mgmt</div>
-          <div className="text-xl font-bold tabular-nums">{$$c(haveNow)}</div>
+          <div className="text-xl font-bold tabular-nums">{hc(haveNow)}</div>
           <div className="text-[10px] text-slate-500 mt-1">deployed + ready</div>
         </div>
         <div className="bg-blue-600 rounded-2xl p-4 text-white text-center">
           <div className="text-[9px] font-semibold text-blue-200 uppercase tracking-widest mb-2">On Deals</div>
-          <div className="text-xl font-bold tabular-nums">{$$c(totalDeployed)}</div>
+          <div className="text-xl font-bold tabular-nums">{hc(totalDeployed)}</div>
           <div className="text-[10px] text-blue-200 mt-1">{rows.length} propert{rows.length===1?"y":"ies"}</div>
         </div>
         <div className="bg-violet-600 rounded-2xl p-4 text-white text-center">
           <div className="text-[9px] font-semibold text-violet-200 uppercase tracking-widest mb-2">Ready</div>
-          <div className="text-xl font-bold tabular-nums">{$$c(unassignedTotal)}</div>
+          <div className="text-xl font-bold tabular-nums">{hc(unassignedTotal)}</div>
           <div className="text-[10px] text-violet-200 mt-1">{data.unassigned.length} unassigned</div>
         </div>
       </div>
@@ -1947,12 +1966,12 @@ function PropertyDashboard({ data }) {
           <div className="flex justify-between items-start mb-4">
             <div>
               <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5">Total Portfolio Size</div>
-              <div className="text-3xl font-bold text-white tabular-nums">{$$(totalPortfolio)}</div>
+              <div className="text-3xl font-bold text-white tabular-nums">{h$(totalPortfolio)}</div>
               <div className="text-xs text-slate-400 mt-1">{active.length} active deal{active.length!==1?"s":""}</div>
             </div>
             <div className="text-right">
               <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5">Available Now</div>
-              <div className="text-2xl font-bold text-white tabular-nums">{$$(haveNow)}</div>
+              <div className="text-2xl font-bold text-white tabular-nums">{h$(haveNow)}</div>
             </div>
           </div>
           <div className="bg-white/10 rounded-xl px-4 py-3">
@@ -1977,16 +1996,16 @@ function PropertyDashboard({ data }) {
                 {goFindThis>0 ? "You Need to Find" : "✓ You're Fully Covered"}
               </div>
               <div className="text-5xl font-black text-white tabular-nums tracking-tight">
-                {goFindThis>0 ? $$(goFindThis) : "All good"}
+                {goFindThis>0 ? h$(goFindThis) : "All good"}
               </div>
               <div className="text-xs text-white/60 mt-2">
-                Need {$$(needNow)} ({deployPct}% of {$$(totalPortfolio)}) · Have {$$(haveNow)}
+                Need {h$(needNow)} ({deployPct}% of {h$(totalPortfolio)}) · Have {h$(haveNow)}
               </div>
             </div>
             {idleCapital>0&&(
               <div className="text-right bg-white/20 rounded-2xl px-4 py-3">
                 <div className="text-[10px] font-semibold text-white/70 uppercase tracking-widest mb-1">Idle Capital</div>
-                <div className="text-2xl font-bold text-white tabular-nums">{$$(idleCapital)}</div>
+                <div className="text-2xl font-bold text-white tabular-nums">{h$(idleCapital)}</div>
                 <div className="text-[10px] text-white/50 mt-0.5">not needed yet</div>
               </div>
             )}
@@ -2001,14 +2020,14 @@ function PropertyDashboard({ data }) {
             <div className={`px-5 py-3.5 border-b border-black/[0.06] dark:border-white/[0.06] ${under?"bg-red-50/60 dark:bg-red-950/15":""}`}>
               <div className="flex justify-between items-center mb-2">
                 <span className="font-semibold text-slate-900 dark:text-zinc-100">{prop.address}</span>
-                {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{$$(short)}</span>}
+                {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{h$(short)}</span>}
               </div>
               <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5">
                 <div className={`h-full rounded-full ${under?"bg-red-400":pct(funded,needed)>=95?"bg-emerald-500":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
               </div>
               <div className="flex justify-between text-[10px]">
-                <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{$$(funded)} funded</span>
-                <span className="text-slate-400 dark:text-zinc-500 tabular-nums">{$$(needed)} needed</span>
+                <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{h$(funded)} funded</span>
+                <span className="text-slate-400 dark:text-zinc-500 tabular-nums">{h$(needed)} needed</span>
               </div>
             </div>
             {loans.length>0&&(
@@ -2016,11 +2035,11 @@ function PropertyDashboard({ data }) {
                 <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                   {loans.map(l=>(
                     <tr key={l.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-                      <td className="px-5 py-2.5 font-semibold text-slate-800 dark:text-zinc-100">{l.lenderName}</td>
+                      <td className="px-5 py-2.5 font-semibold text-slate-800 dark:text-zinc-100">{hn(l.lenderName)}</td>
                       <td className="px-3 py-2.5"><TypeBadge type={l.loanType} sm/></td>
-                      <td className="px-3 py-2.5 text-right text-slate-600 dark:text-zinc-300 tabular-nums">{$$(l.principal)}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-400 dark:text-zinc-500 whitespace-nowrap">{fmtRate(l)}</td>
-                      <td className="px-5 py-2.5 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{$$(calcBalance(l))}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-600 dark:text-zinc-300 tabular-nums">{h$(l.principal)}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-400 dark:text-zinc-500 whitespace-nowrap">{hr(l)}</td>
+                      <td className="px-5 py-2.5 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{h$(calcBalance(l))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2108,6 +2127,12 @@ function EditClosingModal({ prop, onSave, onClose }) {
 
 // ─── Closed Deals ─────────────────────────────────────────────────────────────
 function ClosedDealsPage({ data, update }) {
+  const prv=usePrivacy();
+  const h$=v=>prv?"••••":$$(v);
+  const hc=v=>prv?"••••":$$c(v);
+  const hs=v=>prv?"••••":$$s(v);
+  const hn=n=>prv?"••••••":(n??"");
+  const hr=l=>prv?"••••":fmtRate(l);
   const [view,setView]=usePersistedState("nx-closedView","flips");
   const [expanded,setExpanded]=useState({});
   const [search,setSearch]=useState("");
@@ -2213,15 +2238,15 @@ function ClosedDealsPage({ data, update }) {
                 <div className="flex items-center gap-3">
                   <div className="text-right">
                     <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Cash to Close</div>
-                    <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.cashToClose||0)}</div>
+                    <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{h$(cd.cashToClose||0)}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Rehab</div>
-                    <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{$$(cd.rehab||0)}</div>
+                    <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{h$(cd.rehab||0)}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Profit</div>
-                    <div className={`text-sm font-bold tabular-nums ${profit>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{$$s(profit)}</div>
+                    <div className={`text-sm font-bold tabular-nums ${profit>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{hs(profit)}</div>
                   </div>
                 </div>
               ):(
@@ -2253,9 +2278,9 @@ function ClosedDealsPage({ data, update }) {
                 <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                   {prop.loans.map(l=>(
                     <tr key={l.id}>
-                      <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100">{l.lenderName}</td>
-                      <td className="py-2 text-right tabular-nums text-slate-700 dark:text-zinc-200">{$$(l.principal)}</td>
-                      <td className="py-2 text-right tabular-nums text-slate-500 dark:text-zinc-400">{fmtRate(l)}</td>
+                      <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100">{hn(l.lenderName)}</td>
+                      <td className="py-2 text-right tabular-nums text-slate-700 dark:text-zinc-200">{h$(l.principal)}</td>
+                      <td className="py-2 text-right tabular-nums text-slate-500 dark:text-zinc-400">{hr(l)}</td>
                       <td className="py-2 text-right"><TypeBadge type={l.loanType} sm/></td>
                     </tr>
                   ))}
@@ -2330,16 +2355,16 @@ function ClosedDealsPage({ data, update }) {
           </div>
           <div className="bg-blue-600 rounded-2xl p-4 text-center text-white">
             <div className="text-[9px] font-semibold text-blue-200 uppercase tracking-widest mb-2">Avg Cash to Close</div>
-            <div className="text-xl font-bold tabular-nums">{$$c(avgC2C)}</div>
+            <div className="text-xl font-bold tabular-nums">{hc(avgC2C)}</div>
           </div>
           <div className="bg-slate-700 dark:bg-zinc-700 rounded-2xl p-4 text-center text-white">
             <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Avg Rehab</div>
-            <div className="text-xl font-bold tabular-nums">{$$c(avgRehab)}</div>
+            <div className="text-xl font-bold tabular-nums">{hc(avgRehab)}</div>
           </div>
           <div className={`${totalProfit>=0?"bg-emerald-600":"bg-red-600"} rounded-2xl p-4 text-center text-white`}>
             <div className="text-[9px] font-semibold text-white/70 uppercase tracking-widest mb-2">Avg Profit</div>
-            <div className="text-xl font-bold tabular-nums">{$$c(avgProfit)}</div>
-            <div className="text-[10px] text-white/60 mt-1">Total {$$c(totalProfit)}</div>
+            <div className="text-xl font-bold tabular-nums">{hc(avgProfit)}</div>
+            <div className="text-[10px] text-white/60 mt-1">Total {hc(totalProfit)}</div>
           </div>
         </div>
       )}
@@ -2393,6 +2418,10 @@ function ClosedDealsPage({ data, update }) {
 
 // ─── History ──────────────────────────────────────────────────────────────────
 function HistoryPage({ data }) {
+  const prv=usePrivacy();
+  const h$=v=>prv?"••••":$$(v);
+  const hs=v=>prv?"••••":$$s(v);
+  const hn=n=>prv?"••••••":(n??"");
   const [lf,setLf]=usePersistedState("nx-histLender","all");
   const [tf,setTf]=usePersistedState("nx-histType","all");
   const [propSearch,setPropSearch]=useState("");
@@ -2466,7 +2495,7 @@ function HistoryPage({ data }) {
           className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
         <div className="flex gap-2">
           <select value={lf} onChange={e=>setLf(e.target.value)} className="flex-1 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
-            <option value="all">All Lenders</option>{allL.map(l=><option key={l} value={l}>{l}</option>)}
+            <option value="all">All Lenders</option>{allL.map((l,i)=><option key={l} value={l}>{prv?`Lender ${i+1}`:l}</option>)}
           </select>
           <select value={tf} onChange={e=>setTf(e.target.value)} className="rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
             <option value="all">All Types</option><option value="private">Private</option><option value="hard">Hard</option>
@@ -2554,39 +2583,39 @@ function HistoryPage({ data }) {
                       <TypeBadge type={ev.loanType} sm/>
                       {roll&&<span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 rounded-full px-2 py-0.5">Rollover</span>}
                     </div>
-                    <div className="font-bold text-slate-900 dark:text-zinc-100">{ev.lender}</div>
+                    <div className="font-bold text-slate-900 dark:text-zinc-100">{hn(ev.lender)}</div>
                     <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{ev.property} · {rateLabel}</div>
                     {ev.etype!=="start"&&(ev.interest||0)>0.01&&(
                       ev.disposition==="waiveInterest"?(
-                        <div className="text-xs text-amber-500 dark:text-amber-400 mt-0.5 tabular-nums">{$$(ev.interest)} interest waived</div>
+                        <div className="text-xs text-amber-500 dark:text-amber-400 mt-0.5 tabular-nums">{h$(ev.interest)} interest waived</div>
                       ):ev.etype==="rolled"?(
-                        <div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">{$$(ev.interest)} interest rolled in</div>
+                        <div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">{h$(ev.interest)} interest rolled in</div>
                       ):(
-                        <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">incl. {$$(ev.interest)} interest earned</div>
+                        <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">incl. {h$(ev.interest)} interest earned</div>
                       )
                     )}
-                    {roll&&ev.pp>0&&<div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">Rolled from {$$(ev.pp)}</div>}
+                    {roll&&ev.pp>0&&<div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">Rolled from {h$(ev.pp)}</div>}
                   </div>
                   <div className="text-right shrink-0 min-w-[90px]">
                     {ev.etype==="start"?(
                       <>
-                        <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">+{$$(ev.amount)}</div>
+                        <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">+{h$(ev.amount)}</div>
                         {ev.nc>0
-                          ?<div className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{$$s(ev.nc)}</div>
+                          ?<div className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{hs(ev.nc)}</div>
                           :<div className="text-sm font-bold tabular-nums text-violet-500 dark:text-violet-400">→ Rollover</div>
                         }
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">{ev.nc>0?"lent in":"no new funds"}</div>
                       </>
                     ):ev.etype==="rolled"?(
                       <>
-                        <div className="font-bold text-slate-900 dark:text-zinc-100 tabular-nums">{$$(ev.amount)}</div>
+                        <div className="font-bold text-slate-900 dark:text-zinc-100 tabular-nums">{h$(ev.amount)}</div>
                         <div className="text-sm font-bold tabular-nums text-violet-500 dark:text-violet-400">→ Continues</div>
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">no cash out</div>
                       </>
                     ):(
                       <>
-                        <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{$$(ev.amount)}</div>
-                        <div className="text-sm font-bold tabular-nums text-red-500 dark:text-red-400">{$$s(ev.nc)}</div>
+                        <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{h$(ev.amount)}</div>
+                        <div className="text-sm font-bold tabular-nums text-red-500 dark:text-red-400">{hs(ev.nc)}</div>
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">returned</div>
                       </>
                     )}
@@ -2605,7 +2634,7 @@ function HistoryPage({ data }) {
               <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Net Outstanding{lf!=="all"?` — ${lf}`:""}</div>
               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Sum of principal in/out for events shown above</div>
             </div>
-            <div className={`text-2xl font-bold tabular-nums ${principalNet>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$s(principalNet)}</div>
+            <div className={`text-2xl font-bold tabular-nums ${principalNet>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{hs(principalNet)}</div>
           </div>
         );
       })()}
@@ -2620,6 +2649,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [data,setData]=useState(null);
   const [tab,setTab]=usePersistedState("nx-activeTab","Properties");
   const [loading,setLoading]=useState(true);
+  const [privacyMode,setPrivacyMode]=useState(false);
 
   useEffect(()=>{
     load().then(d=>{
@@ -2669,6 +2699,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   );
 
   return (
+    <PrivacyContext.Provider value={privacyMode}>
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-black transition-colors duration-300">
       {/* Header — frosted glass */}
       <div className="bg-white/85 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.07] sticky top-0 z-40">
@@ -2687,6 +2718,12 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/15 transition-all"
                 title="Home">
                 <span className="text-[15px] leading-none">🏠</span>
+              </button>
+              <button onClick={()=>setPrivacyMode(p=>!p)}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition-all ${privacyMode?"bg-blue-600 text-white shadow-sm":"bg-black/5 dark:bg-white/10 text-slate-500 dark:text-zinc-400 hover:bg-black/10 dark:hover:bg-white/15"}`}
+                title={privacyMode?"Show values":"Hide values (demo mode)"}>
+                <span className="text-[13px] leading-none">{privacyMode?"🙈":"👁"}</span>
+                <span>Demo</span>
               </button>
               <button onClick={onToggleDark}
                 className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/15 transition-all"
@@ -2717,5 +2754,6 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         {tab==="History"   &&<HistoryPage data={data}/>}
       </div>
     </div>
+    </PrivacyContext.Provider>
   );
 }
