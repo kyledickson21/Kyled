@@ -1152,6 +1152,9 @@ function PropertyForm({ init, onSave, onClose }) {
 
 // ─── Collapsible Unassigned Funds ─────────────────────────────────────────────
 function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete }) {
+  const prv=usePrivacy();
+  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
   const [open,setOpen]=useState(false);
   const sorted=[...funds].sort((a,b)=>(a.startDate||"").localeCompare(b.startDate||""));
 
@@ -1162,7 +1165,7 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center text-sm">💼</div>
           <span className="text-sm font-semibold text-slate-900 dark:text-zinc-100">Ready to Place</span>
-          <span className="text-sm font-bold text-violet-600 dark:text-violet-400 tabular-nums">{$$(total)}</span>
+          <span className="text-sm font-bold text-violet-600 dark:text-violet-400 tabular-nums">{h$(total)}</span>
           <span className="text-xs text-slate-400 dark:text-zinc-500">{funds.length} lender{funds.length!==1?"s":""}</span>
         </div>
         <span className="text-slate-300 dark:text-zinc-600 text-xs font-semibold">{open?"▲":"▼"}</span>
@@ -1179,9 +1182,9 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
                 <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-slate-900 dark:text-zinc-100 text-sm">{u.lenderName}</span>
                   <TypeBadge type={u.loanType} sm/>
-                  <span className="font-bold text-violet-700 dark:text-violet-300 text-sm tabular-nums">{$$(principal)}</span>
-                  {(u.interestRate!=null)&&<span className="text-xs text-slate-400 dark:text-zinc-500">{fmtRate(u)}</span>}
-                  {earned>0.01&&<span className="text-xs text-emerald-600 dark:text-emerald-400 tabular-nums">+{$$(earned)}</span>}
+                  <span className="font-bold text-violet-700 dark:text-violet-300 text-sm tabular-nums">{h$(principal)}</span>
+                  {(u.interestRate!=null)&&<span className="text-xs text-slate-400 dark:text-zinc-500">{hr(u)}</span>}
+                  {earned>0.01&&<span className="text-xs text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(earned)}</span>}
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${days>60?"bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800":days>30?"bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800":"bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700"}`}>
                     {days}d
                   </span>
