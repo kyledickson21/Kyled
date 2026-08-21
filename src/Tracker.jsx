@@ -1203,7 +1203,7 @@ function PropertiesPage({ data, update }) {
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hn=n=>n??"";
-  const hr=l=>prv?fmtRate(l).replace(/^(\$?)[\d,]+(\.\d+)?/,(_,d)=>d?"$•••":"•••"):fmtRate(l);
+  const hr=l=>fmtRate(l);
   const [modal,setModal]=useState(null);
   const [expanded,setExpanded]=useState({});
   const [showSold,setShowSold]=useState(false);
@@ -1713,7 +1713,7 @@ function LenderDashboard({ data }) {
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hn=n=>n??"";
-  const hr=l=>prv?fmtRate(l).replace(/^(\$?)[\d,]+(\.\d+)?/,(_,d)=>d?"$•••":"•••"):fmtRate(l);
+  const hr=l=>fmtRate(l);
   const [view,setView]=usePersistedState("nx-lenderView","loans");
   const [sort,setSort]=usePersistedState("nx-lenderSort",{col:null,dir:"asc"});
   const [lenderSort,setLenderSort]=usePersistedState("nx-lenderSortBy","name");
@@ -1881,7 +1881,7 @@ function LenderDashboard({ data }) {
                 </div>
               </div>
               <div className="grid grid-cols-3 divide-x divide-black/[0.05] dark:divide-white/[0.05] border-t border-black/[0.05] dark:border-white/[0.05] bg-[#F9F9FB] dark:bg-black/20">
-                {[["Principal",h$(ld.totalPrin),"text-slate-800 dark:text-zinc-100"],["Interest",h$(ld.totalInt),"text-emerald-600 dark:text-emerald-400"],["Avg Rate",prv?"•••%":ld.avgRate.toFixed(1)+"%","text-slate-800 dark:text-zinc-100"]].map(([l,v,c])=>(
+                {[["Principal",h$(ld.totalPrin),"text-slate-800 dark:text-zinc-100"],["Interest",h$(ld.totalInt),"text-emerald-600 dark:text-emerald-400"],["Avg Rate",ld.avgRate.toFixed(1)+"%","text-slate-800 dark:text-zinc-100"]].map(([l,v,c])=>(
                   <div key={l} className="px-4 py-3 text-center">
                     <div className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-widest mb-1">{l}</div>
                     <div className={`font-bold tabular-nums ${c}`}>{v}</div>
@@ -1903,7 +1903,7 @@ function PropertyDashboard({ data }) {
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hn=n=>n??"";
-  const hr=l=>prv?fmtRate(l).replace(/^(\$?)[\d,]+(\.\d+)?/,(_,d)=>d?"$•••":"•••"):fmtRate(l);
+  const hr=l=>fmtRate(l);
   const [deployPct,setDeployPct]=useState(75);
   const active=data.properties.filter(p=>!p.dateSold);
   const rows=active.map(prop=>{
@@ -2135,7 +2135,7 @@ function ClosedDealsPage({ data, update }) {
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hs=v=>prv?maskMoney($$s(v)):$$s(v);
   const hn=n=>n??"";
-  const hr=l=>prv?fmtRate(l).replace(/^(\$?)[\d,]+(\.\d+)?/,(_,d)=>d?"$•••":"•••"):fmtRate(l);
+  const hr=l=>fmtRate(l);
   const [view,setView]=usePersistedState("nx-closedView","flips");
   const [expanded,setExpanded]=useState({});
   const [search,setSearch]=useState("");
