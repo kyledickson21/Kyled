@@ -2457,6 +2457,17 @@ function HistoryPage({ data }) {
       raw.push({date:prop.dateSold,sx:"c",etype:"saleSummary",property:prop.address,propId:prop.id,closingData:prop.closingData,loanId:`sale-${prop.id}`});
     }
   });
+  // Detect implicit rollovers: loan closed → same lender starts next day (no explicit disposition)
+  const startMap={};
+  raw.forEach(ev=>{if(ev.etype==="start"&&ev.lender)startMap[`${ev.lender}||${ev.date}`]=ev;});
+  raw.forEach(ev=>{
+    if((ev.etype!=="closed"&&ev.etype!=="sold")||ev.disposition||!ev.lender)return;
+    const follow=startMap[`${ev.lender}||${nextDay(ev.date)}`]||startMap[`${ev.lender}||${ev.date}`];
+    if(!follow)return;
+    const aBalance=ev.amount,aPrin=ev.principal,bPrin=follow.amount;
+    const disposition=Math.abs(bPrin-aBalance)<1?"rollFull":Math.abs(bPrin-aPrin)<1?"rollPrincipal":"custom";
+    ev.etype="rolled";ev.disposition=disposition;ev._implicitRoll=true;
+  });
   raw.sort((a,b)=>((a.date||"")+a.sx).localeCompare((b.date||"")+b.sx));
   const lp={},lc={};
   const events=raw.map(ev=>{
@@ -2648,49 +2659,49 @@ function HistoryPage({ data }) {
                   </div>
                   <div className="ml-auto text-right">
                     <div className="text-[10px] text-blue-400 dark:text-blue-500 uppercase font-semibold">Wire Received</div>
-                    <div className="font-bold text-xl text-blue-700 dark:text-blue-300 tabular-nums">{$$(cd.wire)}</div>
+                    <div className="font-bold text-xl text-blue-700 dark:text-blue-300 tabular-nums">{h$(cd.wire)}</div>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-xs">
                   <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
                     <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Total Disbursed</div>
-                    {cd.cashToClose>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Cash to Close</span><span className="tabular-nums">{$$(cd.cashToClose)}</span></div>}
-                    {cd.rehab>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Rehab</span><span className="tabular-nums">{$$(cd.rehab)}</span></div>}
-                    {cd.moneyCosts>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Money Costs</span><span className="tabular-nums">{$$(cd.moneyCosts)}</span></div>}
-                    {cd.misc>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Misc / Holding</span><span className="tabular-nums">{$$(cd.misc)}</span></div>}
-                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.totalCosts)}</span></div>
+                    {cd.cashToClose>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Cash to Close</span><span className="tabular-nums">{h$(cd.cashToClose)}</span></div>}
+                    {cd.rehab>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Rehab</span><span className="tabular-nums">{h$(cd.rehab)}</span></div>}
+                    {cd.moneyCosts>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Money Costs</span><span className="tabular-nums">{h$(cd.moneyCosts)}</span></div>}
+                    {cd.misc>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Misc / Holding</span><span className="tabular-nums">{h$(cd.misc)}</span></div>}
+                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{h$(cd.totalCosts)}</span></div>
                   </div>
                   <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
                     <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Funded By</div>
                     {(cd.lenderPayoffs||[]).map(lp=>(
                       <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
                         <span className="truncate mr-1">{lp.lenderName}{lp.type==="waiveInterest"&&<span className="text-amber-500 dark:text-amber-400 ml-1 text-[10px]">(waived int.)</span>}</span>
-                        <span className="tabular-nums shrink-0">{$$(lp.principalPayoff)}</span>
+                        <span className="tabular-nums shrink-0">{h$(lp.principalPayoff)}</span>
                       </div>
                     ))}
-                    {nexusFunded>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{$$(nexusFunded)}</span></div>}
-                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{$$(cd.totalCosts)}</span></div>
+                    {nexusFunded>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{h$(nexusFunded)}</span></div>}
+                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{h$(cd.totalCosts)}</span></div>
                   </div>
                   <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
                     <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Wire Breakdown</div>
                     {wireLenders.map(lp=>(
                       <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
                         <span className="truncate mr-1">{lp.lenderName}</span>
-                        <span className="tabular-nums shrink-0">{$$(lp.wireAmount)}</span>
+                        <span className="tabular-nums shrink-0">{h$(lp.wireAmount)}</span>
                       </div>
                     ))}
-                    {(cd.selfFunded||0)>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{$$(cd.selfFunded)}</span></div>}
+                    {(cd.selfFunded||0)>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{h$(cd.selfFunded)}</span></div>}
                     <div className="flex justify-between font-semibold text-emerald-600 dark:text-emerald-400">
                       <span>Profit</span>
-                      <span className="tabular-nums">{$$(profitAtClose)}</span>
+                      <span className="tabular-nums">{h$(profitAtClose)}</span>
                     </div>
                     {(cd.overageRefund||0)>0.01&&(
                       <div className="flex justify-between text-amber-600 dark:text-amber-400 text-[10px]">
                         <span>+ Overage refund <span className="opacity-70">(post-close)</span></span>
-                        <span className="tabular-nums">{$$(cd.overageRefund)}</span>
+                        <span className="tabular-nums">{h$(cd.overageRefund)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{$$(cd.wire)}</span></div>
+                    <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{h$(cd.wire)}</span></div>
                   </div>
                 </div>
               </div>
