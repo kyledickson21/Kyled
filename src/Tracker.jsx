@@ -1197,9 +1197,9 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
 // ─── Properties Page ──────────────────────────────────────────────────────────
 function PropertiesPage({ data, update }) {
   const prv=usePrivacy();
-  const h$=v=>prv?"••••":$$(v);
-  const hc=v=>prv?"••••":$$c(v);
-  const hn=n=>prv?"••••••":(n??"");
+  const h$=v=>prv?"$•••":$$(v);
+  const hc=v=>prv?"$•••":$$c(v);
+  const hn=n=>n??"";
   const hr=l=>prv?"••••":fmtRate(l);
   const [modal,setModal]=useState(null);
   const [expanded,setExpanded]=useState({});
@@ -1707,9 +1707,9 @@ function PropertiesPage({ data, update }) {
 // ─── Lender Dashboard ─────────────────────────────────────────────────────────
 function LenderDashboard({ data }) {
   const prv=usePrivacy();
-  const h$=v=>prv?"••••":$$(v);
-  const hc=v=>prv?"••••":$$c(v);
-  const hn=n=>prv?"••••••":(n??"");
+  const h$=v=>prv?"$•••":$$(v);
+  const hc=v=>prv?"$•••":$$c(v);
+  const hn=n=>n??"";
   const hr=l=>prv?"••••":fmtRate(l);
   const [view,setView]=usePersistedState("nx-lenderView","loans");
   const [sort,setSort]=usePersistedState("nx-lenderSort",{col:null,dir:"asc"});
@@ -1870,7 +1870,7 @@ function LenderDashboard({ data }) {
                 <div>
                   <div className="font-bold text-slate-900 dark:text-zinc-100 text-[15px]">{hn(ld.name)}</div>
                   <div className="flex gap-1.5 mt-1.5 flex-wrap">{ld.types.map(t=><TypeBadge key={t} type={t} sm/>)}</div>
-                  <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">{ld.loans.length} loan{ld.loans.length!==1?"s":""} · {prv?"••••••":ld.props.join(" / ")}</div>
+                  <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">{ld.loans.length} loan{ld.loans.length!==1?"s":""} · {ld.props.join(" / ")}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1">Current Payoff</div>
@@ -1897,9 +1897,9 @@ function LenderDashboard({ data }) {
 // ─── Property Dashboard ───────────────────────────────────────────────────────
 function PropertyDashboard({ data }) {
   const prv=usePrivacy();
-  const h$=v=>prv?"••••":$$(v);
-  const hc=v=>prv?"••••":$$c(v);
-  const hn=n=>prv?"••••••":(n??"");
+  const h$=v=>prv?"$•••":$$(v);
+  const hc=v=>prv?"$•••":$$c(v);
+  const hn=n=>n??"";
   const hr=l=>prv?"••••":fmtRate(l);
   const [deployPct,setDeployPct]=useState(75);
   const active=data.properties.filter(p=>!p.dateSold);
@@ -2128,10 +2128,10 @@ function EditClosingModal({ prop, onSave, onClose }) {
 // ─── Closed Deals ─────────────────────────────────────────────────────────────
 function ClosedDealsPage({ data, update }) {
   const prv=usePrivacy();
-  const h$=v=>prv?"••••":$$(v);
-  const hc=v=>prv?"••••":$$c(v);
-  const hs=v=>prv?"••••":$$s(v);
-  const hn=n=>prv?"••••••":(n??"");
+  const h$=v=>prv?"$•••":$$(v);
+  const hc=v=>prv?"$•••":$$c(v);
+  const hs=v=>prv?(v>=0?"+$•••":"-$•••"):$$s(v);
+  const hn=n=>n??"";
   const hr=l=>prv?"••••":fmtRate(l);
   const [view,setView]=usePersistedState("nx-closedView","flips");
   const [expanded,setExpanded]=useState({});
@@ -2419,9 +2419,9 @@ function ClosedDealsPage({ data, update }) {
 // ─── History ──────────────────────────────────────────────────────────────────
 function HistoryPage({ data }) {
   const prv=usePrivacy();
-  const h$=v=>prv?"••••":$$(v);
-  const hs=v=>prv?"••••":$$s(v);
-  const hn=n=>prv?"••••••":(n??"");
+  const h$=v=>prv?"$•••":$$(v);
+  const hs=v=>prv?(v>=0?"+$•••":"-$•••"):$$s(v);
+  const hn=n=>n??"";
   const [lf,setLf]=usePersistedState("nx-histLender","all");
   const [tf,setTf]=usePersistedState("nx-histType","all");
   const [propSearch,setPropSearch]=useState("");
