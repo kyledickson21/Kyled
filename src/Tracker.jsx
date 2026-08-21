@@ -81,9 +81,13 @@ const fmtRate = (l) => {
 // ─── Privacy context ──────────────────────────────────────────────────────────
 const PrivacyContext = createContext(false);
 const usePrivacy = () => useContext(PrivacyContext);
-// Replace each digit with •, strip commas/internal decimals, keep K/M suffix
-const maskMoney = s => s.replace(/[\d,]+(\.\d+)?([KM])?/g,
-  (m,_,sfx) => '•'.repeat(m.replace(/[^0-9]/g,'').length)+(sfx||''));
+// Replace digits with • (integer) or · (decimal), strip commas, keep K/M suffix
+const maskMoney = s => s.replace(/[\d,]+(\.\d+)?([KM])?/g, (m, dec, sfx) => {
+  const intPart = m.slice(0, m.length - (dec||'').length - (sfx||'').length);
+  const intDots = '•'.repeat(intPart.replace(/[^0-9]/g,'').length);
+  const decDots = dec ? '·'.repeat(dec.replace(/[^0-9]/g,'').length) : '';
+  return intDots + decDots + (sfx||'');
+});
 
 // ─── Persisted state helper ───────────────────────────────────────────────────
 const usePersistedState = (key, def) => {
