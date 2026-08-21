@@ -81,6 +81,9 @@ const fmtRate = (l) => {
 // ─── Privacy context ──────────────────────────────────────────────────────────
 const PrivacyContext = createContext(false);
 const usePrivacy = () => useContext(PrivacyContext);
+// Replace each digit with •, strip commas/internal decimals, keep K/M suffix
+const maskMoney = s => s.replace(/[\d,]+(\.\d+)?([KM])?/g,
+  (m,_,sfx) => '•'.repeat(m.replace(/[^0-9]/g,'').length)+(sfx||''));
 
 // ─── Persisted state helper ───────────────────────────────────────────────────
 const usePersistedState = (key, def) => {
@@ -1197,8 +1200,8 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
 // ─── Properties Page ──────────────────────────────────────────────────────────
 function PropertiesPage({ data, update }) {
   const prv=usePrivacy();
-  const h$=v=>prv?"$•••":$$(v);
-  const hc=v=>prv?"$•••":$$c(v);
+  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hn=n=>n??"";
   const hr=l=>prv?fmtRate(l).replace(/^(\$?)[\d,]+(\.\d+)?/,(_,d)=>d?"$•••":"•••"):fmtRate(l);
   const [modal,setModal]=useState(null);
@@ -1707,8 +1710,8 @@ function PropertiesPage({ data, update }) {
 // ─── Lender Dashboard ─────────────────────────────────────────────────────────
 function LenderDashboard({ data }) {
   const prv=usePrivacy();
-  const h$=v=>prv?"$•••":$$(v);
-  const hc=v=>prv?"$•••":$$c(v);
+  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hn=n=>n??"";
   const hr=l=>prv?fmtRate(l).replace(/^(\$?)[\d,]+(\.\d+)?/,(_,d)=>d?"$•••":"•••"):fmtRate(l);
   const [view,setView]=usePersistedState("nx-lenderView","loans");
@@ -1897,8 +1900,8 @@ function LenderDashboard({ data }) {
 // ─── Property Dashboard ───────────────────────────────────────────────────────
 function PropertyDashboard({ data }) {
   const prv=usePrivacy();
-  const h$=v=>prv?"$•••":$$(v);
-  const hc=v=>prv?"$•••":$$c(v);
+  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hn=n=>n??"";
   const hr=l=>prv?fmtRate(l).replace(/^(\$?)[\d,]+(\.\d+)?/,(_,d)=>d?"$•••":"•••"):fmtRate(l);
   const [deployPct,setDeployPct]=useState(75);
@@ -2128,9 +2131,9 @@ function EditClosingModal({ prop, onSave, onClose }) {
 // ─── Closed Deals ─────────────────────────────────────────────────────────────
 function ClosedDealsPage({ data, update }) {
   const prv=usePrivacy();
-  const h$=v=>prv?"$•••":$$(v);
-  const hc=v=>prv?"$•••":$$c(v);
-  const hs=v=>prv?(v>=0?"+$•••":"-$•••"):$$s(v);
+  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const hc=v=>prv?maskMoney($$c(v)):$$c(v);
+  const hs=v=>prv?maskMoney($$s(v)):$$s(v);
   const hn=n=>n??"";
   const hr=l=>prv?fmtRate(l).replace(/^(\$?)[\d,]+(\.\d+)?/,(_,d)=>d?"$•••":"•••"):fmtRate(l);
   const [view,setView]=usePersistedState("nx-closedView","flips");
@@ -2419,8 +2422,8 @@ function ClosedDealsPage({ data, update }) {
 // ─── History ──────────────────────────────────────────────────────────────────
 function HistoryPage({ data }) {
   const prv=usePrivacy();
-  const h$=v=>prv?"$•••":$$(v);
-  const hs=v=>prv?(v>=0?"+$•••":"-$•••"):$$s(v);
+  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const hs=v=>prv?maskMoney($$s(v)):$$s(v);
   const hn=n=>n??"";
   const [lf,setLf]=usePersistedState("nx-histLender","all");
   const [tf,setTf]=usePersistedState("nx-histType","all");
