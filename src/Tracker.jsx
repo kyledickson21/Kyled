@@ -81,13 +81,27 @@ const fmtRate = (l) => {
 // ─── Privacy context ──────────────────────────────────────────────────────────
 const PrivacyContext = createContext(false);
 const usePrivacy = () => useContext(PrivacyContext);
-// Replace digits with • (integer) or · (decimal), strip commas, keep K/M suffix
-const maskMoney = s => s.replace(/[\d,]+(\.\d+)?([KM])?/g, (m, dec, sfx) => {
-  const intPart = m.slice(0, m.length - (dec||'').length - (sfx||'').length);
-  const intDots = '•'.repeat(intPart.replace(/[^0-9]/g,'').length);
-  const decDots = dec ? '·'.repeat(dec.replace(/[^0-9]/g,'').length) : '';
-  return intDots + decDots + (sfx||'');
-});
+// Returns JSX: • raised near top of line for integers, smaller · for decimals, K/M kept
+const maskMoney = s => {
+  const re = /[\d,]+(\.\d+)?([KM])?/g;
+  const segs = []; let last=0, k=0, match;
+  while ((match=re.exec(s))!==null) {
+    if (match.index>last) segs.push(<span key={k++}>{s.slice(last,match.index)}</span>);
+    const [m,dec,sfx]=match;
+    const intN=m.slice(0,m.length-(dec||'').length-(sfx||'').length).replace(/[^0-9]/g,'').length;
+    const decN=dec?dec.replace(/[^0-9]/g,'').length:0;
+    segs.push(
+      <span key={k++} style={{display:'inline-flex',alignItems:'flex-start',lineHeight:1}}>
+        <span style={{position:'relative',top:'-0.22em',letterSpacing:'0.03em'}}>{'•'.repeat(intN)}</span>
+        {decN>0&&<span style={{fontSize:'0.6em',position:'relative',top:'-0.1em'}}>{'·'.repeat(decN)}</span>}
+        {sfx}
+      </span>
+    );
+    last=match.index+m.length;
+  }
+  if (last<s.length) segs.push(<span key={k++}>{s.slice(last)}</span>);
+  return <>{segs}</>;
+};
 
 // ─── Persisted state helper ───────────────────────────────────────────────────
 const usePersistedState = (key, def) => {
