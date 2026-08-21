@@ -2432,9 +2432,11 @@ function HistoryPage({ data }) {
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const hs=v=>prv?maskMoney($$s(v)):$$s(v);
   const hn=n=>n??"";
+  const [view,setView]=usePersistedState("nx-histView","trail");
   const [lf,setLf]=usePersistedState("nx-histLender","all");
   const [tf,setTf]=usePersistedState("nx-histType","all");
   const [propSearch,setPropSearch]=useState("");
+  const [ledgerSort,setLedgerSort]=usePersistedState("nx-ledgerSort",{col:"endDate",dir:"desc"});
   const raw=[];
   data.properties.forEach(prop=>{
     prop.loans.forEach(loan=>{
@@ -2482,36 +2484,149 @@ function HistoryPage({ data }) {
     return[e.property,e.lender,e.date,e.etype,e.loanType,e.disposition,e.interestType].filter(Boolean).join(" ").toLowerCase().includes(q);
   });
   const cfg={
-    start:       {label:"Loan Started",  icon:"↗", cls:"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"},
-    closed:      {label:"Paid Back",     icon:"↙", cls:"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"},
-    sold:        {label:"Paid Back",     icon:"↙", cls:"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"},
+    start:       {label:"Loan Started",  icon:"↙", cls:"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"},
+    closed:      {label:"Paid Back",     icon:"↗", cls:"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"},
+    sold:        {label:"Paid Back",     icon:"↗", cls:"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"},
     saleSummary: {label:"Sale Closed",   icon:"🏡",cls:"bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"},
     rolled:      {label:"Rolled",        icon:"🔄",cls:"bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"},
   };
   const rollLabel={rollFull:"Rolled Full",rollPrincipal:"Principal Rolled",payInterest:"Interest Paid — Rolled",waiveInterest:"Interest Waived — Rolled",custom:"Partial Roll"};
+  const rollingTypes=["rollFull","rollPrincipal","payInterest","waiveInterest","custom"];
+  const closedLoans=[];
+  data.properties.forEach(prop=>{
+    prop.loans.forEach(loan=>{
+      const endDate=loan.endDate||prop.dateSold;
+      if(!endDate)return;
+      const disp=prop.closingData?.lenderPayoffs?.find(lp=>lp.loanId===loan.id);
+      const isRoll=disp&&rollingTypes.includes(disp.type);
+      const finBal=calcBalance(loan,endDate);
+      closedLoans.push({
+        id:loan.id,lenderName:loan.lenderName,property:prop.address,loanType:loan.loanType,
+        principal:loan.principal||0,rate:loan.interestRate||0,interestType:loan.interestType||"percentage",
+        startDate:loan.startDate||"",endDate,
+        days:daysBetween(loan.startDate,endDate),
+        interestEarned:Math.max(0,finBal-(loan.principal||0)),
+        disposition:isRoll?(disp.type):(prop.dateSold&&!loan.endDate?"sold":"closed"),
+        dispLabel:isRoll?(rollLabel[disp.type]||"Rolled"):(prop.dateSold&&!loan.endDate?"Paid at Sale":"Paid Back"),
+      });
+    });
+  });
+  const allLedgerLenders=[...new Set(closedLoans.map(l=>l.lenderName))].sort();
+  const ledgerFiltered=closedLoans.filter(l=>{
+    if(lf!=="all"&&l.lenderName!==lf)return false;
+    if(tf!=="all"&&l.loanType!==tf)return false;
+    return true;
+  });
+  const sortFn=(a,b)=>{
+    const d=ledgerSort.dir==="asc"?1:-1;
+    const col=ledgerSort.col;
+    if(col==="lenderName")return d*(a.lenderName||"").localeCompare(b.lenderName||"");
+    if(col==="property")return d*(a.property||"").localeCompare(b.property||"");
+    if(col==="principal")return d*(a.principal-b.principal);
+    if(col==="days")return d*(a.days-b.days);
+    if(col==="interest")return d*(a.interestEarned-b.interestEarned);
+    return d*(a.endDate||"").localeCompare(b.endDate||"");
+  };
+  const ledgerRows=[...ledgerFiltered].sort(sortFn);
+  const toggleSort=col=>setLedgerSort(s=>s.col===col?{col,dir:s.dir==="asc"?"desc":"asc"}:{col,dir:"desc"});
+  const SortHd=({col,label})=>{
+    const active=ledgerSort.col===col;
+    return<button onClick={()=>toggleSort(col)} className={`text-left text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded transition-colors ${active?"text-blue-600 dark:text-blue-400":"text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>{label}{active?(ledgerSort.dir==="desc"?" ↓":" ↑"):""}</button>;
+  };
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
+      <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">History</h2>
-          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Auto-generated transaction log</p>
+          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">{view==="trail"?"Auto-generated transaction log":"Closed loan records"}</p>
         </div>
-        <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{filtered.length} events</span>
+        <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{view==="trail"?`${filtered.length} events`:`${ledgerRows.length} loans`}</span>
+      </div>
+      <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 mb-4 self-start gap-1">
+        {[["trail","📋 Money Trail"],["ledger","🗂 Loan Ledger"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setView(v)}
+            className={`flex-1 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${view===v?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
+            {l}
+          </button>
+        ))}
       </div>
       <div className="space-y-2 mb-4">
-        <input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
+        {view==="trail"&&<input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
           placeholder="Search by address, lender, date, event type…"
-          className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
+          className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>}
         <div className="flex gap-2">
           <select value={lf} onChange={e=>setLf(e.target.value)} className="flex-1 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
-            <option value="all">All Lenders</option>{allL.map((l,i)=><option key={l} value={l}>{prv?`Lender ${i+1}`:l}</option>)}
+            <option value="all">All Lenders</option>
+            {(view==="trail"?allL:allLedgerLenders).map((l,i)=><option key={l} value={l}>{prv?`Lender ${i+1}`:l}</option>)}
           </select>
           <select value={tf} onChange={e=>setTf(e.target.value)} className="rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
             <option value="all">All Types</option><option value="private">Private</option><option value="hard">Hard</option>
           </select>
         </div>
       </div>
+      {view==="ledger"&&(
+        <div>
+          {!ledgerRows.length&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">🗂</div><p className="font-semibold">No closed loans yet</p></div>}
+          {ledgerRows.length>0&&(
+            <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+              <div className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto] gap-x-3 px-5 py-2 border-b border-black/[0.06] dark:border-white/[0.06] bg-slate-50 dark:bg-zinc-800/50">
+                <SortHd col="lenderName" label="Lender"/>
+                <SortHd col="property" label="Property"/>
+                <SortHd col="endDate" label="Dates"/>
+                <SortHd col="principal" label="Principal"/>
+                <SortHd col="interest" label="Interest"/>
+                <SortHd col="days" label="Days"/>
+              </div>
+              <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+                {ledgerRows.map(l=>{
+                  const dispCls=l.disposition==="closed"||l.disposition==="sold"
+                    ?"text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800"
+                    :"text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30";
+                  const rateLabel=l.interestType==="fixed"?"$"+Math.round(l.rate).toLocaleString()+" fixed":l.rate+"%/yr";
+                  return(
+                    <div key={l.id} className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto] gap-x-3 px-5 py-3.5 items-center hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-slate-900 dark:text-zinc-100 text-sm">{hn(l.lenderName)}</span>
+                          <TypeBadge type={l.loanType} sm/>
+                        </div>
+                        <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{rateLabel}</div>
+                      </div>
+                      <div className="text-sm text-slate-600 dark:text-zinc-300 truncate">{l.property}</div>
+                      <div className="text-right">
+                        <div className="text-xs font-mono text-slate-500 dark:text-zinc-400">{l.startDate}</div>
+                        <div className="text-[10px] text-slate-300 dark:text-zinc-600">↓</div>
+                        <div className="text-xs font-mono text-slate-500 dark:text-zinc-400">{l.endDate}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold text-slate-900 dark:text-zinc-100 text-sm tabular-nums">{h$(l.principal)}</div>
+                      </div>
+                      <div className="text-right">
+                        {l.interestEarned>0.01
+                          ?<div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(l.interestEarned)}</div>
+                          :<div className="text-sm text-amber-500 dark:text-amber-400">waived</div>}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 tabular-nums">{l.days}d</div>
+                        <div className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full mt-1 ${dispCls}`}>{l.dispLabel}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="px-5 py-3 bg-slate-50 dark:bg-zinc-800/50 border-t border-black/[0.06] dark:border-white/[0.06] flex justify-between items-center">
+                <span className="text-xs text-slate-400 dark:text-zinc-500">{ledgerRows.length} closed loan{ledgerRows.length!==1?"s":""}</span>
+                <div className="flex gap-6 text-right">
+                  <div><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Total Principal</div><div className="font-bold text-slate-900 dark:text-zinc-100 tabular-nums">{h$(ledgerRows.reduce((s,l)=>s+l.principal,0))}</div></div>
+                  <div><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Total Interest</div><div className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(ledgerRows.reduce((s,l)=>s+l.interestEarned,0))}</div></div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {view==="trail"&&<>
       {!filtered.length&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">📋</div><p className="font-semibold">No transactions yet</p></div>}
       <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none divide-y divide-black/[0.05] dark:divide-white/[0.05]">
         {[...filtered].reverse().map((ev,i)=>{
@@ -2648,6 +2763,7 @@ function HistoryPage({ data }) {
           </div>
         );
       })()}
+      </>}
     </div>
   );
 }
