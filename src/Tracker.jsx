@@ -1443,7 +1443,8 @@ function PropertiesPage({ data, update }) {
           const needed=propNeeded(prop,active);
           const short=Math.max(0,needed-funded);
           const _f=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
-          return{prop,active,funded,needed,short,full:_f,under:!prop.dateSold&&short>0&&!_f};
+          const over=needed>0?Math.max(0,funded-needed):0;
+          return{prop,active,funded,needed,short,over,full:_f,under:!prop.dateSold&&short>0&&!_f};
         });
         const sorted=[...rows].sort((a,b)=>{
           if(!propSort.col) return propSellDate(a.prop).localeCompare(propSellDate(b.prop));
@@ -1499,7 +1500,8 @@ function PropertiesPage({ data, update }) {
                       <td className="py-2.5 px-4 text-right tabular-nums text-slate-400 dark:text-zinc-500">{needed>0?$$(needed):"—"}</td>
                       <td className="py-2.5 px-4 text-right whitespace-nowrap">
                         {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 font-semibold">Sold</span>}
-                        {full&&short===0&&<span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Full</span>}
+                        {full&&short===0&&over>needed*0.05&&<span className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">+{$$(over)} over</span>}
+                        {full&&short===0&&over<=needed*0.05&&<span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Full</span>}
                         {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">−{$$(short)}</span>}
                         {under&&<span className="text-red-500 dark:text-red-400 font-bold tabular-nums">−{$$(short)}</span>}
                         {!prop.dateSold&&!full&&!under&&funded===0&&<span className="text-slate-300 dark:text-zinc-600">—</span>}
@@ -1527,6 +1529,7 @@ function PropertiesPage({ data, update }) {
           const short=Math.max(0,needed-funded);
           const full=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
           const under=!prop.dateSold&&short>0&&!full;
+          const over=needed>0?Math.max(0,funded-needed):0;
           const rawPct=needed>0?Math.round(funded/needed*100):0;
           const isOpen=!!expanded[prop.id];
           const months=effectiveMonths(prop);
@@ -1550,7 +1553,8 @@ function PropertiesPage({ data, update }) {
                   <span className="font-semibold text-slate-900 dark:text-zinc-100 truncate mr-3">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</span>
                   <div className="shrink-0 flex items-center gap-1.5">
                     {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 text-xs font-semibold">Sold</span>}
-                    {full&&short===0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ Full</span>}
+                    {full&&short===0&&over>needed*0.05&&<span className="text-amber-600 dark:text-amber-400 font-bold tabular-nums">+{h$(over)} over</span>}
+                    {full&&short===0&&over<=needed*0.05&&<span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ Full</span>}
                     {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">-{h$(short)}</span>}
                     {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{h$(short)}</span>}
                   </div>
