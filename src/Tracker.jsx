@@ -2793,20 +2793,20 @@ function RehabPriorityPage({ data }) {
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const [dir,setDir]=usePersistedState("nx-rehabDir","desc");
   const [projectFull,setProjectFull]=usePersistedState("nx-rehabProject",false);
-  // Loan IDs for private money the user has confirmed will exit after this deal
-  const [exitingLoans,setExitingLoans]=usePersistedState("nx-exitingLoans",[]);
+  // Loan IDs for private money the user has confirmed will roll over (won't exit)
+  const [rollingLoans,setRollingLoans]=usePersistedState("nx-rollingLoans",[]);
   const PROJ_RATE=14;
 
-  const toggleExiting=id=>setExitingLoans(prev=>
+  const toggleRolling=id=>setRollingLoans(prev=>
     prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]
   );
 
-  // Hard money always exits at sale. Private money defaults to rolling (doesn't count)
-  // unless explicitly marked as exiting. Fixed-fee loans have no monthly cost regardless.
+  // Hard money always exits at sale and counts toward burn.
+  // Private money defaults to exiting (counts) unless marked rolling. Fixed-fee = no monthly cost.
   const monthlyBurn=loan=>{
     if(loan.endDate)return 0;
     if(loan.interestType==="fixed")return 0;
-    if(loan.loanType==="private"&&!exitingLoans.includes(loan.id))return 0;
+    if(loan.loanType==="private"&&rollingLoans.includes(loan.id))return 0;
     const pt=loan.paymentType||"closing";
     if(pt==="monthly_fixed")return Math.round(loan.monthlyPayment||0);
     return Math.round((loan.principal||0)*(loan.interestRate||0)/100/12);
@@ -2904,33 +2904,33 @@ function RehabPriorityPage({ data }) {
                 )}
                 {active.length>0&&(
                   <div className="space-y-1 mt-1">
-                    {/* Column header for the exit checkbox */}
+                    {/* Column header for the roll checkbox */}
                     <div className="flex justify-end pr-0.5 mb-0.5">
-                      <span className="text-[10px] text-slate-400 dark:text-zinc-500">exit?</span>
+                      <span className="text-[10px] text-slate-400 dark:text-zinc-500">roll?</span>
                     </div>
                     {active.map(loan=>{
                       const lb=monthlyBurn(loan);
                       const isPrivate=loan.loanType==="private";
-                      const isExiting=!isPrivate||exitingLoans.includes(loan.id);
+                      const isRolling=isPrivate&&rollingLoans.includes(loan.id);
                       return(
                         <div key={loan.id} className="flex items-center justify-between text-[11px]">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <TypeBadge type={loan.loanType} sm/>
-                            <span className={`font-medium truncate ${isExiting?"text-slate-600 dark:text-zinc-300":"text-slate-400 dark:text-zinc-500"}`}>{prv?"—":loan.lenderName}</span>
+                            <span className={`font-medium truncate ${isRolling?"text-slate-400 dark:text-zinc-500":"text-slate-600 dark:text-zinc-300"}`}>{prv?"—":loan.lenderName}</span>
                             <span className="text-slate-400 dark:text-zinc-500 shrink-0">{h$(loan.principal)} · {loan.interestRate}%</span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0 ml-2">
                             {lb>0?(
                               <span className={`font-semibold tabular-nums ${burnColor}`}>{h$(lb)}/mo</span>
-                            ):isExiting?(
-                              <span className="text-slate-300 dark:text-zinc-600 text-[10px]">flat fee</span>
-                            ):(
+                            ):isRolling?(
                               <span className="text-slate-400 dark:text-zinc-500 text-[10px] italic">↻ rolling</span>
+                            ):(
+                              <span className="text-slate-300 dark:text-zinc-600 text-[10px]">flat fee</span>
                             )}
                             {isPrivate?(
-                              <button onClick={()=>toggleExiting(loan.id)}
-                                className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${exitingLoans.includes(loan.id)?"bg-orange-500 border-orange-500":"border-slate-300 dark:border-zinc-600"}`}>
-                                {exitingLoans.includes(loan.id)&&<svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                              <button onClick={()=>toggleRolling(loan.id)}
+                                className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${rollingLoans.includes(loan.id)?"bg-violet-500 border-violet-500":"border-slate-300 dark:border-zinc-600"}`}>
+                                {rollingLoans.includes(loan.id)&&<svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                               </button>
                             ):(
                               <div className="w-4"/>
