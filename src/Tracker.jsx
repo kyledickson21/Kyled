@@ -2853,11 +2853,11 @@ function RehabPriorityPage({ data }) {
       {rows.length===0&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">🔥</div><p className="font-semibold">No active properties</p></div>}
 
       <div className="space-y-3">
-        {rows.map(({prop,active,burn,projBurn,totalBurn,gap,daysOwned,loanBurns},i)=>{
+        {rows.map(({prop,active,burn,projBurn,totalBurn,gap,funded,needed,daysOwned,loanBurns},i)=>{
           const rankColor=i===0?"text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20":i===1?"text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20":i===2?"text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20":"text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800";
           const burnColor=i===0?"text-red-600 dark:text-red-400":i===1?"text-orange-500 dark:text-orange-400":i===2?"text-amber-500 dark:text-amber-400":"text-slate-600 dark:text-zinc-300";
-          const barColor=i===0?"bg-red-400 dark:bg-red-500":i===1?"bg-orange-400 dark:bg-orange-500":i===2?"bg-amber-400 dark:bg-amber-500":"bg-slate-300 dark:bg-zinc-600";
-          const barPct=maxBurn>0?Math.round(totalBurn/maxBurn*100):0;
+          const fundedPct=needed>0?Math.min(100,Math.round(funded/needed*100)):0;
+          const gapPct=needed>0?Math.min(100-fundedPct,Math.round(gap/needed*100)):0;
           const dailyBurn=Math.round(totalBurn/30.4);
           return(
             <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
@@ -2883,11 +2883,15 @@ function RehabPriorityPage({ data }) {
                     ):<div className="text-sm text-slate-300 dark:text-zinc-600 font-semibold">No carry cost</div>}
                   </div>
                 </div>
-                {totalBurn>0&&(
-                  <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden mb-3">
-                    <div className="h-full rounded-full relative" style={{width:`${barPct}%`}}>
-                      {projBurn>0&&burn>0&&<div className={`absolute right-0 top-0 h-full rounded-r-full bg-blue-300 dark:bg-blue-600`} style={{width:`${Math.round(projBurn/totalBurn*100)}%`}}/>}
-                      <div className={`absolute left-0 top-0 h-full rounded-full ${barColor}`} style={{width:projBurn>0&&burn>0?`${Math.round(burn/totalBurn*100)}%`:"100%"}}/>
+                {needed>0&&(
+                  <div className="mb-2">
+                    <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden mb-1 relative">
+                      <div className="absolute left-0 top-0 h-full bg-emerald-500 dark:bg-emerald-500 rounded-full transition-all" style={{width:`${fundedPct}%`}}/>
+                      {projectFull&&gapPct>0&&<div className="absolute top-0 h-full bg-blue-300 dark:bg-blue-600 rounded-r-full transition-all" style={{left:`${fundedPct}%`,width:`${gapPct}%`}}/>}
+                    </div>
+                    <div className="flex justify-between text-[10px]">
+                      <span className={`tabular-nums font-medium ${gap>0?"text-red-500 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{h$(funded)} funded{gap>0?` · ${h$(gap)} short`:` · ✓ Full`}</span>
+                      <span className="text-slate-400 dark:text-zinc-500 tabular-nums">{h$(needed)} needed</span>
                     </div>
                   </div>
                 )}
