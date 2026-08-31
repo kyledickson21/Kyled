@@ -2796,12 +2796,9 @@ function RehabPriorityPage({ data }) {
   // Monthly interest accrual regardless of payment type
   const monthlyBurn=loan=>{
     if(loan.endDate)return 0;
+    if(loan.interestType==="fixed")return 0; // flat fee — same cost regardless of time, no urgency
     const pt=loan.paymentType||"closing";
     if(pt==="monthly_fixed")return Math.round(loan.monthlyPayment||0);
-    if(loan.interestType==="fixed"){
-      const months=6; // fixed-dollar loans prorate over 6mo estimate
-      return Math.round((loan.interestRate||0)/months);
-    }
     return Math.round((loan.principal||0)*(loan.interestRate||0)/100/12);
   };
 
