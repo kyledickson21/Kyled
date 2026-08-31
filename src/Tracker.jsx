@@ -2788,18 +2788,21 @@ function HistoryPage({ data }) {
 }
 
 // ─── Rehab Priority ───────────────────────────────────────────────────────────
-function RehabPriorityPage({ data }) {
+function RehabPriorityPage({ data, update }) {
   const prv=usePrivacy();
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const [dir,setDir]=usePersistedState("nx-rehabDir","desc");
   const [projectFull,setProjectFull]=usePersistedState("nx-rehabProject",false);
-  // Loan IDs for private money the user has confirmed will roll over (won't exit)
-  const [rollingLoans,setRollingLoans]=usePersistedState("nx-rollingLoans",[]);
+  // Stored in Supabase so all sessions/devices stay in sync
+  const rollingLoans=data.rollingLoans||[];
   const PROJ_RATE=14;
 
-  const toggleRolling=id=>setRollingLoans(prev=>
-    prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]
-  );
+  const toggleRolling=id=>update(d=>({
+    ...d,
+    rollingLoans:(d.rollingLoans||[]).includes(id)
+      ?(d.rollingLoans||[]).filter(x=>x!==id)
+      :[...(d.rollingLoans||[]),id]
+  }));
 
   // Hard money always exits at sale and counts toward burn.
   // Private money defaults to exiting (counts) unless marked rolling. Fixed-fee = no monthly cost.
@@ -3067,7 +3070,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         {tab==="Properties"   &&<PropertiesPage data={data} update={update}/>}
         {tab==="LenderDash"  &&<LenderDashboard data={data}/>}
         {tab==="PropDash"    &&<PropertyDashboard data={data}/>}
-        {tab==="RehabPriority"&&<RehabPriorityPage data={data}/>}
+        {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
         {tab==="Closed"      &&<ClosedDealsPage data={data} update={update}/>}
         {tab==="History"     &&<HistoryPage data={data}/>}
       </div>
