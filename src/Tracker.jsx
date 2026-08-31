@@ -2787,8 +2787,117 @@ function HistoryPage({ data }) {
   );
 }
 
+// ─── Rehab Priority ───────────────────────────────────────────────────────────
+function RehabPriorityPage({ data }) {
+  const prv=usePrivacy();
+  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const [dir,setDir]=usePersistedState("nx-rehabDir","desc");
+
+  // Monthly interest accrual regardless of payment type
+  const monthlyBurn=loan=>{
+    if(loan.endDate)return 0;
+    const pt=loan.paymentType||"closing";
+    if(pt==="monthly_fixed")return Math.round(loan.monthlyPayment||0);
+    if(loan.interestType==="fixed"){
+      const months=6; // fixed-dollar loans prorate over 6mo estimate
+      return Math.round((loan.interestRate||0)/months);
+    }
+    return Math.round((loan.principal||0)*(loan.interestRate||0)/100/12);
+  };
+
+  const rows=data.properties
+    .filter(p=>!p.dateSold)
+    .map(prop=>{
+      const active=prop.loans.filter(l=>!l.endDate);
+      const burn=active.reduce((s,l)=>s+monthlyBurn(l),0);
+      const daysOwned=prop.purchaseDate?daysBetween(prop.purchaseDate,TODAY):null;
+      const loanBurns=active.map(l=>({loan:l,burn:monthlyBurn(l)})).filter(x=>x.burn>0);
+      return{prop,active,burn,daysOwned,loanBurns};
+    })
+    .sort((a,b)=>dir==="desc"?b.burn-a.burn:a.burn-b.burn);
+
+  const maxBurn=rows.length?Math.max(...rows.map(r=>r.burn),1):1;
+  const totalBurn=rows.reduce((s,r)=>s+r.burn,0);
+
+  return(
+    <div>
+      <div className="flex justify-between items-center mb-5">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Rehab Priority</h2>
+          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Ranked by monthly interest burn — finish these first</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {totalBurn>0&&<span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{h$(totalBurn)}/mo total</span>}
+          <button onClick={()=>setDir(d=>d==="desc"?"asc":"desc")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#1C1C1E] shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none text-sm font-semibold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors border-0">
+            {dir==="desc"?"Highest First ↓":"Lowest First ↑"}
+          </button>
+        </div>
+      </div>
+
+      {rows.length===0&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">🔥</div><p className="font-semibold">No active properties</p></div>}
+
+      <div className="space-y-3">
+        {rows.map(({prop,active,burn,daysOwned,loanBurns},i)=>{
+          const rankColor=i===0?"text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20":i===1?"text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20":i===2?"text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20":"text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800";
+          const burnColor=i===0?"text-red-600 dark:text-red-400":i===1?"text-orange-500 dark:text-orange-400":i===2?"text-amber-500 dark:text-amber-400":"text-slate-600 dark:text-zinc-300";
+          const barColor=i===0?"bg-red-400 dark:bg-red-500":i===1?"bg-orange-400 dark:bg-orange-500":i===2?"bg-amber-400 dark:bg-amber-500":"bg-slate-300 dark:bg-zinc-600";
+          const barPct=maxBurn>0?Math.round(burn/maxBurn*100):0;
+          const dailyBurn=Math.round(burn/30.4);
+          return(
+            <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+              <div className="px-5 py-4">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-start gap-3">
+                    <span className={`text-xs font-bold w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${rankColor}`}>#{i+1}</span>
+                    <div>
+                      <div className="font-semibold text-slate-900 dark:text-zinc-100">{prop.address||"Unnamed Property"}</div>
+                      <div className="flex flex-wrap gap-2 mt-1 text-[11px] text-slate-400 dark:text-zinc-500">
+                        {daysOwned!==null&&<span className={`font-medium ${daysOwned>90?"text-red-500 dark:text-red-400":daysOwned>60?"text-amber-500 dark:text-amber-400":"text-slate-400 dark:text-zinc-500"}`}>{daysOwned}d owned</span>}
+                        {dailyBurn>0&&<span>{h$(dailyBurn)}/day</span>}
+                        <span>{active.length} active loan{active.length!==1?"s":""}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {burn>0
+                      ?<><div className={`text-2xl font-bold tabular-nums ${burnColor}`}>{h$(burn)}</div><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest mt-0.5">per month</div></>
+                      :<div className="text-sm text-slate-300 dark:text-zinc-600 font-semibold">No carry cost</div>
+                    }
+                  </div>
+                </div>
+                {burn>0&&(
+                  <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden mb-3">
+                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{width:`${barPct}%`}}/>
+                  </div>
+                )}
+                {loanBurns.length>0&&(
+                  <div className="space-y-1">
+                    {loanBurns.map(({loan,burn:lb})=>(
+                      <div key={loan.id} className="flex items-center justify-between text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <TypeBadge type={loan.loanType} sm/>
+                          <span className="text-slate-600 dark:text-zinc-300 font-medium">{prv?"—":loan.lenderName}</span>
+                          <span className="text-slate-400 dark:text-zinc-500">{h$(loan.principal)} principal</span>
+                          <span className="text-slate-300 dark:text-zinc-600">·</span>
+                          <span className="text-slate-400 dark:text-zinc-500">{loan.interestType==="fixed"?`$${(loan.interestRate||0).toLocaleString()} fixed`:`${loan.interestRate}%/yr`}</span>
+                        </div>
+                        <span className={`font-semibold tabular-nums ${burnColor}`}>{h$(lb)}/mo</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
-const TABS=[{id:"Properties",label:"🏠",full:"Active Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"}];
+const TABS=[{id:"Properties",label:"🏠",full:"Active Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab Priority"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"}];
 
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
@@ -2892,11 +3001,12 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
       {/* Page content */}
       <div className="px-4 pt-5 max-w-2xl mx-auto pb-20">
-        {tab==="Properties" &&<PropertiesPage data={data} update={update}/>}
-        {tab==="LenderDash"&&<LenderDashboard data={data}/>}
-        {tab==="PropDash"  &&<PropertyDashboard data={data}/>}
-        {tab==="Closed"    &&<ClosedDealsPage data={data} update={update}/>}
-        {tab==="History"   &&<HistoryPage data={data}/>}
+        {tab==="Properties"   &&<PropertiesPage data={data} update={update}/>}
+        {tab==="LenderDash"  &&<LenderDashboard data={data}/>}
+        {tab==="PropDash"    &&<PropertyDashboard data={data}/>}
+        {tab==="RehabPriority"&&<RehabPriorityPage data={data}/>}
+        {tab==="Closed"      &&<ClosedDealsPage data={data} update={update}/>}
+        {tab==="History"     &&<HistoryPage data={data}/>}
       </div>
     </div>
     </PrivacyContext.Provider>
