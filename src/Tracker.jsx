@@ -2793,11 +2793,20 @@ function RehabPriorityPage({ data }) {
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const [dir,setDir]=usePersistedState("nx-rehabDir","desc");
   const [projectFull,setProjectFull]=usePersistedState("nx-rehabProject",false);
+  // Loan IDs for private money the user has confirmed will exit after this deal
+  const [exitingLoans,setExitingLoans]=usePersistedState("nx-exitingLoans",[]);
   const PROJ_RATE=14;
 
+  const toggleExiting=id=>setExitingLoans(prev=>
+    prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]
+  );
+
+  // Hard money always exits at sale. Private money defaults to rolling (doesn't count)
+  // unless explicitly marked as exiting. Fixed-fee loans have no monthly cost regardless.
   const monthlyBurn=loan=>{
     if(loan.endDate)return 0;
     if(loan.interestType==="fixed")return 0;
+    if(loan.loanType==="private"&&!exitingLoans.includes(loan.id))return 0;
     const pt=loan.paymentType||"closing";
     if(pt==="monthly_fixed")return Math.round(loan.monthlyPayment||0);
     return Math.round((loan.principal||0)*(loan.interestRate||0)/100/12);
@@ -2814,12 +2823,10 @@ function RehabPriorityPage({ data }) {
       const projBurn=projectFull&&gap>0?Math.round(gap*PROJ_RATE/100/12):0;
       const totalBurn=burn+projBurn;
       const daysOwned=prop.purchaseDate?daysBetween(prop.purchaseDate,TODAY):null;
-      const loanBurns=active.map(l=>({loan:l,burn:monthlyBurn(l)})).filter(x=>x.burn>0);
-      return{prop,active,burn,projBurn,totalBurn,gap,needed,funded,daysOwned,loanBurns};
+      return{prop,active,burn,projBurn,totalBurn,gap,needed,funded,daysOwned};
     })
     .sort((a,b)=>dir==="desc"?b.totalBurn-a.totalBurn:a.totalBurn-b.totalBurn);
 
-  const maxBurn=rows.length?Math.max(...rows.map(r=>r.totalBurn),1):1;
   const grandTotal=rows.reduce((s,r)=>s+r.totalBurn,0);
 
   return(
@@ -2827,7 +2834,7 @@ function RehabPriorityPage({ data }) {
       <div className="flex justify-between items-center mb-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Rehab Priority</h2>
-          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Ranked by monthly interest burn — finish these first</p>
+          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Ranked by interest that exits at sale — finish these first</p>
         </div>
         <div className="flex items-center gap-2">
           {grandTotal>0&&<span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{h$(grandTotal)}/mo total</span>}
@@ -2853,7 +2860,7 @@ function RehabPriorityPage({ data }) {
       {rows.length===0&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">🔥</div><p className="font-semibold">No active properties</p></div>}
 
       <div className="space-y-3">
-        {rows.map(({prop,active,burn,projBurn,totalBurn,gap,funded,needed,daysOwned,loanBurns},i)=>{
+        {rows.map(({prop,active,burn,projBurn,totalBurn,gap,funded,needed,daysOwned},i)=>{
           const rankColor=i===0?"text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20":i===1?"text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20":i===2?"text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20":"text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800";
           const burnColor=i===0?"text-red-600 dark:text-red-400":i===1?"text-orange-500 dark:text-orange-400":i===2?"text-amber-500 dark:text-amber-400":"text-slate-600 dark:text-zinc-300";
           const fundedPct=needed>0?Math.min(100,Math.round(funded/needed*100)):0;
@@ -2895,18 +2902,43 @@ function RehabPriorityPage({ data }) {
                     </div>
                   </div>
                 )}
-                {loanBurns.length>0&&(
-                  <div className="space-y-1">
-                    {loanBurns.map(({loan,burn:lb})=>(
-                      <div key={loan.id} className="flex items-center justify-between text-[11px]">
-                        <div className="flex items-center gap-1.5">
-                          <TypeBadge type={loan.loanType} sm/>
-                          <span className="text-slate-600 dark:text-zinc-300 font-medium">{prv?"—":loan.lenderName}</span>
-                          <span className="text-slate-400 dark:text-zinc-500">{h$(loan.principal)} · {loan.interestRate}%/yr</span>
+                {active.length>0&&(
+                  <div className="space-y-1 mt-1">
+                    {/* Column header for the exit checkbox */}
+                    <div className="flex justify-end pr-0.5 mb-0.5">
+                      <span className="text-[10px] text-slate-400 dark:text-zinc-500">exit?</span>
+                    </div>
+                    {active.map(loan=>{
+                      const lb=monthlyBurn(loan);
+                      const isPrivate=loan.loanType==="private";
+                      const isExiting=!isPrivate||exitingLoans.includes(loan.id);
+                      return(
+                        <div key={loan.id} className="flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <TypeBadge type={loan.loanType} sm/>
+                            <span className={`font-medium truncate ${isExiting?"text-slate-600 dark:text-zinc-300":"text-slate-400 dark:text-zinc-500"}`}>{prv?"—":loan.lenderName}</span>
+                            <span className="text-slate-400 dark:text-zinc-500 shrink-0">{h$(loan.principal)} · {loan.interestRate}%</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            {lb>0?(
+                              <span className={`font-semibold tabular-nums ${burnColor}`}>{h$(lb)}/mo</span>
+                            ):isExiting?(
+                              <span className="text-slate-300 dark:text-zinc-600 text-[10px]">flat fee</span>
+                            ):(
+                              <span className="text-slate-400 dark:text-zinc-500 text-[10px] italic">↻ rolling</span>
+                            )}
+                            {isPrivate?(
+                              <button onClick={()=>toggleExiting(loan.id)}
+                                className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${exitingLoans.includes(loan.id)?"bg-orange-500 border-orange-500":"border-slate-300 dark:border-zinc-600"}`}>
+                                {exitingLoans.includes(loan.id)&&<svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                              </button>
+                            ):(
+                              <div className="w-4"/>
+                            )}
+                          </div>
                         </div>
-                        <span className={`font-semibold tabular-nums ${burnColor}`}>{h$(lb)}/mo</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {projectFull&&projBurn>0&&(
                       <div className="flex items-center justify-between text-[11px] border-t border-dashed border-blue-200 dark:border-blue-800 pt-1 mt-1">
                         <div className="flex items-center gap-1.5">
