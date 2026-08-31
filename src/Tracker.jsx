@@ -2792,11 +2792,12 @@ function RehabPriorityPage({ data }) {
   const prv=usePrivacy();
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const [dir,setDir]=usePersistedState("nx-rehabDir","desc");
+  const [projectFull,setProjectFull]=usePersistedState("nx-rehabProject",false);
+  const PROJ_RATE=14;
 
-  // Monthly interest accrual regardless of payment type
   const monthlyBurn=loan=>{
     if(loan.endDate)return 0;
-    if(loan.interestType==="fixed")return 0; // flat fee — same cost regardless of time, no urgency
+    if(loan.interestType==="fixed")return 0;
     const pt=loan.paymentType||"closing";
     if(pt==="monthly_fixed")return Math.round(loan.monthlyPayment||0);
     return Math.round((loan.principal||0)*(loan.interestRate||0)/100/12);
@@ -2807,24 +2808,29 @@ function RehabPriorityPage({ data }) {
     .map(prop=>{
       const active=prop.loans.filter(l=>!l.endDate);
       const burn=active.reduce((s,l)=>s+monthlyBurn(l),0);
+      const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+      const needed=propNeeded(prop,active);
+      const gap=Math.max(0,needed-funded);
+      const projBurn=projectFull&&gap>0?Math.round(gap*PROJ_RATE/100/12):0;
+      const totalBurn=burn+projBurn;
       const daysOwned=prop.purchaseDate?daysBetween(prop.purchaseDate,TODAY):null;
       const loanBurns=active.map(l=>({loan:l,burn:monthlyBurn(l)})).filter(x=>x.burn>0);
-      return{prop,active,burn,daysOwned,loanBurns};
+      return{prop,active,burn,projBurn,totalBurn,gap,needed,funded,daysOwned,loanBurns};
     })
-    .sort((a,b)=>dir==="desc"?b.burn-a.burn:a.burn-b.burn);
+    .sort((a,b)=>dir==="desc"?b.totalBurn-a.totalBurn:a.totalBurn-b.totalBurn);
 
-  const maxBurn=rows.length?Math.max(...rows.map(r=>r.burn),1):1;
-  const totalBurn=rows.reduce((s,r)=>s+r.burn,0);
+  const maxBurn=rows.length?Math.max(...rows.map(r=>r.totalBurn),1):1;
+  const grandTotal=rows.reduce((s,r)=>s+r.totalBurn,0);
 
   return(
     <div>
-      <div className="flex justify-between items-center mb-5">
+      <div className="flex justify-between items-center mb-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Rehab Priority</h2>
           <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Ranked by monthly interest burn — finish these first</p>
         </div>
         <div className="flex items-center gap-2">
-          {totalBurn>0&&<span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{h$(totalBurn)}/mo total</span>}
+          {grandTotal>0&&<span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{h$(grandTotal)}/mo total</span>}
           <button onClick={()=>setDir(d=>d==="desc"?"asc":"desc")}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#1C1C1E] shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none text-sm font-semibold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors border-0">
             {dir==="desc"?"Highest First ↓":"Lowest First ↑"}
@@ -2832,15 +2838,27 @@ function RehabPriorityPage({ data }) {
         </div>
       </div>
 
+      {/* Project fully funded toggle */}
+      <label className={`flex items-center gap-3 px-4 py-3 mb-4 rounded-2xl cursor-pointer transition-colors ${projectFull?"bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800":"bg-white dark:bg-[#1C1C1E] shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border border-transparent"}`}>
+        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${projectFull?"bg-blue-600 border-blue-600":"border-slate-300 dark:border-zinc-600"}`}
+          onClick={()=>setProjectFull(p=>!p)}>
+          {projectFull&&<svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100">Project fully funded at {PROJ_RATE}%</div>
+          <div className="text-[11px] text-slate-400 dark:text-zinc-500">Fill any funding gap with a hypothetical {PROJ_RATE}% loan to see true worst-case monthly cost</div>
+        </div>
+      </label>
+
       {rows.length===0&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">🔥</div><p className="font-semibold">No active properties</p></div>}
 
       <div className="space-y-3">
-        {rows.map(({prop,active,burn,daysOwned,loanBurns},i)=>{
+        {rows.map(({prop,active,burn,projBurn,totalBurn,gap,daysOwned,loanBurns},i)=>{
           const rankColor=i===0?"text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20":i===1?"text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20":i===2?"text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20":"text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800";
           const burnColor=i===0?"text-red-600 dark:text-red-400":i===1?"text-orange-500 dark:text-orange-400":i===2?"text-amber-500 dark:text-amber-400":"text-slate-600 dark:text-zinc-300";
           const barColor=i===0?"bg-red-400 dark:bg-red-500":i===1?"bg-orange-400 dark:bg-orange-500":i===2?"bg-amber-400 dark:bg-amber-500":"bg-slate-300 dark:bg-zinc-600";
-          const barPct=maxBurn>0?Math.round(burn/maxBurn*100):0;
-          const dailyBurn=Math.round(burn/30.4);
+          const barPct=maxBurn>0?Math.round(totalBurn/maxBurn*100):0;
+          const dailyBurn=Math.round(totalBurn/30.4);
           return(
             <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
               <div className="px-5 py-4">
@@ -2857,15 +2875,20 @@ function RehabPriorityPage({ data }) {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    {burn>0
-                      ?<><div className={`text-2xl font-bold tabular-nums ${burnColor}`}>{h$(burn)}</div><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest mt-0.5">per month</div></>
-                      :<div className="text-sm text-slate-300 dark:text-zinc-600 font-semibold">No carry cost</div>
-                    }
+                    {totalBurn>0?(
+                      <>
+                        <div className={`text-2xl font-bold tabular-nums ${burnColor}`}>{h$(totalBurn)}</div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest mt-0.5">per month</div>
+                      </>
+                    ):<div className="text-sm text-slate-300 dark:text-zinc-600 font-semibold">No carry cost</div>}
                   </div>
                 </div>
-                {burn>0&&(
+                {totalBurn>0&&(
                   <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden mb-3">
-                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{width:`${barPct}%`}}/>
+                    <div className="h-full rounded-full relative" style={{width:`${barPct}%`}}>
+                      {projBurn>0&&burn>0&&<div className={`absolute right-0 top-0 h-full rounded-r-full bg-blue-300 dark:bg-blue-600`} style={{width:`${Math.round(projBurn/totalBurn*100)}%`}}/>}
+                      <div className={`absolute left-0 top-0 h-full rounded-full ${barColor}`} style={{width:projBurn>0&&burn>0?`${Math.round(burn/totalBurn*100)}%`:"100%"}}/>
+                    </div>
                   </div>
                 )}
                 {loanBurns.length>0&&(
@@ -2875,13 +2898,20 @@ function RehabPriorityPage({ data }) {
                         <div className="flex items-center gap-1.5">
                           <TypeBadge type={loan.loanType} sm/>
                           <span className="text-slate-600 dark:text-zinc-300 font-medium">{prv?"—":loan.lenderName}</span>
-                          <span className="text-slate-400 dark:text-zinc-500">{h$(loan.principal)} principal</span>
-                          <span className="text-slate-300 dark:text-zinc-600">·</span>
-                          <span className="text-slate-400 dark:text-zinc-500">{loan.interestType==="fixed"?`$${(loan.interestRate||0).toLocaleString()} fixed`:`${loan.interestRate}%/yr`}</span>
+                          <span className="text-slate-400 dark:text-zinc-500">{h$(loan.principal)} · {loan.interestRate}%/yr</span>
                         </div>
                         <span className={`font-semibold tabular-nums ${burnColor}`}>{h$(lb)}/mo</span>
                       </div>
                     ))}
+                    {projectFull&&projBurn>0&&(
+                      <div className="flex items-center justify-between text-[11px] border-t border-dashed border-blue-200 dark:border-blue-800 pt-1 mt-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded px-1.5 py-0.5">projected</span>
+                          <span className="text-blue-500 dark:text-blue-400">{h$(gap)} gap @ {PROJ_RATE}%/yr</span>
+                        </div>
+                        <span className="font-semibold tabular-nums text-blue-500 dark:text-blue-400">+{h$(projBurn)}/mo</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
