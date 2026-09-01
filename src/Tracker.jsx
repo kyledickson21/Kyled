@@ -1344,6 +1344,16 @@ function PropertiesPage({ data, update }) {
     const dt=new Date(y,m-1+Math.round(effectiveMonths(p)),d);
     return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
   };
+  const rehabBurn=prop=>{
+    const rolling=data.rollingLoans||[];
+    return prop.loans.filter(l=>!l.endDate).reduce((s,l)=>{
+      if(l.interestType==="fixed")return s;
+      if(l.loanType==="private"&&rolling.includes(l.id))return s;
+      const pt=l.paymentType||"closing";
+      if(pt==="monthly_fixed")return s+Math.round(l.monthlyPayment||0);
+      return s+Math.round((l.principal||0)*(l.interestRate||0)/100/12);
+    },0);
+  };
   const visible=data.properties
     .filter(p=>showSold||!p.dateSold)
     .filter(p=>{
@@ -1357,6 +1367,7 @@ function PropertiesPage({ data, update }) {
         const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};
         return d*(shortOf(b)-shortOf(a));
       }
+      if(propSortMode==="rehabPriority")return d*(rehabBurn(b)-rehabBurn(a));
       if(propSortMode==="dateAcquired")return d*propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return d*(a.address||"").localeCompare(b.address||"");
       if(propSortMode==="dateSold")return d*(a.dateSold||"0000").localeCompare(b.dateSold||"0000");
@@ -1399,7 +1410,7 @@ function PropertiesPage({ data, update }) {
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
-            {[["shortage","Shortage"],["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]].map(([v,l])=>(
+            {[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]].map(([v,l])=>(
               <button key={v} onClick={()=>setPropSortMode(v)}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${propSortMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
                 {l}
@@ -1447,7 +1458,10 @@ function PropertiesPage({ data, update }) {
           return{prop,active,funded,needed,short,over,full:_f,under:!prop.dateSold&&short>0&&!_f};
         });
         const sorted=[...rows].sort((a,b)=>{
-          if(!propSort.col) return propSellDate(a.prop).localeCompare(propSellDate(b.prop));
+          if(!propSort.col){
+            if(propSortMode==="rehabPriority")return 0; // already ordered by burn in visible[]
+            return propSellDate(a.prop).localeCompare(propSellDate(b.prop));
+          }
           const d=propSort.dir==="asc"?1:-1;
           switch(propSort.col){
             case"Address": return d*(a.prop.address||"").localeCompare(b.prop.address||"");
@@ -1491,9 +1505,11 @@ function PropertiesPage({ data, update }) {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
-                  {sorted.map(({prop,active,funded,needed,short,under,full},i)=>(
+                  {sorted.map(({prop,active,funded,needed,short,under,full},i)=>{
+                    const rankCls=propSortMode==="rehabPriority"&&!propSort.col?(i===0?"text-red-500 dark:text-red-400":i===1?"text-orange-500 dark:text-orange-400":i===2?"text-amber-500 dark:text-amber-400":"text-slate-300 dark:text-zinc-600"):"text-slate-300 dark:text-zinc-600";
+                    return(
                     <tr key={prop.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
-                      <td className="py-2.5 px-4 text-slate-300 dark:text-zinc-600 tabular-nums font-semibold">{i+1}</td>
+                      <td className={`py-2.5 px-4 tabular-nums font-semibold ${rankCls}`}>{i+1}</td>
                       <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">{prop.address||"Unnamed"}</td>
                       <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">{active.length}</td>
                       <td className="py-2.5 px-4 text-right tabular-nums text-slate-700 dark:text-zinc-200 font-medium">{funded>0?$$(funded):"—"}</td>
@@ -1513,7 +1529,8 @@ function PropertiesPage({ data, update }) {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1550,7 +1567,10 @@ function PropertiesPage({ data, update }) {
               {/* Header — clean PropDash style, click anywhere to expand */}
               <div className={`px-5 py-3.5 cursor-pointer ${under?"bg-red-50/60 dark:bg-red-950/15":""}`} onClick={()=>toggle(prop.id)}>
                 <div className="flex justify-between items-center mb-2">
-                  <span className="font-semibold text-slate-900 dark:text-zinc-100 truncate mr-3">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</span>
+                  <div className="flex items-center gap-2 min-w-0 mr-3">
+                    {propSortMode==="rehabPriority"&&<span className={`text-[11px] font-bold w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${visIdx===0?"text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20":visIdx===1?"text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20":visIdx===2?"text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20":"text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800"}`}>#{visIdx+1}</span>}
+                    <span className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</span>
+                  </div>
                   <div className="shrink-0 flex items-center gap-1.5">
                     {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 text-xs font-semibold">Sold</span>}
                     {full&&short===0&&over>needed*0.05&&<span className="text-amber-600 dark:text-amber-400 font-bold tabular-nums">+{h$(over)} over</span>}
