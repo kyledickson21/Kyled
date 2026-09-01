@@ -504,38 +504,49 @@ function CloseLoanModal({ loan, onConfirm, onClose }) {
 // ─── Mark Property Sold Modal ─────────────────────────────────────────────────
 function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const activeLoans=prop.loans.filter(l=>!l.endDate);
+  const preClosedLoans=prop.loans.filter(l=>!!l.endDate);
   const otherProps=allProperties.filter(p=>!p.dateSold&&p.id!==prop.id);
   const [step,setStep]=useState(1);
   const [soldDate,setSoldDate]=useState(TODAY);
   const [isRental,setIsRental]=useState(false);
 
   // Per-lender rows — includes principal/interest/fees breakdown
-  const [rows,setRows]=useState(()=>activeLoans.map(l=>{
-    const monthly=(l.paymentType||"closing")!=="closing";
-    const calcP=Math.round(calcBalance(l,soldDate)*100)/100; // cent precision
-    // calcInterest: interest owed AT CLOSING (0 for monthly since it was paid during hold)
-    const calcI=monthly?0:Math.round((calcP-(l.principal||0))*100)/100;
-    // intEarned: total interest earned on this loan (paid monthly OR accrued to closing)
-    const intEarned=calcIntEarned(l,soldDate); // already cent-precise
-    return {
+  const [rows,setRows]=useState(()=>[
+    ...activeLoans.map(l=>{
+      const monthly=(l.paymentType||"closing")!=="closing";
+      const calcP=Math.round(calcBalance(l,soldDate)*100)/100; // cent precision
+      // calcInterest: interest owed AT CLOSING (0 for monthly since it was paid during hold)
+      const calcI=monthly?0:Math.round((calcP-(l.principal||0))*100)/100;
+      // intEarned: total interest earned on this loan (paid monthly OR accrued to closing)
+      const intEarned=calcIntEarned(l,soldDate); // already cent-precise
+      return {
+        loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
+        principal:l.principal||0,calcPayoff:calcP,calcInterest:calcI,
+        isMonthly:monthly,isPreClosed:false,
+        interestRate:l.interestRate||0,interestType:l.interestType||"percentage",
+        paymentType:l.paymentType||"closing",specialTerms:l.specialTerms||"",
+        principalPayoff:String(l.principal||0),
+        interestPayoff:String(intEarned),
+        lenderFees:"0",overageRefund:"0",titleMoneyCosts:"0",paidAtTitle:false,
+        customRolling:String(l.principal||0),
+        origStartDate:l.startDate||soldDate,
+        type:"paidOut",destination:otherProps[0]?.id||"unassigned",newStartDate:nextDay(soldDate),
+      };
+    }),
+    // Loans closed early: principal already returned, but interest is still a cost of this deal
+    ...preClosedLoans.map(l=>({
       loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
-      principal:l.principal||0,calcPayoff:calcP,calcInterest:calcI,
-      isMonthly:monthly,
+      principal:l.principal||0,isPreClosed:true,isMonthly:false,
+      calcPayoff:0,calcInterest:0,
       interestRate:l.interestRate||0,interestType:l.interestType||"percentage",
       paymentType:l.paymentType||"closing",specialTerms:l.specialTerms||"",
-      // Breakdown fields (editable) — interestPayoff pre-filled from dashboard calc
-      principalPayoff:String(l.principal||0),
-      interestPayoff:String(intEarned), // total interest over full hold period
-      lenderFees:"0",
-      overageRefund:"0",
-      titleMoneyCosts:"0", // for paidAtTitle+monthly: how much of money costs title actually sent
-      paidAtTitle:false,
-      // For custom split
-      customRolling:String(l.principal||0),
-      origStartDate:l.startDate||soldDate,
-      type:"paidOut",destination:otherProps[0]?.id||"unassigned",newStartDate:nextDay(soldDate),
-    };
-  }));
+      principalPayoff:"0", // already returned to lender
+      interestPayoff:String(Math.round(calcIntEarned(l,l.endDate)*100)/100), // editable in case actual amount differed
+      lenderFees:"0",overageRefund:"0",titleMoneyCosts:"0",paidAtTitle:false,
+      customRolling:"0",origStartDate:l.startDate||"",
+      type:"alreadyPaid",destination:"",newStartDate:"",
+    })),
+  ]);
   const upd=(id,patch)=>setRows(rs=>rs.map(r=>r.loanId===id?{...r,...patch}:r));
 
   // When soldDate changes: recalculate interest to that date; reset newStartDate to day after
@@ -557,6 +568,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   // How much each lender is paid FROM the wire (0 if paid at title)
   // Rolling lenders' principals flow through the wire (Nexus receives then reinvests them)
   const wireContrib=r=>{
+    if(r.type==="alreadyPaid") return 0; // paid out before closing; principal & interest already settled
     if(r.paidAtTitle) return 0;
     const fees=parseFloat(r.lenderFees)||0;
     if(r.type==="paidOut"){
@@ -598,7 +610,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     const fees=parseFloat(r.lenderFees)||0;
     const interest=parseFloat(r.interestPayoff)||0;
     if(r.type==="rollPrincipal"||r.type==="waiveInterest") return s+fees;
-    if(r.isMonthly||r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull") return s+interest+fees;
+    if(r.isMonthly||r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull"||r.type==="alreadyPaid") return s+interest+fees;
     return s+fees; // custom: fees still cost, interest not
   },0)*100)/100;
   const baseCosts=cashToClose+rehab+moneyCosts;
@@ -682,7 +694,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 <p className="text-sm text-slate-400 dark:text-zinc-500 text-center py-4">No active loans on this property.</p>
               )}
               <div className="space-y-3">
-                {rows.map(r=>{
+                {rows.filter(r=>!r.isPreClosed).map(r=>{
                   const isRolling=["rollFull","rollPrincipal","payInterest","waiveInterest","custom"].includes(r.type);
                   const autoWireForCustom=Math.max(0,r.calcPayoff-(parseFloat(r.customRolling)||0));
                   const totalFromWire=wireContrib(r);
@@ -870,6 +882,34 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                   );
                 })}
               </div>
+
+              {/* Pre-closed loans — interest paid out early, still a cost of this deal */}
+              {preClosedLoans.length>0&&(
+                <div className="mt-4">
+                  <div className="text-[10px] font-semibold text-orange-500 dark:text-orange-400 uppercase tracking-widest mb-2">Paid Out Early — interest charged to this deal</div>
+                  <div className="space-y-2">
+                    {rows.filter(r=>r.isPreClosed).map(r=>(
+                      <div key={r.loanId} className="rounded-xl border border-orange-200 dark:border-orange-800/40 p-3 bg-orange-50/60 dark:bg-orange-900/10">
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <TypeBadge type={r.loanType} sm/>
+                            <span className="font-semibold text-slate-800 dark:text-zinc-100 truncate">{r.lenderName}</span>
+                            <span className="text-[10px] bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 font-semibold rounded px-1.5 py-0.5 shrink-0">paid early</span>
+                          </div>
+                          <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0">Principal {$$p(r.principal)} — already returned</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] text-slate-500 dark:text-zinc-400 shrink-0">Interest charged to deal:</span>
+                          <input type="number" value={r.interestPayoff}
+                            onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})}
+                            onWheel={e=>e.target.blur()}
+                            className="flex-1 border border-orange-200 dark:border-orange-800/50 bg-white dark:bg-zinc-800 rounded-lg px-3 py-1.5 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-400 tabular-nums"/>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Step 1 summary: lenders + estimated costs */}
@@ -2703,7 +2743,7 @@ function HistoryPage({ data }) {
                     <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Funded By</div>
                     {(cd.lenderPayoffs||[]).map(lp=>(
                       <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
-                        <span className="truncate mr-1">{lp.lenderName}{lp.type==="waiveInterest"&&<span className="text-amber-500 dark:text-amber-400 ml-1 text-[10px]">(waived int.)</span>}</span>
+                        <span className="truncate mr-1">{lp.lenderName}{lp.type==="waiveInterest"&&<span className="text-amber-500 dark:text-amber-400 ml-1 text-[10px]">(waived int.)</span>}{lp.type==="alreadyPaid"&&<span className="text-orange-500 dark:text-orange-400 ml-1 text-[10px]">(paid early)</span>}</span>
                         <span className="tabular-nums shrink-0">{h$(lp.principalPayoff)}</span>
                       </div>
                     ))}
