@@ -2893,7 +2893,7 @@ function RehabPriorityPage({ data, update }) {
 
   const grandTotal=rows.reduce((s,r)=>s+r.totalBurn,0);
   const daysNum=parseFloat(avgDaysBehind)||0;
-  const extraFromDelay=daysNum>0?Math.round(grandTotal*(daysNum/30.44)):0;
+  const extraFromDelay=daysNum!==0?Math.round(grandTotal*(daysNum/30.44)):0;
   const extraPerYear=Math.round(extraFromDelay*12);
 
   return(
@@ -2932,7 +2932,7 @@ function RehabPriorityPage({ data, update }) {
             <div className="text-[11px] text-slate-400 dark:text-zinc-500">How far behind are rehabs running on average?</div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <input type="number" min="0" value={avgDaysBehind}
+            <input type="number" value={avgDaysBehind}
               onChange={e=>setAvgDaysBehind(e.target.value)}
               onWheel={e=>e.target.blur()}
               placeholder="0"
@@ -2940,18 +2940,25 @@ function RehabPriorityPage({ data, update }) {
             <span className="text-sm text-slate-400 dark:text-zinc-500">days</span>
           </div>
         </div>
-        {extraFromDelay>0&&(
-          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-red-50 dark:bg-red-900/20 px-3 py-2.5">
-              <div className="text-[10px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-widest mb-1">Extra from {daysNum}d delay</div>
-              <div className="text-lg font-bold tabular-nums text-red-600 dark:text-red-400">{h$(extraFromDelay)}</div>
+        {extraFromDelay!==0&&(()=>{
+          const ahead=daysNum<0;
+          const tileClx=ahead?"bg-emerald-50 dark:bg-emerald-900/20":"bg-red-50 dark:bg-red-900/20";
+          const labelClx=ahead?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400";
+          const valClx=ahead?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400";
+          const absDays=Math.abs(daysNum);
+          return(
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-2 gap-3">
+              <div className={`rounded-xl px-3 py-2.5 ${tileClx}`}>
+                <div className={`text-[10px] font-semibold uppercase tracking-widest mb-1 ${labelClx}`}>{ahead?`Saved from ${absDays}d ahead`:`Extra from ${absDays}d delay`}</div>
+                <div className={`text-lg font-bold tabular-nums ${valClx}`}>{ahead?"−":""}{h$(Math.abs(extraFromDelay))}</div>
+              </div>
+              <div className={`rounded-xl px-3 py-2.5 ${tileClx}`}>
+                <div className={`text-[10px] font-semibold uppercase tracking-widest mb-1 ${labelClx}`}>{ahead?"Annualized savings":"Annualized at this slippage"}</div>
+                <div className={`text-lg font-bold tabular-nums ${valClx}`}>{ahead?"−":""}{h$(Math.abs(extraPerYear))}/yr</div>
+              </div>
             </div>
-            <div className="rounded-xl bg-red-50 dark:bg-red-900/20 px-3 py-2.5">
-              <div className="text-[10px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-widest mb-1">Annualized at this slippage</div>
-              <div className="text-lg font-bold tabular-nums text-red-600 dark:text-red-400">{h$(extraPerYear)}/yr</div>
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {rows.length===0&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">🔥</div><p className="font-semibold">No active properties</p></div>}
