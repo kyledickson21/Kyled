@@ -2853,6 +2853,7 @@ function RehabPriorityPage({ data, update }) {
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const [dir,setDir]=usePersistedState("nx-rehabDir","desc");
   const [projectFull,setProjectFull]=usePersistedState("nx-rehabProject",false);
+  const [avgDaysBehind,setAvgDaysBehind]=usePersistedState("nx-rehabDaysBehind","");
   // Stored in Supabase so all sessions/devices stay in sync
   const rollingLoans=data.rollingLoans||[];
   const PROJ_RATE=14;
@@ -2891,6 +2892,9 @@ function RehabPriorityPage({ data, update }) {
     .sort((a,b)=>dir==="desc"?b.totalBurn-a.totalBurn:a.totalBurn-b.totalBurn);
 
   const grandTotal=rows.reduce((s,r)=>s+r.totalBurn,0);
+  const daysNum=parseFloat(avgDaysBehind)||0;
+  const extraFromDelay=daysNum>0?Math.round(grandTotal*(daysNum/30.44)):0;
+  const extraPerYear=Math.round(extraFromDelay*12);
 
   return(
     <div>
@@ -2919,6 +2923,36 @@ function RehabPriorityPage({ data, update }) {
           <div className="text-[11px] text-slate-400 dark:text-zinc-500">Fill any funding gap with a hypothetical {PROJ_RATE}% loan to see true worst-case monthly cost</div>
         </div>
       </label>
+
+      {/* Average delay input + cost impact */}
+      <div className={`px-4 py-3 mb-4 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none`}>
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100 mb-0.5">Average days behind schedule</div>
+            <div className="text-[11px] text-slate-400 dark:text-zinc-500">How far behind are rehabs running on average?</div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <input type="number" min="0" value={avgDaysBehind}
+              onChange={e=>setAvgDaysBehind(e.target.value)}
+              onWheel={e=>e.target.blur()}
+              placeholder="0"
+              className="w-20 text-right border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-400 tabular-nums"/>
+            <span className="text-sm text-slate-400 dark:text-zinc-500">days</span>
+          </div>
+        </div>
+        {extraFromDelay>0&&(
+          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-red-50 dark:bg-red-900/20 px-3 py-2.5">
+              <div className="text-[10px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-widest mb-1">Extra from {daysNum}d delay</div>
+              <div className="text-lg font-bold tabular-nums text-red-600 dark:text-red-400">{h$(extraFromDelay)}</div>
+            </div>
+            <div className="rounded-xl bg-red-50 dark:bg-red-900/20 px-3 py-2.5">
+              <div className="text-[10px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-widest mb-1">Annualized at this slippage</div>
+              <div className="text-lg font-bold tabular-nums text-red-600 dark:text-red-400">{h$(extraPerYear)}/yr</div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {rows.length===0&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">🔥</div><p className="font-semibold">No active properties</p></div>}
 
