@@ -1213,7 +1213,7 @@ function PropertyForm({ init, onSave, onClose }) {
       <Inp label="Property Address" value={f.address} onChange={s("address")} placeholder="123 Oak Ave, Nashville, TN"/>
       <DateInp label="Purchase Date" value={f.purchaseDate} onChange={s("purchaseDate")} helpText="Reference only — does not affect calculations"/>
       <div className="grid grid-cols-2 gap-3">
-        <Inp label="Cash to Close ($)" type="number" value={f.purchasePrice} onChange={s("purchasePrice")} placeholder="150000"/>
+        <Inp label="Cost to Buy ($)" type="number" value={f.purchasePrice} onChange={s("purchasePrice")} placeholder="150000"/>
         <Inp label="Rehab Budget ($)" type="number" value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
       </div>
       <div className="mb-3">
@@ -1236,7 +1236,7 @@ function PropertyForm({ init, onSave, onClose }) {
       {totalBase>0&&(
         <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs space-y-1">
           <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Estimated Capital Need</div>
-          {[["Cash to Close",purchase],["Rehab",rehab],[`Holding (${months} mo × $${holding}/mo)`,holding*months]].filter(([,v])=>v>0).map(([l,v])=>(
+          {[["Cost to Buy",purchase],["Rehab",rehab],[`Holding (${months} mo × $${holding}/mo)`,holding*months]].filter(([,v])=>v>0).map(([l,v])=>(
             <div key={l} className="flex justify-between text-slate-600 dark:text-zinc-300"><span>{l}</span><span className="tabular-nums">{$$(v)}</span></div>
           ))}
           <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-200 dark:border-zinc-700 pt-2 mt-1">
@@ -1736,7 +1736,7 @@ function PropertiesPage({ data, update }) {
                     <div className="px-5 py-3 bg-[#F9F9FB] dark:bg-black/20 border-b border-black/[0.04] dark:border-white/[0.04]">
                       <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Cost Breakdown</div>
                       <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
-                        {purchaseAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Purchase <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{h$(purchaseAmt)}</strong></span>}
+                        {purchaseAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Cost to Buy <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{h$(purchaseAmt)}</strong></span>}
                         {rehabAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Rehab <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{h$(rehabAmt)}</strong></span>}
                         {holdIntAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Hold+Int <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{hc(holdIntAmt)}</strong><span className="opacity-60 ml-1">({months}mo)</span></span>}
                         {daysOwned!==null&&<span className="text-slate-400 dark:text-zinc-500">{daysOwned} days owned</span>}
