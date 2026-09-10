@@ -399,9 +399,21 @@ function LenderMoneyForm({ properties, init, onSave, onClose }) {
 }
 
 // ─── Place on Property Modal ──────────────────────────────────────────────────
+const propAcquiredDate = p => p.purchaseDate || (p.loans.map(l=>l.startDate).filter(Boolean).sort()[0]) || null;
+const loanPropConflict = (loanStartDate, prop) => {
+  const pd = propAcquiredDate(prop);
+  if (!pd || !loanStartDate || loanStartDate >= pd) return 0;
+  return daysBetween(loanStartDate, pd);
+};
+
 function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
   const activeProps = properties.filter(p=>!p.dateSold);
   const [dest, setDest] = useState(activeProps[0]?.id ?? "");
+  const [warned, setWarned] = useState(false);
+  const changeDest = v => { setDest(v); setWarned(false); };
+  const selectedProp = activeProps.find(p=>p.id===dest);
+  const conflict = selectedProp ? loanPropConflict(fund.startDate, selectedProp) : 0;
+  const handlePlace = () => { if(conflict>0&&!warned){setWarned(true);return;} onPlace(dest); };
   if (!activeProps.length) return (
     <Modal title="Place on Property" onClose={onClose}>
       <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No active properties. Add one first.</p>
@@ -414,9 +426,14 @@ function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
         <div className="font-bold text-slate-900 dark:text-zinc-100">{fund.lenderName}</div>
         <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(fund.principal)} · {fmtRate(fund)} · <TypeBadge type={fund.loanType} sm/></div>
       </div>
-      <Sel label="Place on which property?" value={dest} onChange={setDest} options={activeProps.map(p=>[p.id,p.address])}/>
+      <Sel label="Place on which property?" value={dest} onChange={changeDest} options={activeProps.map(p=>[p.id,p.address])}/>
+      {warned&&conflict>0&&(
+        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
+          ⚠️ This loan started <strong>{conflict} days</strong> before the property was acquired — the money was uncollateralized for that period. Click again to place anyway.
+        </div>
+      )}
       <div className="flex gap-2 pt-1">
-        <Btn onClick={()=>onPlace(dest)} color="green" full>Place on Property →</Btn>
+        <Btn onClick={handlePlace} color={warned&&conflict>0?"red":"green"} full>{warned&&conflict>0?"Place anyway →":"Place on Property →"}</Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
       </div>
     </Modal>
@@ -428,12 +445,18 @@ function MoveModal({ item, properties, onMove, onClose }) {
   const activeProps = properties.filter(p=>!p.dateSold);
   const lenderName = item.type==="loan" ? item.loan.lenderName : item.fund.lenderName;
   const amount = item.type==="loan" ? item.loan.principal : item.fund.principal;
+  const loanStartDate = item.type==="loan" ? item.loan.startDate : item.fund?.startDate;
   const currentLoc = item.type==="loan" ? (properties.find(p=>p.id===item.propId)?.address||"a property") : "Unassigned";
   const destOptions = [
     ...activeProps.filter(p=>item.type!=="loan"||p.id!==item.propId).map(p=>[p.id,`🏠  ${p.address}`]),
     ...(item.type==="loan"?[["unassigned","💼  Unassigned"]]:[]),
   ];
   const [dest,setDest]=useState(destOptions[0]?.[0]??"");
+  const [warned,setWarned]=useState(false);
+  const changeDest = v => { setDest(v); setWarned(false); };
+  const selectedProp = properties.find(p=>p.id===dest);
+  const conflict = selectedProp ? loanPropConflict(loanStartDate, selectedProp) : 0;
+  const handleMove = () => { if(conflict>0&&!warned){setWarned(true);return;} onMove(dest); };
   if(!destOptions.length) return (
     <Modal title="Move Money" onClose={onClose}>
       <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No other properties to move to.</p>
@@ -446,9 +469,14 @@ function MoveModal({ item, properties, onMove, onClose }) {
         <div className="font-bold text-slate-900 dark:text-zinc-100">{lenderName}</div>
         <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(amount)} · on <span className="font-medium">{currentLoc}</span></div>
       </div>
-      <Sel label="Move to" value={dest} onChange={setDest} options={destOptions}/>
+      <Sel label="Move to" value={dest} onChange={changeDest} options={destOptions}/>
+      {warned&&conflict>0&&(
+        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
+          ⚠️ This loan started <strong>{conflict} days</strong> before the property was acquired — the money was uncollateralized for that period. Click again to move anyway.
+        </div>
+      )}
       <div className="flex gap-2 pt-1">
-        <Btn onClick={()=>onMove(dest)} color="blue" full>Move →</Btn>
+        <Btn onClick={handleMove} color={warned&&conflict>0?"red":"blue"} full>{warned&&conflict>0?"Move anyway →":"Move →"}</Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
       </div>
     </Modal>
@@ -1350,14 +1378,20 @@ function PropertiesPage({ data, update }) {
     specialTerms:f.specialTerms||"", endDate:f.endDate||null,
   });
 
-  const saveMoneyForm = f => {
+  const saveMoneyForm = (f, force=false) => {
     const base=loanFields(f);
     if(f.destination==="unassigned"){
       update(d=>({...d,unassigned:[...d.unassigned,{id:uid(),...base}]}));
+      setModal(null);
     } else {
+      const destProp=data.properties.find(p=>p.id===f.destination);
+      const conflict=destProp?loanPropConflict(base.startDate,destProp):0;
+      if(conflict>0&&!force){
+        if(!window.confirm(`⚠️ This loan started ${conflict} days before the property was acquired — the money would be uncollateralized for that period.\n\nPlace it anyway?`))return;
+      }
       update(d=>({...d,properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...p.loans,{id:uid(),...base}]})}));
+      setModal(null);
     }
-    setModal(null);
   };
 
   const saveProp = (f,existing) => {
