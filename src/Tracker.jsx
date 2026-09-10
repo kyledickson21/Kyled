@@ -426,7 +426,7 @@ function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
         <div className="font-bold text-slate-900 dark:text-zinc-100">{fund.lenderName}</div>
         <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(fund.principal)} · {fmtRate(fund)} · <TypeBadge type={fund.loanType} sm/></div>
       </div>
-      <Sel label="Place on which property?" value={dest} onChange={changeDest} options={activeProps.map(p=>[p.id,p.address])}/>
+      <Sel label="Place on which property?" value={dest} onChange={changeDest} options={activeProps.map(p=>[p.id, loanPropConflict(fund.startDate,p)>0?`⚠️ ${p.address}`:p.address])}/>
       {warned&&conflict>0&&(
         <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
           ⚠️ This loan started <strong>{conflict} days</strong> before the property was acquired — the money was uncollateralized for that period. Click again to place anyway.
@@ -448,7 +448,7 @@ function MoveModal({ item, properties, onMove, onClose }) {
   const loanStartDate = item.type==="loan" ? item.loan.startDate : item.fund?.startDate;
   const currentLoc = item.type==="loan" ? (properties.find(p=>p.id===item.propId)?.address||"a property") : "Unassigned";
   const destOptions = [
-    ...activeProps.filter(p=>item.type!=="loan"||p.id!==item.propId).map(p=>[p.id,`🏠  ${p.address}`]),
+    ...activeProps.filter(p=>item.type!=="loan"||p.id!==item.propId).map(p=>[p.id, loanPropConflict(loanStartDate,p)>0?`⚠️ 🏠  ${p.address}`:`🏠  ${p.address}`]),
     ...(item.type==="loan"?[["unassigned","💼  Unassigned"]]:[]),
   ];
   const [dest,setDest]=useState(destOptions[0]?.[0]??"");
@@ -499,7 +499,7 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
   const remaining = (loan.principal||loan.amount||0) - totalSplit;
   const valid = splits.every(r=>r.propId&&parseFloat(r.amount)>0) && Math.abs(remaining)<0.01;
 
-  const propOptions = activeProps.map(p=>[p.id, p.address]);
+  const propOptions = activeProps.map(p=>[p.id, loanPropConflict(loan.startDate,p)>0?`⚠️ ${p.address}`:p.address]);
   return (
     <Modal title={`Split Funds — ${loan.lenderName}`} onClose={onClose}>
       <div className="space-y-4">
