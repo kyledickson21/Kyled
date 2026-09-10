@@ -405,15 +405,30 @@ const loanPropConflict = (loanStartDate, prop) => {
   if (!pd || !loanStartDate || loanStartDate >= pd) return 0;
   return daysBetween(loanStartDate, pd);
 };
+const propSizeConflict = (loanAmount, prop) => {
+  const active = prop.loans.filter(l=>!l.endDate);
+  const needed = propNeeded(prop, active);
+  if (needed <= 0) return false;
+  const funded = active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+  const shortage = Math.max(0, needed - funded);
+  return loanAmount > shortage;
+};
 
 function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
   const activeProps = properties.filter(p=>!p.dateSold);
+  const loanAmt = fund.principal||fund.amount||0;
   const [dest, setDest] = useState(activeProps[0]?.id ?? "");
   const [warned, setWarned] = useState(false);
   const changeDest = v => { setDest(v); setWarned(false); };
   const selectedProp = activeProps.find(p=>p.id===dest);
-  const conflict = selectedProp ? loanPropConflict(fund.startDate, selectedProp) : 0;
-  const handlePlace = () => { if(conflict>0&&!warned){setWarned(true);return;} onPlace(dest); };
+  const dateConflict = selectedProp ? loanPropConflict(fund.startDate, selectedProp) : 0;
+  const sizeConflict = selectedProp ? propSizeConflict(loanAmt, selectedProp) : false;
+  const hasConflict = dateConflict>0||sizeConflict;
+  const handlePlace = () => { if(hasConflict&&!warned){setWarned(true);return;} onPlace(dest); };
+  const propLabel = p => {
+    const dc=loanPropConflict(fund.startDate,p)>0, sc=propSizeConflict(loanAmt,p);
+    return (dc||sc)?`⚠️ ${p.address}`:p.address;
+  };
   if (!activeProps.length) return (
     <Modal title="Place on Property" onClose={onClose}>
       <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No active properties. Add one first.</p>
@@ -424,16 +439,18 @@ function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
     <Modal title={`Place ${fund.lenderName}'s Money`} onClose={onClose}>
       <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
         <div className="font-bold text-slate-900 dark:text-zinc-100">{fund.lenderName}</div>
-        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(fund.principal)} · {fmtRate(fund)} · <TypeBadge type={fund.loanType} sm/></div>
+        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(loanAmt)} · {fmtRate(fund)} · <TypeBadge type={fund.loanType} sm/></div>
       </div>
-      <Sel label="Place on which property?" value={dest} onChange={changeDest} options={activeProps.map(p=>[p.id, loanPropConflict(fund.startDate,p)>0?`⚠️ ${p.address}`:p.address])}/>
-      {warned&&conflict>0&&(
-        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
-          ⚠️ This loan started <strong>{conflict} days</strong> before the property was acquired — the money was uncollateralized for that period. Click again to place anyway.
+      <Sel label="Place on which property?" value={dest} onChange={changeDest} options={activeProps.map(p=>[p.id,propLabel(p)])}/>
+      {warned&&hasConflict&&(
+        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 space-y-1">
+          {dateConflict>0&&<p>⚠️ This loan started <strong>{dateConflict} days</strong> before the property was acquired — the money was uncollateralized for that period.</p>}
+          {sizeConflict&&<p>⚠️ This loan ({$$(loanAmt)}) is larger than the remaining funding shortage on this property.</p>}
+          <p className="font-semibold">Click again to place anyway.</p>
         </div>
       )}
       <div className="flex gap-2 pt-1">
-        <Btn onClick={handlePlace} color={warned&&conflict>0?"red":"green"} full>{warned&&conflict>0?"Place anyway →":"Place on Property →"}</Btn>
+        <Btn onClick={handlePlace} color={warned&&hasConflict?"red":"green"} full>{warned&&hasConflict?"Place anyway →":"Place on Property →"}</Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
       </div>
     </Modal>
@@ -447,16 +464,22 @@ function MoveModal({ item, properties, onMove, onClose }) {
   const amount = item.type==="loan" ? item.loan.principal : item.fund.principal;
   const loanStartDate = item.type==="loan" ? item.loan.startDate : item.fund?.startDate;
   const currentLoc = item.type==="loan" ? (properties.find(p=>p.id===item.propId)?.address||"a property") : "Unassigned";
+  const moveLabel = p => {
+    const dc=loanPropConflict(loanStartDate,p)>0, sc=propSizeConflict(amount,p);
+    return (dc||sc)?`⚠️ 🏠  ${p.address}`:`🏠  ${p.address}`;
+  };
   const destOptions = [
-    ...activeProps.filter(p=>item.type!=="loan"||p.id!==item.propId).map(p=>[p.id, loanPropConflict(loanStartDate,p)>0?`⚠️ 🏠  ${p.address}`:`🏠  ${p.address}`]),
+    ...activeProps.filter(p=>item.type!=="loan"||p.id!==item.propId).map(p=>[p.id,moveLabel(p)]),
     ...(item.type==="loan"?[["unassigned","💼  Unassigned"]]:[]),
   ];
   const [dest,setDest]=useState(destOptions[0]?.[0]??"");
   const [warned,setWarned]=useState(false);
   const changeDest = v => { setDest(v); setWarned(false); };
   const selectedProp = properties.find(p=>p.id===dest);
-  const conflict = selectedProp ? loanPropConflict(loanStartDate, selectedProp) : 0;
-  const handleMove = () => { if(conflict>0&&!warned){setWarned(true);return;} onMove(dest); };
+  const dateConflict = selectedProp ? loanPropConflict(loanStartDate, selectedProp) : 0;
+  const sizeConflict = selectedProp ? propSizeConflict(amount, selectedProp) : false;
+  const hasConflict = dateConflict>0||sizeConflict;
+  const handleMove = () => { if(hasConflict&&!warned){setWarned(true);return;} onMove(dest); };
   if(!destOptions.length) return (
     <Modal title="Move Money" onClose={onClose}>
       <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No other properties to move to.</p>
@@ -470,13 +493,15 @@ function MoveModal({ item, properties, onMove, onClose }) {
         <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(amount)} · on <span className="font-medium">{currentLoc}</span></div>
       </div>
       <Sel label="Move to" value={dest} onChange={changeDest} options={destOptions}/>
-      {warned&&conflict>0&&(
-        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
-          ⚠️ This loan started <strong>{conflict} days</strong> before the property was acquired — the money was uncollateralized for that period. Click again to move anyway.
+      {warned&&hasConflict&&(
+        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 space-y-1">
+          {dateConflict>0&&<p>⚠️ This loan started <strong>{dateConflict} days</strong> before the property was acquired — the money was uncollateralized for that period.</p>}
+          {sizeConflict&&<p>⚠️ This loan ({$$(amount)}) is larger than the remaining funding shortage on this property.</p>}
+          <p className="font-semibold">Click again to move anyway.</p>
         </div>
       )}
       <div className="flex gap-2 pt-1">
-        <Btn onClick={handleMove} color={warned&&conflict>0?"red":"blue"} full>{warned&&conflict>0?"Move anyway →":"Move →"}</Btn>
+        <Btn onClick={handleMove} color={warned&&hasConflict?"red":"blue"} full>{warned&&hasConflict?"Move anyway →":"Move →"}</Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
       </div>
     </Modal>
@@ -499,7 +524,11 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
   const remaining = (loan.principal||loan.amount||0) - totalSplit;
   const valid = splits.every(r=>r.propId&&parseFloat(r.amount)>0) && Math.abs(remaining)<0.01;
 
-  const propOptions = activeProps.map(p=>[p.id, loanPropConflict(loan.startDate,p)>0?`⚠️ ${p.address}`:p.address]);
+  const propOptions = activeProps.map(p=>{
+    const dc=loanPropConflict(loan.startDate,p)>0;
+    const sc=propSizeConflict(loan.principal||loan.amount||0,p);
+    return [p.id,(dc||sc)?`⚠️ ${p.address}`:p.address];
+  });
   return (
     <Modal title={`Split Funds — ${loan.lenderName}`} onClose={onClose}>
       <div className="space-y-4">
