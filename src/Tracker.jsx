@@ -1624,7 +1624,7 @@ function PropertiesPage({ data, update }) {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
-                  {sorted.map(({prop,active,funded,needed,short,under,full},i)=>{
+                  {sorted.map(({prop,active,funded,needed,short,over,under,full},i)=>{
                     const rankCls=propSortMode==="rehabPriority"&&!propSort.col?(i===0?"text-red-500 dark:text-red-400":i===1?"text-orange-500 dark:text-orange-400":i===2?"text-amber-500 dark:text-amber-400":"text-slate-300 dark:text-zinc-600"):"text-slate-300 dark:text-zinc-600";
                     return(
                     <tr key={prop.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
