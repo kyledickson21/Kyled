@@ -487,7 +487,8 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
               <div className="flex-1">
                 <select value={row.propId} onChange={e=>setRow(i,"propId",e.target.value)}
                   className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                  <option value="">— pick property —</option>
+                  <option value="">— pick destination —</option>
+                  <option value="unassigned">💼 Leave unassigned</option>
                   {propOptions.map(([id,addr])=><option key={id} value={id}>{addr}</option>)}
                 </select>
               </div>
@@ -1405,9 +1406,12 @@ function PropertiesPage({ data, update }) {
   const delUnassigned = id => { if(!confirm("Remove this unassigned fund?"))return; update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==id)})); };
 
   const handleSplitLoan = (fund, splits) => {
+    const newUnassigned = splits
+      .filter(s=>s.propId==="unassigned")
+      .map(s=>({...fund, id:uid(), principal:s.amount, drawFacility:null}));
     update(d=>({
       ...d,
-      unassigned: d.unassigned.filter(u=>u.id!==fund.id),
+      unassigned: [...d.unassigned.filter(u=>u.id!==fund.id), ...newUnassigned],
       properties: d.properties.map(p=>{
         const piece=splits.find(s=>s.propId===p.id);
         if(!piece) return p;
@@ -1415,7 +1419,7 @@ function PropertiesPage({ data, update }) {
         return{...p,loans:[...p.loans,newLoan]};
       }),
     }));
-    splits.forEach(s=>setExpanded(e=>({...e,[s.propId]:true})));
+    splits.filter(s=>s.propId!=="unassigned").forEach(s=>setExpanded(e=>({...e,[s.propId]:true})));
     setModal(null);
   };
 
