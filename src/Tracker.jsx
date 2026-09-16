@@ -3210,8 +3210,138 @@ function RehabPriorityPage({ data, update }) {
   );
 }
 
+// ─── Draws Page ───────────────────────────────────────────────────────────────
+function DrawsPage({ data }) {
+  const privacy = usePrivacy();
+  const h$ = v => { const s=$$(v); return privacy?maskMoney(s):s; };
+
+  // Collect all active properties that have at least one draw-facility loan
+  const rows = (data.properties||[])
+    .filter(p => !p.dateSold)
+    .map(p => {
+      const drawLoans = (p.loans||[]).filter(l => !l.endDate && l.drawFacility);
+      if (!drawLoans.length) return null;
+
+      // Aggregate across all draw-facility loans
+      const totalCommitted = drawLoans.reduce((s,l) => s+(l.drawFacility.committed||0), 0);
+      const allDraws = drawLoans.flatMap(l => (l.drawFacility.draws||[]).map(d=>({...d, lenderName:l.lenderName})));
+      const totalDrawn = allDraws.reduce((s,d) => s+(d.amount||0), 0);
+      const totalAvailable = Math.max(0, totalCommitted - totalDrawn);
+
+      // Last draw date across all loans
+      const drawDates = allDraws.map(d=>d.date).filter(Boolean).sort();
+      const lastDrawDate = drawDates.length ? drawDates[drawDates.length-1] : null;
+      const daysSinceDraw = lastDrawDate ? daysBetween(lastDrawDate, TODAY) : null;
+
+      return { prop: p, drawLoans, totalCommitted, totalDrawn, totalAvailable, lastDrawDate, daysSinceDraw, allDraws };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      // Most overdue (most days since last draw or never drawn) first
+      const da = a.daysSinceDraw ?? 99999;
+      const db = b.daysSinceDraw ?? 99999;
+      return db - da;
+    });
+
+  if (!rows.length) return (
+    <div className="flex flex-col items-center justify-center py-20 gap-3">
+      <div className="text-4xl">🏗️</div>
+      <div className="text-slate-400 dark:text-zinc-500 text-sm font-medium">No active draw facilities</div>
+      <div className="text-slate-300 dark:text-zinc-600 text-xs text-center max-w-xs">Add a loan with a draw facility on the Active Properties tab to track construction draws here.</div>
+    </div>
+  );
+
+  const totalAvailableAll = rows.reduce((s,r)=>s+r.totalAvailable, 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Summary bar */}
+      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4 flex items-center justify-between">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Available Draws</div>
+          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">{h$(totalAvailableAll)}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Properties</div>
+          <div className="text-2xl font-black text-slate-700 dark:text-zinc-200">{rows.length}</div>
+        </div>
+      </div>
+
+      {rows.map(({ prop, drawLoans, totalCommitted, totalDrawn, totalAvailable, lastDrawDate, daysSinceDraw }) => {
+        const pct_drawn = totalCommitted > 0 ? Math.min(100, Math.round(totalDrawn/totalCommitted*100)) : 0;
+        const urgency = daysSinceDraw === null ? "new" : daysSinceDraw >= 21 ? "high" : daysSinceDraw >= 10 ? "med" : "low";
+        const urgencyColor = urgency==="new" ? "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30"
+          : urgency==="high" ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30"
+          : urgency==="med" ? "text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/30"
+          : "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30";
+
+        return (
+          <div key={prop.id} className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden">
+            {/* Property header */}
+            <div className="px-4 pt-4 pb-3 border-b border-slate-100 dark:border-zinc-800">
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-semibold text-[14px] text-slate-900 dark:text-zinc-100 leading-snug flex-1">{prop.address}</div>
+                <div className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${urgencyColor}`}>
+                  {daysSinceDraw === null ? "Never drawn" : `${daysSinceDraw}d ago`}
+                </div>
+              </div>
+              {lastDrawDate && (
+                <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Last draw {lastDrawDate}</div>
+              )}
+            </div>
+
+            {/* Available amount */}
+            <div className="px-4 py-3">
+              <div className="flex items-end justify-between mb-2">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Available to Draw</div>
+                  <div className={`text-2xl font-black tabular-nums ${totalAvailable > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-300 dark:text-zinc-600"}`}>
+                    {h$(totalAvailable)}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Drawn / Committed</div>
+                  <div className="text-[13px] font-semibold text-slate-500 dark:text-zinc-400 tabular-nums">{h$(totalDrawn)} / {h$(totalCommitted)}</div>
+                </div>
+              </div>
+              {/* Progress bar */}
+              <div className="h-2 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${pct_drawn>=90?"bg-red-500":pct_drawn>=60?"bg-amber-500":"bg-emerald-500"}`}
+                  style={{width:`${pct_drawn}%`}}/>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-400 dark:text-zinc-600 mt-1">
+                <span>{pct_drawn}% drawn</span>
+                <span>{100-pct_drawn}% remaining</span>
+              </div>
+            </div>
+
+            {/* Per-loan breakdown */}
+            {drawLoans.length > 1 && (
+              <div className="px-4 pb-3 space-y-1.5">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">By Lender</div>
+                {drawLoans.map(l => {
+                  const drawn = (l.drawFacility.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
+                  const avail = Math.max(0,(l.drawFacility.committed||0)-drawn);
+                  return (
+                    <div key={l.id} className="flex items-center justify-between text-[12px]">
+                      <span className="text-slate-600 dark:text-zinc-400 font-medium">{l.lenderName}</span>
+                      <span className={`font-semibold tabular-nums ${avail>0?"text-emerald-600 dark:text-emerald-400":"text-slate-300 dark:text-zinc-600"}`}>
+                        {h$(avail)} avail
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
-const TABS=[{id:"Properties",label:"🏠",full:"Active Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab Priority"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"}];
+const TABS=[{id:"Properties",label:"🏠",full:"Active Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab Priority"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"},{id:"Draws",label:"🏗️",full:"Draw Tracker"}];
 
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
@@ -3321,6 +3451,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
         {tab==="Closed"      &&<ClosedDealsPage data={data} update={update}/>}
         {tab==="History"     &&<HistoryPage data={data}/>}
+        {tab==="Draws"       &&<DrawsPage data={data}/>}
       </div>
     </div>
     </PrivacyContext.Provider>
