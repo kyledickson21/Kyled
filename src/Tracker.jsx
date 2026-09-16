@@ -4099,7 +4099,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   // ── Sidebar monochrome SVG icons ──
   const IcoHome=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h4v-4h2v4h4a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/></svg>;
   const IcoUsers=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>;
-  const IcoWrench=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M6.672 1.911a1 1 0 10-1.932.518l.259.966a1 1 0 001.932-.518l-.26-.966zM2.429 4.74a1 1 0 10-.517 1.932l.966.259a1 1 0 00.517-1.932l-.966-.26zm8.814-.569a1 1 0 00-1.415-1.414l-.707.707a1 1 0 101.415 1.415l.707-.708zm-7.071 7.072l.707-.707A1 1 0 003.465 9.12l-.707.707a1 1 0 001.415 1.415zm3.2-5.171a1 1 0 00-1.3 1.3l4 10a1 1 0 001.823.075l1.38-2.759 3.018 3.02a1 1 0 001.414-1.415l-3.019-3.02 2.76-1.379a1 1 0 00-.076-1.822l-10-4z" clipRule="evenodd"/></svg>;
+  const IcoHardHat=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M10 2C5.6 2 2 5.6 2 10h16C18 5.6 14.4 2 10 2zM1 11h18v2H1zM4 15h12v1c0 .55-.45 1-1 1H5c-.55 0-1-.45-1-1v-1z"/></svg>;
   const IcoDocument=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd"/></svg>;
   const IcoCog=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd"/></svg>;
   const IcoClipboard=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9zM4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"/></svg>;
@@ -4123,7 +4123,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex transition-colors duration-300">
 
       {/* ── Left Sidebar ── */}
-      <div className="fixed left-0 top-0 bottom-0 w-52 bg-white dark:bg-[#1C1C1E] border-r border-black/[0.08] dark:border-white/[0.07] flex flex-col z-40">
+      <div className="fixed left-0 top-0 bottom-0 w-44 bg-[#F2F2F7] dark:bg-black border-r border-black/[0.05] dark:border-white/[0.04] flex flex-col z-40">
         {/* Logo / Home */}
         <button onClick={onHome} title="Home"
           className="ml-4 mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-500/30 active:scale-95 transition-transform shrink-0">
@@ -4138,7 +4138,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
           {/* Renovation group — clicking parent does nothing, hover reveals submenu */}
           <div className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
-            <SideBtn icon={<IcoWrench/>} label="Renovation" active={["RehabPriority","Draws","PropDash"].includes(tab)} onClick={()=>{}}/>
+            <SideBtn icon={<IcoHardHat/>} label="Renovation" active={["RehabPriority","Draws","PropDash"].includes(tab)} onClick={()=>{}}/>
             {rehabHover&&(
               <div className="absolute left-full top-0 ml-2 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
                 {[{id:"RehabPriority",ico:<IcoClipboard/>,l:"Rehab Priority"},{id:"Draws",ico:<IcoGrid/>,l:"Draw Tracker"},{id:"PropDash",ico:<IcoBar/>,l:"Dashboard"}].map(({id,ico,l})=>(
@@ -4163,7 +4163,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             <span className={`text-[13px] font-medium ${settingsOpen?"text-white":"text-slate-600 dark:text-zinc-300"}`}>Settings</span>
           </button>
           {settingsOpen&&(
-            <div className="absolute bottom-full left-2 mb-2 w-52 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
+            <div className="absolute bottom-full left-2 mb-2 w-44 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
               <div className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Settings</div>
               <button onClick={()=>setPrivacyMode(p=>!p)}
                 className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
@@ -4190,7 +4190,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       </div>
 
       {/* ── Main content ── */}
-      <div className="ml-52 flex-1 flex flex-col min-h-screen">
+      <div className="ml-44 flex-1 flex flex-col min-h-screen">
         {/* Top bar */}
         <div className="sticky top-0 z-30 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.07]">
           <div className="px-5 py-2.5 flex items-center gap-2.5 w-full">
@@ -4250,7 +4250,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         </div>
 
         {/* Page content */}
-        <div className="px-5 pt-4 pb-8 w-full max-w-5xl">
+        <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
           {/* Records sub-nav */}
           {["Closed","History"].includes(tab)&&(
             <div className="flex mb-4 bg-white dark:bg-[#1C1C1E] rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-zinc-800 self-start w-fit">
