@@ -3684,13 +3684,17 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [fabOpen,setFabOpen]=useState(false);
   const [fabPending,setFabPending]=useState(null);
   const [settingsOpen,setSettingsOpen]=useState(false);
+  const [globalSearch,setGlobalSearch]=useState('');
+  const [rehabHover,setRehabHover]=useState(false);
   const fabRef=useRef(null);
   const settingsRef=useRef(null);
+  const globalSearchRef=useRef(null);
 
   useEffect(()=>{
     const handler=e=>{
       if(fabRef.current&&!fabRef.current.contains(e.target))setFabOpen(false);
       if(settingsRef.current&&!settingsRef.current.contains(e.target))setSettingsOpen(false);
+      if(globalSearchRef.current&&!globalSearchRef.current.contains(e.target))setGlobalSearch('');
     };
     document.addEventListener('mousedown',handler);
     return ()=>document.removeEventListener('mousedown',handler);
@@ -3743,114 +3747,193 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     </div>
   );
 
+  // ── Derived values for sidebar counts and global search ──
+  const activeProps=data.properties.filter(p=>!p.dateSold).length;
+  const activeLenders=[...new Set([...data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>l.lenderName)),...data.unassigned.filter(l=>!l.endDate).map(l=>l.lenderName)].filter(Boolean))].length;
+  const closedCount=data.properties.filter(p=>p.dateSold).length;
+
+  const globalResults=(()=>{
+    if(globalSearch.length<2)return[];
+    const q=globalSearch.toLowerCase();
+    const results=[];
+    const seenLenders=new Set();
+    data.properties.filter(p=>!p.dateSold).forEach(p=>{
+      if(p.address?.toLowerCase().includes(q))
+        results.push({tab:"Properties",section:"Properties",label:p.address||"",sub:`${p.loans.filter(l=>!l.endDate).length} loans`});
+      p.loans.forEach(l=>{
+        if(l.lenderName?.toLowerCase().includes(q)&&!seenLenders.has(l.lenderName)){seenLenders.add(l.lenderName);results.push({tab:"LenderDash",section:"Lenders",label:l.lenderName,sub:p.address});}
+      });
+    });
+    data.properties.filter(p=>p.dateSold).forEach(p=>{
+      if(p.address?.toLowerCase().includes(q))results.push({tab:"Closed",section:"Closed",label:p.address||"",sub:`Sold ${p.dateSold}`});
+    });
+    data.unassigned.forEach(l=>{
+      if(l.lenderName?.toLowerCase().includes(q)&&!seenLenders.has(l.lenderName)){seenLenders.add(l.lenderName);results.push({tab:"LenderDash",section:"Lenders",label:l.lenderName});}
+    });
+    return results.slice(0,8);
+  })();
+
+  // ── Sidebar nav button ──
+  const SideBtn=({icon,label,active,onClick,count,children})=>(
+    <button onClick={onClick} title={label}
+      className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all relative mx-auto ${active?"bg-blue-600 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/10"}`}>
+      <span className={`text-lg leading-none ${active?"":"opacity-80"}`}>{icon}</span>
+      {count>0&&<span className={`absolute -top-0.5 -right-0.5 text-[9px] font-bold rounded-full min-w-[14px] h-3.5 px-0.5 flex items-center justify-center ${active?"bg-white text-blue-600":"bg-blue-600 text-white"}`}>{count>99?"99+":count}</span>}
+      {children}
+    </button>
+  );
+
   return (
     <PrivacyContext.Provider value={privacyMode}>
-    <div className="min-h-screen bg-[#F2F2F7] dark:bg-black transition-colors duration-300">
-      {/* Header — frosted glass */}
-      <div className="bg-white/85 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.07] sticky top-0 z-40">
-        <div className="px-5 pt-3.5 pb-0 max-w-2xl mx-auto">
-          <div className="flex items-center gap-3 mb-3">
-            {/* Logo mark — tap to go home */}
-            <button onClick={onHome} className="w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/30 active:scale-95 transition-transform" title="Home">
-              <span className="text-white font-black text-sm tracking-tight">N</span>
-            </button>
-            <div>
-              <div className="font-semibold text-[15px] text-slate-900 dark:text-white leading-none tracking-[-0.3px]">Nexus Homes</div>
-              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5 font-medium">Private Money Tracker</div>
-            </div>
-            <div className="ml-auto flex items-center gap-2.5">
-              {/* Settings dropdown */}
-              <div ref={settingsRef} className="relative">
-                <button onClick={()=>setSettingsOpen(o=>!o)}
-                  className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${settingsOpen?"bg-blue-600 text-white":"bg-black/5 dark:bg-white/10 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/15"}`}
-                  title="Settings">
-                  <span className="text-[15px] leading-none">⚙️</span>
-                </button>
-                {settingsOpen&&(
-                  <div className="absolute right-0 top-10 w-44 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
-                    <button onClick={()=>setPrivacyMode(p=>!p)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
-                      <span className="text-base leading-none">{privacyMode?"🙈":"👁"}</span>
-                      <span>{privacyMode?"Show Values":"Demo Mode"}</span>
-                      {privacyMode&&<span className="ml-auto text-[10px] font-bold text-blue-600 dark:text-blue-400">ON</span>}
-                    </button>
-                    <div className="h-px bg-slate-100 dark:bg-zinc-700"/>
-                    <button onClick={onToggleDark}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
-                      <span className="text-base leading-none">{dark?"☀️":"🌙"}</span>
-                      <span>{dark?"Light Mode":"Dark Mode"}</span>
-                    </button>
-                  </div>
-                )}
+    <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex transition-colors duration-300">
+
+      {/* ── Left Sidebar ── */}
+      <div className="fixed left-0 top-0 bottom-0 w-14 bg-white dark:bg-[#1C1C1E] border-r border-black/[0.08] dark:border-white/[0.07] flex flex-col z-40">
+        {/* Logo / Home */}
+        <button onClick={onHome} title="Home"
+          className="mx-auto mt-3 mb-2 w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-500/30 active:scale-95 transition-transform shrink-0">
+          <span className="text-white font-black text-sm">N</span>
+        </button>
+        <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] mx-2 mb-2"/>
+
+        {/* Nav items */}
+        <nav className="flex flex-col gap-1 px-2 flex-1">
+          <SideBtn icon="🏠" label="Properties" active={tab==="Properties"} onClick={()=>setTab("Properties")} count={activeProps}/>
+          <SideBtn icon="👥" label="Lenders" active={tab==="LenderDash"} onClick={()=>setTab("LenderDash")} count={activeLenders}/>
+
+          {/* Rehab group — hover submenu */}
+          <div className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
+            <SideBtn icon="🔥" label="Rehab" active={["RehabPriority","Draws","PropDash"].includes(tab)} onClick={()=>setTab("RehabPriority")}/>
+            {rehabHover&&(
+              <div className="absolute left-full top-0 ml-2 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
+                {[["RehabPriority","🔥","Rehab Priority"],["Draws","🏗️","Draw Tracker"],["PropDash","📊","Dashboard"]].map(([id,ico,l])=>(
+                  <button key={id} onClick={()=>{setTab(id);setRehabHover(false);}}
+                    className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+                    <span>{ico}</span>{l}
+                  </button>
+                ))}
               </div>
-              <button onClick={onSignOut} className="text-[12px] font-semibold text-blue-600 dark:text-blue-400 hover:opacity-75 transition-opacity">Sign out</button>
-            </div>
+            )}
           </div>
-          {/* Tabs */}
-          {(()=>{
-            const counts={
-              Properties:data.properties.filter(p=>!p.dateSold).length,
-              LenderDash:[...new Set([...data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>l.lenderName)),...data.unassigned.filter(l=>!l.endDate).map(l=>l.lenderName)].filter(Boolean))].length,
-              Closed:data.properties.filter(p=>p.dateSold).length,
-              Draws:data.properties.filter(p=>!p.dateSold&&p.loans.some(l=>!l.endDate&&l.drawFacility)).length,
-            };
-            return(
-              <div className="flex overflow-x-auto -mb-px gap-0 scrollbar-none">
-                {TABS.map(t=>{
-                  const n=counts[t.id];
-                  return(
-                    <button key={t.id} onClick={()=>setTab(t.id)}
-                      className={`flex items-center gap-1 px-3 py-2.5 text-[12px] font-semibold whitespace-nowrap border-b-2 transition-all shrink-0 ${tab===t.id?"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400":"border-transparent text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
-                      <span>{t.label}</span>
-                      <span className="tracking-[-0.1px]">{t.full}</span>
-                      {n!=null&&n>0&&<span className={`text-[10px] font-bold tabular-nums ${tab===t.id?"text-blue-500 dark:text-blue-400":"text-slate-400 dark:text-zinc-500"}`}>({n})</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })()}
+
+          {/* Records = Closed + History */}
+          <SideBtn icon="🏁" label="Records" active={["Closed","History"].includes(tab)} onClick={()=>setTab(["Closed","History"].includes(tab)?tab:"Closed")} count={closedCount}/>
+        </nav>
+
+        {/* Bottom — Settings */}
+        <div className="px-2 pb-3 relative" ref={settingsRef}>
+          <button onClick={()=>setSettingsOpen(o=>!o)} title="Settings"
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all mx-auto ${settingsOpen?"bg-blue-600":"text-slate-400 dark:text-zinc-500 hover:bg-black/5 dark:hover:bg-white/10"}`}>
+            <span className="text-lg leading-none">⚙️</span>
+          </button>
+          {settingsOpen&&(
+            <div className="absolute bottom-full left-2 mb-2 w-52 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
+              <div className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Settings</div>
+              <button onClick={()=>setPrivacyMode(p=>!p)}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
+                <span>{privacyMode?"🙈":"👁️"}</span><span>{privacyMode?"Show Values":"Demo Mode"}</span>
+                {privacyMode&&<span className="ml-auto text-[10px] font-bold text-blue-600 dark:text-blue-400">ON</span>}
+              </button>
+              <button onClick={onToggleDark}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
+                <span>{dark?"☀️":"🌙"}</span><span>{dark?"Light Mode":"Dark Mode"}</span>
+              </button>
+              <div className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
+              <button onClick={()=>{setSettingsOpen(false);setTab("LenderAccts");}}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
+                <span>🔑</span><span>Lender Accounts</span>
+              </button>
+              <div className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
+              <button onClick={onSignOut}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
+                <span className="font-bold">→</span><span>Sign Out</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Page content */}
-      <div className="px-4 pt-5 max-w-2xl mx-auto pb-28">
-        {tab==="Properties"   &&<PropertiesPage data={data} update={update} pendingAction={fabPending} onClearPendingAction={()=>setFabPending(null)}/>}
-        {tab==="LenderDash"  &&<LenderDashboard data={data}/>}
-        {tab==="PropDash"    &&<PropertyDashboard data={data}/>}
-        {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
-        {tab==="Closed"      &&<ClosedDealsPage data={data} update={update}/>}
-        {tab==="History"     &&<HistoryPage data={data}/>}
-        {tab==="Draws"       &&<DrawsPage data={data}/>}
-        {tab==="LenderAccts" &&<ManageLendersPage data={data}/>}
-      </div>
+      {/* ── Main content ── */}
+      <div className="ml-14 flex-1 flex flex-col min-h-screen">
+        {/* Top bar */}
+        <div className="sticky top-0 z-30 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.07]">
+          <div className="px-4 py-2.5 flex items-center gap-2.5 max-w-2xl mx-auto">
+            {/* Global search */}
+            <div ref={globalSearchRef} className="relative flex-1">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 text-sm pointer-events-none">🔍</span>
+                <input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)}
+                  placeholder="Search properties, lenders…"
+                  className="w-full pl-8 pr-3 py-2 rounded-xl text-sm bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 border-0"/>
+              </div>
+              {globalSearch.length>1&&(
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
+                  {globalResults.length===0
+                    ?<div className="px-4 py-3 text-sm text-slate-400 dark:text-zinc-500">No results</div>
+                    :globalResults.map((r,i)=>(
+                      <button key={i} onClick={()=>{setTab(r.tab);setGlobalSearch('');}}
+                        className="w-full text-left flex items-start gap-2.5 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors border-b border-slate-50 dark:border-zinc-700/40 last:border-0">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 shrink-0 mt-0.5">{r.section}</span>
+                        <div className="min-w-0">
+                          <div className="text-sm text-slate-800 dark:text-zinc-200 font-medium truncate">{r.label}</div>
+                          {r.sub&&<div className="text-xs text-slate-400 dark:text-zinc-500">{r.sub}</div>}
+                        </div>
+                      </button>
+                    ))
+                  }
+                </div>
+              )}
+            </div>
 
-      {/* Floating Action Button */}
-      <div ref={fabRef} className="fixed bottom-6 right-16 z-50 flex flex-col items-end gap-2">
-        {fabOpen&&(
-          <div className="flex flex-col gap-1.5 mb-2 items-end">
-            {[
-              {label:"Add Property",icon:"🏠",modal:"addProp"},
-              {label:"Add Lender Money",icon:"💰",modal:{type:"addMoney"}},
-              {label:"Close Property",icon:"🏁",modal:{type:"closePropPicker"}},
-              {label:"Close Lender Loans",icon:"✅",modal:"closeLender"},
-            ].map(item=>(
-              <button key={typeof item.modal==="string"?item.modal:item.modal.type} onClick={()=>{
-                setFabOpen(false);
-                setTab("Properties");
-                setFabPending(item.modal);
-              }}
-                className="flex items-center gap-2 bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 text-sm font-semibold px-4 py-2.5 rounded-2xl shadow-lg dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 whitespace-nowrap active:scale-95 transition-transform">
-                <span>{item.icon}</span>{item.label}
+            {/* Actions button */}
+            <div ref={fabRef} className="relative shrink-0">
+              <button onClick={()=>setFabOpen(o=>!o)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm shadow-blue-500/20 ${fabOpen?"bg-blue-700 text-white":"bg-blue-600 hover:bg-blue-700 text-white"}`}>
+                <span className={`text-base font-light leading-none transition-transform duration-150 inline-block ${fabOpen?"rotate-45":""}`}>+</span>
+                <span>Actions</span>
               </button>
-            ))}
+              {fabOpen&&(
+                <div className="absolute right-0 top-10 w-48 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50 py-1">
+                  {[
+                    {label:"Add Property",icon:"🏠",modal:"addProp"},
+                    {label:"Add Lender Money",icon:"💰",modal:{type:"addMoney"}},
+                    {label:"Close Property",icon:"🏁",modal:{type:"closePropPicker"}},
+                    {label:"Close Lender Loans",icon:"✅",modal:"closeLender"},
+                  ].map(item=>(
+                    <button key={typeof item.modal==="string"?item.modal:item.modal.type}
+                      onClick={()=>{setFabOpen(false);setTab("Properties");setFabPending(item.modal);}}
+                      className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
+                      <span>{item.icon}</span>{item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-        <button onClick={()=>setFabOpen(o=>!o)}
-          className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-2xl font-light transition-all active:scale-95 ${fabOpen?"bg-blue-700 text-white rotate-45":"bg-blue-600 text-white"}`}
-          style={{boxShadow:"0 4px 24px rgba(0,0,0,0.25)"}}>
-          +
-        </button>
+        </div>
+
+        {/* Page content */}
+        <div className="px-4 pt-4 pb-8 max-w-2xl mx-auto w-full">
+          {/* Records sub-nav */}
+          {["Closed","History"].includes(tab)&&(
+            <div className="flex mb-4 bg-white dark:bg-[#1C1C1E] rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-zinc-800 self-start w-fit">
+              {[["Closed","🏁 Closed Deals"],["History","📋 History"]].map(([id,l])=>(
+                <button key={id} onClick={()=>setTab(id)}
+                  className={`px-4 py-2 text-sm font-semibold transition-all ${tab===id?"bg-blue-600 text-white":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          )}
+          {tab==="Properties"    &&<PropertiesPage data={data} update={update} pendingAction={fabPending} onClearPendingAction={()=>setFabPending(null)}/>}
+          {tab==="LenderDash"   &&<LenderDashboard data={data}/>}
+          {tab==="PropDash"     &&<PropertyDashboard data={data}/>}
+          {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
+          {tab==="Closed"       &&<ClosedDealsPage data={data} update={update}/>}
+          {tab==="History"      &&<HistoryPage data={data}/>}
+          {tab==="Draws"        &&<DrawsPage data={data}/>}
+          {tab==="LenderAccts"  &&<ManageLendersPage data={data}/>}
+        </div>
       </div>
     </div>
     </PrivacyContext.Provider>
