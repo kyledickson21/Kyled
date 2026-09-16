@@ -215,6 +215,12 @@ const TypeBadge = ({type,sm}) => {
   </span>;
 };
 
+const TypeLabel = ({type}) => (
+  <span className={`text-[10px] font-semibold ${type==="hard"?"text-amber-600 dark:text-amber-400":"text-sky-600 dark:text-sky-400"}`}>
+    {type==="hard"?"Hard":"Private"}
+  </span>
+);
+
 const Chip = ({children,color}) => {
   const cls={
     green: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800",
@@ -505,7 +511,7 @@ function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
     <Modal title={`Place ${fund.lenderName}'s Money`} onClose={onClose}>
       <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
         <div className="font-bold text-slate-900 dark:text-zinc-100">{fund.lenderName}</div>
-        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(loanAmt)} · {fmtRate(fund)} · <TypeBadge type={fund.loanType} sm/></div>
+        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(loanAmt)} · {fmtRate(fund)} · <TypeLabel type={fund.loanType}/></div>
       </div>
       {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-3">{blockMsg}</div>}
       <div className="space-y-4">
@@ -1064,7 +1070,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1.5">
                             <span className="font-bold text-slate-900 dark:text-zinc-100 truncate">{r.lenderName}</span>
-                            <TypeBadge type={r.loanType} sm/>
+                            <TypeLabel type={r.loanType}/>
                           </div>
                           {/* Paid at title toggle */}
                           <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -1251,7 +1257,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                       <div key={r.loanId} className="rounded-xl border border-orange-200 dark:border-orange-800/40 p-3 bg-orange-50/60 dark:bg-orange-900/10">
                         <div className="flex items-center justify-between gap-3 mb-2">
                           <div className="flex items-center gap-2 min-w-0">
-                            <TypeBadge type={r.loanType} sm/>
+                            <TypeLabel type={r.loanType}/>
                             <span className="font-semibold text-slate-800 dark:text-zinc-100 truncate">{r.lenderName}</span>
                             <span className="text-[10px] bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 font-semibold rounded px-1.5 py-0.5 shrink-0">paid early</span>
                           </div>
@@ -1614,7 +1620,6 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
               <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 bg-white dark:bg-[#1C1C1E] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
                 <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                   <button onClick={()=>openPanel({type:'loan',loanId:u.id,propId:null})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{u.lenderName}</button>
-                  <TypeBadge type={u.loanType} sm/>
                   <span className="font-bold text-violet-700 dark:text-violet-300 text-sm tabular-nums">{h$(principal)}</span>
                   {(u.interestRate!=null)&&<span className="text-xs text-slate-400 dark:text-zinc-500">{hr(u)}</span>}
                   {earned>0.01&&<span className="text-xs text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(earned)}</span>}
@@ -2110,7 +2115,6 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap mb-1">
                                 <button onClick={()=>openPanel?.({type:'loan',loanId:loan.id,propId:prop.id})} className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px] hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors">{hn(loan.lenderName)}</button>
-                                <TypeBadge type={loan.loanType} sm/>
                                 {loan.endDate&&<Chip color="gray">Closed {loan.endDate}</Chip>}
                               </div>
                               <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
@@ -2324,7 +2328,7 @@ function LenderDashboard({ data }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[15px] group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{ld.name}</span>
-                  {ld.types.map(t => <TypeBadge key={t} type={t} sm/>)}
+                  {ld.types.map(t => <TypeLabel key={t} type={t}/>)}
                 </div>
                 <div className="text-xs text-slate-400 dark:text-zinc-500">
                   {ld.activeLoans.length} active loan{ld.activeLoans.length!==1?"s":""}
@@ -2374,6 +2378,7 @@ function AllLoansPage({ data }) {
     if(sortBy==="principal") return d*((a.principal||0)-(b.principal||0));
     if(sortBy==="balance") return d*(calcBalance(a)-calcBalance(b));
     if(sortBy==="property") return d*(a.propAddress||"").localeCompare(b.propAddress||"");
+    if(sortBy==="type") return d*(a.loanType||"private").localeCompare(b.loanType||"private");
     return d*(a.startDate||"").localeCompare(b.startDate||"");
   });
 
@@ -2424,7 +2429,7 @@ function AllLoansPage({ data }) {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/20">
-                {[["lender","Lender","left","px-4"],["property","Property","left","px-3"],["principal","Principal","right","px-3"],["balance","Balance","right","px-3"]].map(([col,label,align,px])=>(
+                {[["lender","Lender","left","px-4"],["property","Property","left","px-3"],["principal","Principal","right","px-3"],["balance","Balance","right","px-3"],["type","Type","left","px-3"]].map(([col,label,align,px])=>(
                   <th key={col} onClick={()=>toggleSort(col)}
                     className={`${px} pb-2.5 pt-3 text-${align} font-semibold cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors`}>
                     <span className={`inline-flex items-center gap-0.5 ${align==="right"?"justify-end w-full":""}`}>
@@ -2457,7 +2462,6 @@ function AllLoansPage({ data }) {
                       <button onClick={e=>{e.stopPropagation();navigate({type:'loan',loanId:l.id,propId:l.propId});}} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">
                         {l.lenderName||"Unknown"}
                       </button>
-                      <TypeBadge type={l.loanType} sm/>
                     </td>
                     <td className="px-3 py-3">
                       {l.prop
@@ -2467,6 +2471,7 @@ function AllLoansPage({ data }) {
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800 dark:text-zinc-200">{h$(l.principal)}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-blue-600 dark:text-blue-400">{h$(bal)}</td>
+                    <td className="px-3 py-3"><TypeLabel type={l.loanType}/></td>
                     <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{hr(l)}</td>
                     <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{l.startDate||"—"}</td>
                     <td className="px-4 py-3 text-right">
@@ -2626,7 +2631,7 @@ function PropertyDashboard({ data }) {
                   {loans.map(l=>(
                     <tr key={l.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
                       <td className="px-5 py-2.5 font-semibold text-slate-800 dark:text-zinc-100">{hn(l.lenderName)}</td>
-                      <td className="px-3 py-2.5"><TypeBadge type={l.loanType} sm/></td>
+                      <td className="px-3 py-2.5"><TypeLabel type={l.loanType}/></td>
                       <td className="px-3 py-2.5 text-right text-slate-600 dark:text-zinc-300 tabular-nums">{h$(l.principal)}</td>
                       <td className="px-3 py-2.5 text-right text-slate-400 dark:text-zinc-500 whitespace-nowrap">{hr(l)}</td>
                       <td className="px-5 py-2.5 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{h$(calcBalance(l))}</td>
@@ -2872,7 +2877,7 @@ function ClosedDealsPage({ data, update }) {
                       <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100"><button onClick={()=>openPanel({type:'lender',name:l.lenderName})} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(l.lenderName)}</button></td>
                       <td className="py-2 text-right tabular-nums text-slate-700 dark:text-zinc-200">{h$(l.principal)}</td>
                       <td className="py-2 text-right tabular-nums text-slate-500 dark:text-zinc-400">{hr(l)}</td>
-                      <td className="py-2 text-right"><TypeBadge type={l.loanType} sm/></td>
+                      <td className="py-2 text-right"><TypeLabel type={l.loanType}/></td>
                     </tr>
                   ))}
                 </tbody>
@@ -3165,7 +3170,7 @@ function HistoryPage({ data }) {
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <button onClick={()=>openPanel?.({type:'lender',name:l.lenderName})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(l.lenderName)}</button>
-                          <TypeBadge type={l.loanType} sm/>
+                          <TypeLabel type={l.loanType}/>
                         </div>
                         <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{rateLabel}</div>
                       </div>
@@ -3281,7 +3286,7 @@ function HistoryPage({ data }) {
                     <div className="flex items-center gap-1.5 flex-wrap mb-1">
                       <span className="font-mono text-[10px] text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 rounded-md px-1.5 py-0.5">{ev.date}</span>
                       <span className={`text-[10px] font-semibold uppercase ${c.cls} rounded-full px-2 py-0.5`}>{ev.etype==="rolled"?(rollLabel[ev.disposition]||"Rolled"):c.label}</span>
-                      <TypeBadge type={ev.loanType} sm/>
+                      <TypeLabel type={ev.loanType}/>
                       {roll&&<span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 rounded-full px-2 py-0.5">Rollover</span>}
                     </div>
                     <button onClick={()=>ev.lender&&openPanel?.({type:'lender',name:ev.lender})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(ev.lender)}</button>
@@ -3519,7 +3524,7 @@ function RehabPriorityPage({ data, update }) {
                       return(
                         <div key={loan.id} className="flex items-center justify-between text-[11px]">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <TypeBadge type={loan.loanType} sm/>
+                            <TypeLabel type={loan.loanType}/>
                             <span className={`font-medium truncate ${isRolling?"text-slate-400 dark:text-zinc-500":"text-slate-600 dark:text-zinc-300"}`}>{prv?"—":loan.lenderName}</span>
                             <span className="text-slate-400 dark:text-zinc-500 shrink-0">{h$(loan.principal)} · {loan.interestRate}%</span>
                           </div>
@@ -4015,7 +4020,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                       <button onClick={() => navigate({type:'loan', loanId:l.id, propId:prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-sm text-left">
                         {l.lenderName || "Unknown Lender"}
                       </button>
-                      <TypeBadge type={l.loanType} sm/>
+                      <TypeLabel type={l.loanType}/>
                     </div>
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
@@ -4219,7 +4224,7 @@ function LenderDetailPage({ name, data, onBack, navigate }) {
                         ? <button onClick={() => navigate({type:'property', id:l.prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-sm text-left">{l.prop.address}</button>
                         : <span className="font-semibold text-slate-500 dark:text-zinc-400 text-sm">Unassigned</span>
                       }
-                      <TypeBadge type={l.loanType} sm/>
+                      <TypeLabel type={l.loanType}/>
                     </div>
                     <button onClick={() => navigate({type:'loan', loanId:l.id, propId:l.prop?.id||null})} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap transition-colors">
                       View Loan →
@@ -4345,7 +4350,7 @@ function LoanDetailPage({ loanId, propId, data, onBack, navigate }) {
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${loan.endDate ? "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400" : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"}`}>
             {loan.endDate ? `Closed ${loan.endDate}` : "Active"}
           </span>
-          <TypeBadge type={loan.loanType} sm/>
+          <TypeLabel type={loan.loanType}/>
         </div>
       </div>
 
