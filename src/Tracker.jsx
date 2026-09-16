@@ -4420,6 +4420,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   // ── Derived values for sidebar counts and global search ──
   const activeProps=data.properties.filter(p=>!p.dateSold).length;
   const activeLenders=[...new Set([...data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>l.lenderName)),...data.unassigned.filter(l=>!l.endDate).map(l=>l.lenderName)].filter(Boolean))].length;
+  const activeLoans=data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate)).length+(data.unassigned||[]).filter(l=>!l.endDate).length;
   const closedCount=data.properties.filter(p=>p.dateSold).length;
 
   const globalResults=(()=>{
@@ -4473,14 +4474,18 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const IcoBar=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>;
   const IcoList=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd"/></svg>;
 
-  // ── Sidebar nav button ──
-  const SideBtn=({icon,label,active,onClick,children})=>(
-    <button onClick={onClick}
-      className={`flex items-center gap-3 w-full px-3 py-2 rounded-xl transition-all text-left ${active?"bg-blue-600 shadow-sm":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
-      <span className={`shrink-0 ${active?"text-white":"text-slate-400 dark:text-zinc-500"}`}>{icon}</span>
-      <span className={`text-[13px] font-medium truncate ${active?"text-white":"text-slate-600 dark:text-zinc-300"}`}>{label}</span>
-      {children}
-    </button>
+  // ── Sidebar nav button (icon-only, tooltip on hover) ──
+  const SideBtn=({icon,label,active,onClick,tooltip})=>(
+    <div className="relative group">
+      <button onClick={onClick}
+        className={`flex items-center justify-center w-full p-2.5 rounded-xl transition-all ${active?"bg-blue-600 shadow-sm":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+        <span className={`shrink-0 ${active?"text-white":"text-slate-400 dark:text-zinc-500"}`}>{icon}</span>
+      </button>
+      <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-zinc-900 dark:bg-zinc-700 text-white text-xs font-semibold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-100 z-50 shadow-lg">
+        {tooltip||label}
+        <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-zinc-900 dark:border-r-zinc-700"/>
+      </div>
+    </div>
   );
 
   return (
@@ -4489,25 +4494,28 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex transition-colors duration-300">
 
       {/* ── Left Sidebar ── */}
-      <div className="fixed left-0 top-0 bottom-0 w-44 bg-[#F2F2F7] dark:bg-black border-r border-black/[0.05] dark:border-white/[0.04] flex flex-col z-40">
+      <div className="fixed left-0 top-0 bottom-0 w-14 bg-[#F2F2F7] dark:bg-black border-r border-black/[0.05] dark:border-white/[0.04] flex flex-col z-40">
         {/* Logo / Home */}
         <button onClick={onHome} title="Home"
-          className="ml-4 mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-500/30 active:scale-95 transition-transform shrink-0">
+          className="mx-auto mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-500/30 active:scale-95 transition-transform shrink-0">
           <span className="text-white font-black text-sm">N</span>
         </button>
-        <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] mx-3 mb-1.5"/>
+        <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] mx-2 mb-1.5"/>
 
         {/* Nav items */}
-        <nav className="flex flex-col gap-0.5 px-2 flex-1">
-          <SideBtn icon={<IcoHome/>} label="Properties" active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("Properties");}}/>
-          <SideBtn icon={<IcoUsers/>} label="Lenders" active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("LenderDash");}}/>
-          <SideBtn icon={<IcoList/>} label="Loans" active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("AllLoans");}}/>
+        <nav className="flex flex-col gap-0.5 px-1.5 flex-1">
+          <SideBtn icon={<IcoHome/>} label="Properties" tooltip={`Properties (${activeProps})`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("Properties");}}/>
+          <SideBtn icon={<IcoUsers/>} label="Lenders" tooltip={`Lenders (${activeLenders})`} active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("LenderDash");}}/>
+          <SideBtn icon={<IcoList/>} label="Loans" tooltip={`Loans (${activeLoans})`} active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("AllLoans");}}/>
 
           {/* Renovation group — clicking parent does nothing, hover reveals submenu */}
           <div className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
-            <SideBtn icon={<IcoHardHat/>} label="Renovation" active={["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0} onClick={()=>{}}/>
+            <div className={`flex items-center justify-center w-full p-2.5 rounded-xl transition-all cursor-pointer ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+              <span className={`shrink-0 ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}><IcoHardHat/></span>
+            </div>
             {rehabHover&&(
               <div className="absolute left-full top-0 ml-2 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
+                <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Renovation</div>
                 {[{id:"RehabPriority",ico:<IcoClipboard/>,l:"Rehab Priority"},{id:"Draws",ico:<IcoGrid/>,l:"Draw Tracker"},{id:"PropDash",ico:<IcoBar/>,l:"Dashboard"}].map(({id,ico,l})=>(
                   <button key={id} onClick={()=>{setNavStack([]);setTab(id);setRehabHover(false);}}
                     className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id&&navStack.length===0?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
@@ -4519,18 +4527,23 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           </div>
 
           {/* Records = Closed + History */}
-          <SideBtn icon={<IcoDocument/>} label="Records" active={["Closed","History"].includes(tab)&&navStack.length===0} onClick={()=>{setNavStack([]);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
+          <SideBtn icon={<IcoDocument/>} label="Records" tooltip="Records" active={["Closed","History"].includes(tab)&&navStack.length===0} onClick={()=>{setNavStack([]);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
         </nav>
 
         {/* Bottom — Settings */}
-        <div className="px-2 pb-3 relative" ref={settingsRef}>
-          <button onClick={()=>setSettingsOpen(o=>!o)}
-            className={`flex items-center gap-3 w-full px-3 py-2 rounded-xl transition-all text-left ${settingsOpen?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
-            <span className={`shrink-0 ${settingsOpen?"text-white":"text-slate-400 dark:text-zinc-500"}`}><IcoCog/></span>
-            <span className={`text-[13px] font-medium ${settingsOpen?"text-white":"text-slate-600 dark:text-zinc-300"}`}>Settings</span>
-          </button>
+        <div className="px-1.5 pb-3 relative" ref={settingsRef}>
+          <div className="relative group">
+            <button onClick={()=>setSettingsOpen(o=>!o)}
+              className={`flex items-center justify-center w-full p-2.5 rounded-xl transition-all ${settingsOpen?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+              <span className={`shrink-0 ${settingsOpen?"text-white":"text-slate-400 dark:text-zinc-500"}`}><IcoCog/></span>
+            </button>
+            {!settingsOpen&&<div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-zinc-900 dark:bg-zinc-700 text-white text-xs font-semibold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-100 z-50 shadow-lg">
+              Settings
+              <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-zinc-900 dark:border-r-zinc-700"/>
+            </div>}
+          </div>
           {settingsOpen&&(
-            <div className="absolute bottom-full left-2 mb-2 w-44 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
+            <div className="absolute bottom-0 left-full ml-2 w-48 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
               <div className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Settings</div>
               <button onClick={()=>setPrivacyMode(p=>!p)}
                 className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
@@ -4557,7 +4570,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       </div>
 
       {/* ── Main content ── */}
-      <div className="ml-44 flex-1 flex flex-col min-h-screen">
+      <div className="ml-14 flex-1 flex flex-col min-h-screen">
         {/* Top bar */}
         <div className="sticky top-0 z-30 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.07]">
           <div className="px-5 py-2.5 flex items-center gap-2.5 w-full">
