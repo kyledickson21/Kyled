@@ -601,6 +601,77 @@ function MoveModal({ item, properties, onMove, onClose }) {
   );
 }
 
+// ─── Quick Draw Modal ─────────────────────────────────────────────────────────
+function QuickDrawModal({ data, onSave, onClose }) {
+  const drawLoans = (data.properties||[]).filter(p=>!p.dateSold).flatMap(prop=>
+    (prop.loans||[]).filter(l=>!l.endDate&&l.drawFacility).map(l=>({
+      ...l, propId:prop.id, propAddress:prop.address, remaining:drawRemaining(l),
+    }))
+  );
+  const [selId,setSelId]=useState(drawLoans[0]?.id??'');
+  const [date,setDate]=useState(TODAY);
+  const [amount,setAmount]=useState('');
+
+  const sel=drawLoans.find(l=>l.id===selId);
+  const maxDraw=sel?.remaining??0;
+  const totalCommitted=sel?.drawFacility?.committed??0;
+  const totalDrawn=(sel?.drawFacility?.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
+  const amt=parseFloat(amount)||0;
+  const valid=sel&&amt>0&&amt<=maxDraw&&date;
+
+  if(drawLoans.length===0) return(
+    <Modal title="Record Draw" onClose={onClose}>
+      <p className="text-sm text-slate-500 dark:text-zinc-400 py-4 text-center">No active draw facilities found. Add a draw facility to a loan first.</p>
+      <Btn onClick={onClose} color="ghost" full>Close</Btn>
+    </Modal>
+  );
+
+  return(
+    <Modal title="Record Draw" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Select Draw Facility</label>
+          <select value={selId} onChange={e=>setSelId(e.target.value)}
+            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            {drawLoans.map(l=>(
+              <option key={l.id} value={l.id}>{l.propAddress} — {l.lenderName} (${Math.round(l.remaining).toLocaleString()} avail)</option>
+            ))}
+          </select>
+        </div>
+
+        {sel&&(
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-slate-50 dark:bg-zinc-800 p-3 text-center">
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-1">Committed</div>
+              <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 tabular-nums">{$$(totalCommitted)}</div>
+            </div>
+            <div className="rounded-xl bg-slate-50 dark:bg-zinc-800 p-3 text-center">
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-1">Drawn</div>
+              <div className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums">{$$(totalDrawn)}</div>
+            </div>
+            <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 p-3 text-center">
+              <div className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-semibold mb-1">Available</div>
+              <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{$$(maxDraw)}</div>
+            </div>
+          </div>
+        )}
+
+        <DateInp label="Draw Date" value={date} onChange={setDate}/>
+        <Inp label="Draw Amount" type="number" value={amount} onChange={setAmount} placeholder="0"/>
+
+        {amt>maxDraw&&maxDraw>0&&(
+          <p className="text-xs text-red-500 dark:text-red-400">Amount exceeds available balance of {$$(maxDraw)}</p>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          <Btn onClick={()=>valid&&onSave({propId:sel.propId,loanId:sel.id,date,amount:amt})} color={valid?"green":"ghost"} full>Record Draw →</Btn>
+          <Btn onClick={onClose} color="ghost">Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Split Loan Modal ─────────────────────────────────────────────────────────
 function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
   const loan = fund;
@@ -627,28 +698,52 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
           <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Rate / Terms</span><span className="text-slate-700 dark:text-zinc-200">{loan.interestRate||0}{loan.interestType==="fixed"?" (fixed fee)":"%"} · {loan.paymentType||"closing"}</span></div>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Split Into</div>
-          {splits.map((row,i)=>(
-            <div key={i} className="flex gap-2 items-center">
-              <div className="flex-1">
-                <select value={row.propId} onChange={e=>setRow(i,"propId",e.target.value)}
-                  className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                  <option value="">— pick destination —</option>
-                  <option value="unassigned">💼 Leave unassigned</option>
-                  {availableProps.map(p=><option key={p.id} value={p.id}>🏠 {p.address}</option>)}
-                  {blockedProps.length>0&&<optgroup label="— Not Available (Loan predates property) —">
-                    {blockedProps.map(p=><option key={p.id} value={p.id} disabled>🕐 {p.address}</option>)}
-                  </optgroup>}
-                </select>
+          {splits.map((row,i)=>{
+            const rowAmt=parseFloat(row.amount)||0;
+            const destProp=row.propId&&row.propId!=="unassigned"?activeProps.find(p=>p.id===row.propId):null;
+            let gapInfo=null;
+            if(destProp){
+              const active=destProp.loans.filter(l=>!l.endDate);
+              const needed=propNeeded(destProp,active);
+              const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+              const shortage=Math.max(0,needed-funded);
+              const afterSplit=Math.max(0,shortage-rowAmt);
+              if(needed>0) gapInfo={shortage,afterSplit};
+            }
+            return(
+              <div key={i} className="space-y-1.5">
+                <div className="flex gap-2 items-center">
+                  <div className="w-32 shrink-0">
+                    <input type="number" placeholder="Amount $" value={row.amount} onChange={e=>setRow(i,"amount",e.target.value)}
+                      className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
+                  </div>
+                  <div className="flex-1">
+                    <select value={row.propId} onChange={e=>setRow(i,"propId",e.target.value)}
+                      className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      <option value="">— pick destination —</option>
+                      <option value="unassigned">💼 Leave unassigned</option>
+                      {availableProps.map(p=><option key={p.id} value={p.id}>🏠 {p.address}</option>)}
+                      {blockedProps.length>0&&<optgroup label="— Not Available (Loan predates property) —">
+                        {blockedProps.map(p=><option key={p.id} value={p.id} disabled>🕐 {p.address}</option>)}
+                      </optgroup>}
+                    </select>
+                  </div>
+                  {splits.length>1&&<button onClick={()=>removeRow(i)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-base transition-colors shrink-0">✕</button>}
+                </div>
+                {gapInfo&&(
+                  <div className="ml-[136px] flex items-center gap-2 text-[10px]">
+                    <span className="text-slate-400 dark:text-zinc-500">Equity gap: <span className="font-semibold text-amber-600 dark:text-amber-400">{$$(gapInfo.shortage)}</span></span>
+                    {rowAmt>0&&<span className="text-slate-300 dark:text-zinc-600">→</span>}
+                    {rowAmt>0&&<span className={gapInfo.afterSplit<=0?"text-emerald-600 dark:text-emerald-400 font-semibold":"text-slate-500 dark:text-zinc-400"}>
+                      {gapInfo.afterSplit<=0?"Fully covered":""+$$(gapInfo.afterSplit)+" remaining"}
+                    </span>}
+                  </div>
+                )}
               </div>
-              <div className="w-32">
-                <input type="number" placeholder="Amount" value={row.amount} onChange={e=>setRow(i,"amount",e.target.value)}
-                  className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
-              </div>
-              {splits.length>1&&<button onClick={()=>removeRow(i)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-base transition-colors shrink-0">✕</button>}
-            </div>
-          ))}
+            );
+          })}
           <button onClick={addRow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold">+ Add destination</button>
         </div>
 
@@ -1406,6 +1501,7 @@ function PropertyForm({ init, onSave, onClose }) {
 // ─── Collapsible Unassigned Funds ─────────────────────────────────────────────
 function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete, onSplit }) {
   const prv=usePrivacy();
+  const openPanel=usePanel();
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
   const [open,setOpen]=useState(false);
@@ -1433,7 +1529,7 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
             return (
               <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 bg-white dark:bg-[#1C1C1E] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
                 <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-slate-900 dark:text-zinc-100 text-sm">{u.lenderName}</span>
+                  <button onClick={()=>openPanel({type:'lender',name:u.lenderName})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{u.lenderName}</button>
                   <TypeBadge type={u.loanType} sm/>
                   <span className="font-bold text-violet-700 dark:text-violet-300 text-sm tabular-nums">{h$(principal)}</span>
                   {(u.interestRate!=null)&&<span className="text-xs text-slate-400 dark:text-zinc-500">{hr(u)}</span>}
@@ -1574,6 +1670,15 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const delProp = id => { if(!confirm("Delete this property and all its loans?"))return; update(d=>({...d,properties:d.properties.filter(p=>p.id!==id)})); };
   const delLoan = (propId,loanId) => { if(!confirm("Delete this loan?"))return; update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:p.loans.filter(l=>l.id!==loanId)})})); };
   const delUnassigned = id => { if(!confirm("Remove this unassigned fund?"))return; update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==id)})); };
+
+  const handleQuickDraw = ({propId,loanId,date,amount}) => {
+    update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,
+      loans:p.loans.map(l=>l.id!==loanId?l:{...l,
+        drawFacility:{...l.drawFacility,draws:[...(l.drawFacility.draws||[]),{id:uid(),date,amount}]}
+      })
+    })}));
+    setModal(null);
+  };
 
   const handleSplitLoan = (fund, splits) => {
     const newUnassigned = splits
@@ -2033,6 +2138,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       {modal?.type==="markSold"&&<MarkSoldModal prop={modal.prop} allProperties={data.properties} onConfirm={(d,disp,cd,ir)=>handleMarkSold(modal.prop,d,disp,cd,ir)} onClose={()=>setModal(null)}/>}
       {modal==="closeLender"&&<CloseLenderModal data={data} update={update} onClose={()=>setModal(null)}/>}
       {modal?.type==="closePropPicker"&&<ClosePropertyPickerModal properties={data.properties} onPick={prop=>setModal({type:"markSold",prop})} onClose={()=>setModal(null)}/>}
+      {modal?.type==="quickDraw"&&<QuickDrawModal data={data} onSave={handleQuickDraw} onClose={()=>setModal(null)}/>}
     </div>
   );
 }
@@ -2477,6 +2583,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
 // ─── Closed Deals ─────────────────────────────────────────────────────────────
 function ClosedDealsPage({ data, update }) {
   const prv=usePrivacy();
+  const openPanel=usePanel();
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hs=v=>prv?maskMoney($$s(v)):$$s(v);
@@ -2579,7 +2686,7 @@ function ClosedDealsPage({ data, update }) {
         <div className="px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{prop.address||"Unnamed"}</div>
+              <button onClick={()=>openPanel({type:'property',propId:prop.id})} className="font-semibold text-slate-900 dark:text-zinc-100 truncate hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{prop.address||"Unnamed"}</button>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <span className="text-[11px] text-slate-400 dark:text-zinc-500">Sold {prop.dateSold}</span>
                 <button
@@ -2634,7 +2741,7 @@ function ClosedDealsPage({ data, update }) {
                 <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                   {prop.loans.map(l=>(
                     <tr key={l.id}>
-                      <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100">{hn(l.lenderName)}</td>
+                      <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100"><button onClick={()=>openPanel({type:'lender',name:l.lenderName})} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(l.lenderName)}</button></td>
                       <td className="py-2 text-right tabular-nums text-slate-700 dark:text-zinc-200">{h$(l.principal)}</td>
                       <td className="py-2 text-right tabular-nums text-slate-500 dark:text-zinc-400">{hr(l)}</td>
                       <td className="py-2 text-right"><TypeBadge type={l.loanType} sm/></td>
@@ -3989,12 +4096,22 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     return results.slice(0,8);
   })();
 
+  // ── Sidebar monochrome SVG icons ──
+  const IcoHome=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h4v-4h2v4h4a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/></svg>;
+  const IcoUsers=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>;
+  const IcoWrench=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M6.672 1.911a1 1 0 10-1.932.518l.259.966a1 1 0 001.932-.518l-.26-.966zM2.429 4.74a1 1 0 10-.517 1.932l.966.259a1 1 0 00.517-1.932l-.966-.26zm8.814-.569a1 1 0 00-1.415-1.414l-.707.707a1 1 0 101.415 1.415l.707-.708zm-7.071 7.072l.707-.707A1 1 0 003.465 9.12l-.707.707a1 1 0 001.415 1.415zm3.2-5.171a1 1 0 00-1.3 1.3l4 10a1 1 0 001.823.075l1.38-2.759 3.018 3.02a1 1 0 001.414-1.415l-3.019-3.02 2.76-1.379a1 1 0 00-.076-1.822l-10-4z" clipRule="evenodd"/></svg>;
+  const IcoDocument=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd"/></svg>;
+  const IcoCog=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd"/></svg>;
+  const IcoClipboard=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9zM4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"/></svg>;
+  const IcoGrid=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z" clipRule="evenodd"/></svg>;
+  const IcoBar=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>;
+
   // ── Sidebar nav button ──
-  const SideBtn=({icon,label,active,onClick,count,children})=>(
-    <button onClick={onClick} title={label}
-      className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all relative mx-auto ${active?"bg-blue-600 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/10"}`}>
-      <span className={`text-lg leading-none ${active?"":"opacity-80"}`}>{icon}</span>
-      {count>0&&<span className={`absolute -top-0.5 -right-0.5 text-[9px] font-bold rounded-full min-w-[14px] h-3.5 px-0.5 flex items-center justify-center ${active?"bg-white text-blue-600":"bg-blue-600 text-white"}`}>{count>99?"99+":count}</span>}
+  const SideBtn=({icon,label,active,onClick,children})=>(
+    <button onClick={onClick}
+      className={`flex items-center gap-3 w-full px-3 py-2 rounded-xl transition-all text-left ${active?"bg-blue-600 shadow-sm":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+      <span className={`shrink-0 ${active?"text-white":"text-slate-400 dark:text-zinc-500"}`}>{icon}</span>
+      <span className={`text-[13px] font-medium truncate ${active?"text-white":"text-slate-600 dark:text-zinc-300"}`}>{label}</span>
       {children}
     </button>
   );
@@ -4006,28 +4123,28 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex transition-colors duration-300">
 
       {/* ── Left Sidebar ── */}
-      <div className="fixed left-0 top-0 bottom-0 w-14 bg-white dark:bg-[#1C1C1E] border-r border-black/[0.08] dark:border-white/[0.07] flex flex-col z-40">
+      <div className="fixed left-0 top-0 bottom-0 w-52 bg-white dark:bg-[#1C1C1E] border-r border-black/[0.08] dark:border-white/[0.07] flex flex-col z-40">
         {/* Logo / Home */}
         <button onClick={onHome} title="Home"
-          className="mx-auto mt-3 mb-2 w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-500/30 active:scale-95 transition-transform shrink-0">
+          className="ml-4 mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-500/30 active:scale-95 transition-transform shrink-0">
           <span className="text-white font-black text-sm">N</span>
         </button>
-        <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] mx-2 mb-2"/>
+        <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] mx-3 mb-1.5"/>
 
         {/* Nav items */}
-        <nav className="flex flex-col gap-1 px-2 flex-1">
-          <SideBtn icon="🏠" label="Properties" active={tab==="Properties"} onClick={()=>setTab("Properties")} count={activeProps}/>
-          <SideBtn icon="👥" label="Lenders" active={tab==="LenderDash"} onClick={()=>setTab("LenderDash")} count={activeLenders}/>
+        <nav className="flex flex-col gap-0.5 px-2 flex-1">
+          <SideBtn icon={<IcoHome/>} label="Properties" active={tab==="Properties"} onClick={()=>setTab("Properties")}/>
+          <SideBtn icon={<IcoUsers/>} label="Lenders" active={tab==="LenderDash"} onClick={()=>setTab("LenderDash")}/>
 
-          {/* Rehab group — hover submenu */}
+          {/* Renovation group — clicking parent does nothing, hover reveals submenu */}
           <div className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
-            <SideBtn icon="🔥" label="Rehab" active={["RehabPriority","Draws","PropDash"].includes(tab)} onClick={()=>setTab("RehabPriority")}/>
+            <SideBtn icon={<IcoWrench/>} label="Renovation" active={["RehabPriority","Draws","PropDash"].includes(tab)} onClick={()=>{}}/>
             {rehabHover&&(
               <div className="absolute left-full top-0 ml-2 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
-                {[["RehabPriority","🔥","Rehab Priority"],["Draws","🏗️","Draw Tracker"],["PropDash","📊","Dashboard"]].map(([id,ico,l])=>(
+                {[{id:"RehabPriority",ico:<IcoClipboard/>,l:"Rehab Priority"},{id:"Draws",ico:<IcoGrid/>,l:"Draw Tracker"},{id:"PropDash",ico:<IcoBar/>,l:"Dashboard"}].map(({id,ico,l})=>(
                   <button key={id} onClick={()=>{setTab(id);setRehabHover(false);}}
                     className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
-                    <span>{ico}</span>{l}
+                    <span className="text-slate-400 dark:text-zinc-500 shrink-0">{ico}</span>{l}
                   </button>
                 ))}
               </div>
@@ -4035,36 +4152,37 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           </div>
 
           {/* Records = Closed + History */}
-          <SideBtn icon="🏁" label="Records" active={["Closed","History"].includes(tab)} onClick={()=>setTab(["Closed","History"].includes(tab)?tab:"Closed")} count={closedCount}/>
+          <SideBtn icon={<IcoDocument/>} label="Records" active={["Closed","History"].includes(tab)} onClick={()=>setTab(["Closed","History"].includes(tab)?tab:"Closed")}/>
         </nav>
 
         {/* Bottom — Settings */}
         <div className="px-2 pb-3 relative" ref={settingsRef}>
-          <button onClick={()=>setSettingsOpen(o=>!o)} title="Settings"
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all mx-auto ${settingsOpen?"bg-blue-600":"text-slate-400 dark:text-zinc-500 hover:bg-black/5 dark:hover:bg-white/10"}`}>
-            <span className="text-lg leading-none">⚙️</span>
+          <button onClick={()=>setSettingsOpen(o=>!o)}
+            className={`flex items-center gap-3 w-full px-3 py-2 rounded-xl transition-all text-left ${settingsOpen?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+            <span className={`shrink-0 ${settingsOpen?"text-white":"text-slate-400 dark:text-zinc-500"}`}><IcoCog/></span>
+            <span className={`text-[13px] font-medium ${settingsOpen?"text-white":"text-slate-600 dark:text-zinc-300"}`}>Settings</span>
           </button>
           {settingsOpen&&(
             <div className="absolute bottom-full left-2 mb-2 w-52 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
               <div className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Settings</div>
               <button onClick={()=>setPrivacyMode(p=>!p)}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
-                <span>{privacyMode?"🙈":"👁️"}</span><span>{privacyMode?"Show Values":"Demo Mode"}</span>
-                {privacyMode&&<span className="ml-auto text-[10px] font-bold text-blue-600 dark:text-blue-400">ON</span>}
+                className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
+                <span>Demo Mode</span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${privacyMode?"bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400":"bg-slate-100 dark:bg-zinc-700 text-slate-400 dark:text-zinc-500"}`}>{privacyMode?"ON":"OFF"}</span>
               </button>
               <button onClick={onToggleDark}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
-                <span>{dark?"☀️":"🌙"}</span><span>{dark?"Light Mode":"Dark Mode"}</span>
+                className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
+                {dark?"Light Mode":"Dark Mode"}
               </button>
               <div className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
               <button onClick={()=>{setSettingsOpen(false);setTab("LenderAccts");}}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
-                <span>🔑</span><span>Lender Accounts</span>
+                className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
+                Lender Accounts
               </button>
               <div className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
               <button onClick={onSignOut}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
-                <span className="font-bold">→</span><span>Sign Out</span>
+                className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
+                Sign Out
               </button>
             </div>
           )}
@@ -4072,10 +4190,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       </div>
 
       {/* ── Main content ── */}
-      <div className="ml-14 flex-1 flex flex-col min-h-screen">
+      <div className="ml-52 flex-1 flex flex-col min-h-screen">
         {/* Top bar */}
         <div className="sticky top-0 z-30 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.07]">
-          <div className="px-4 py-2.5 flex items-center gap-2.5 max-w-2xl mx-auto">
+          <div className="px-5 py-2.5 flex items-center gap-2.5 w-full">
             {/* Global search */}
             <div ref={globalSearchRef} className="relative flex-1">
               <div className="relative">
@@ -4113,15 +4231,16 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               {fabOpen&&(
                 <div className="absolute right-0 top-10 w-48 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50 py-1">
                   {[
-                    {label:"Add Property",icon:"🏠",modal:"addProp"},
-                    {label:"Add Lender Money",icon:"💰",modal:{type:"addMoney"}},
-                    {label:"Close Property",icon:"🏁",modal:{type:"closePropPicker"}},
-                    {label:"Close Lender Loans",icon:"✅",modal:"closeLender"},
+                    {label:"Add Property",modal:"addProp"},
+                    {label:"Add Lender Money",modal:{type:"addMoney"}},
+                    {label:"Close Property",modal:{type:"closePropPicker"}},
+                    {label:"Close Lender Loans",modal:"closeLender"},
+                    {label:"Record Draw",modal:{type:"quickDraw"}},
                   ].map(item=>(
                     <button key={typeof item.modal==="string"?item.modal:item.modal.type}
                       onClick={()=>{setFabOpen(false);setTab("Properties");setFabPending(item.modal);}}
-                      className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
-                      <span>{item.icon}</span>{item.label}
+                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
+                      {item.label}
                     </button>
                   ))}
                 </div>
@@ -4131,11 +4250,11 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         </div>
 
         {/* Page content */}
-        <div className="px-4 pt-4 pb-8 max-w-2xl mx-auto w-full">
+        <div className="px-5 pt-4 pb-8 w-full max-w-5xl">
           {/* Records sub-nav */}
           {["Closed","History"].includes(tab)&&(
             <div className="flex mb-4 bg-white dark:bg-[#1C1C1E] rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-zinc-800 self-start w-fit">
-              {[["Closed","🏁 Closed Deals"],["History","📋 History"]].map(([id,l])=>(
+              {[["Closed","Closed Deals"],["History","History"]].map(([id,l])=>(
                 <button key={id} onClick={()=>setTab(id)}
                   className={`px-4 py-2 text-sm font-semibold transition-all ${tab===id?"bg-blue-600 text-white":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"}`}>
                   {l}
