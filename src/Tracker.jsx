@@ -4490,12 +4490,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         {/* Logo / Home */}
         <button onClick={onHome} title="Home"
           className="mx-auto mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-500/30 active:scale-95 transition-transform shrink-0">
-          <svg viewBox="0 0 20 20" fill="none" className="w-5 h-5">
-            {/* House outline */}
-            <path d="M10 2.5L2.5 8.5V17.5H7.5V13H12.5V17.5H17.5V8.5L10 2.5Z" stroke="white" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" fill="none"/>
-            {/* Dollar sign */}
-            <text x="10" y="14" textAnchor="middle" fill="white" fontSize="6" fontWeight="800" fontFamily="system-ui,sans-serif">$</text>
-          </svg>
+          <span className="text-white font-black text-lg leading-none tracking-tight">$</span>
         </button>
         <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] mx-2 mb-1.5"/>
 
