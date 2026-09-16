@@ -4352,6 +4352,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [globalSearch,setGlobalSearch]=useState('');
   const [navStack,setNavStack]=useState([]);
+  const [panelStack,setPanelStack]=useState([]);
   const [rehabHover,setRehabHover]=useState(false);
   const fabRef=useRef(null);
   const settingsRef=useRef(null);
@@ -4404,7 +4405,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       return next
     })
   }
-  const navigate = entity => setNavStack(s=>[...s,entity]);
+  const navigate = entity => setPanelStack(s=>[...s,entity]);
+  const navStackNavigate = entity => setNavStack(s=>[...s,entity]);
 
   if(loading) return (
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex items-center justify-center">
@@ -4502,9 +4504,9 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
         {/* Nav items */}
         <nav className="flex flex-col gap-0.5 px-1.5 flex-1">
-          <SideBtn icon={<IcoHome/>} label="Properties" tooltip={`Properties (${activeProps})`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("Properties");}}/>
-          <SideBtn icon={<IcoUsers/>} label="Lenders" tooltip={`Lenders (${activeLenders})`} active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("LenderDash");}}/>
-          <SideBtn icon={<IcoList/>} label="Loans" tooltip={`Loans (${activeLoans})`} active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("AllLoans");}}/>
+          <SideBtn icon={<IcoHome/>} label="Properties" tooltip={`Properties (${activeProps})`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Properties");}}/>
+          <SideBtn icon={<IcoUsers/>} label="Lenders" tooltip={`Lenders (${activeLenders})`} active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("LenderDash");}}/>
+          <SideBtn icon={<IcoList/>} label="Loans" tooltip={`Loans (${activeLoans})`} active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("AllLoans");}}/>
 
           {/* Renovation group — clicking parent does nothing, hover reveals submenu */}
           <div className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
@@ -4515,7 +4517,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               <div className="absolute left-full top-0 ml-2 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
                 <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Renovation</div>
                 {[{id:"RehabPriority",ico:<IcoClipboard/>,l:"Rehab Priority"},{id:"Draws",ico:<IcoGrid/>,l:"Draw Tracker"},{id:"PropDash",ico:<IcoBar/>,l:"Dashboard"}].map(({id,ico,l})=>(
-                  <button key={id} onClick={()=>{setNavStack([]);setTab(id);setRehabHover(false);}}
+                  <button key={id} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setRehabHover(false);}}
                     className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id&&navStack.length===0?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
                     <span className="text-slate-400 dark:text-zinc-500 shrink-0">{ico}</span>{l}
                   </button>
@@ -4525,7 +4527,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           </div>
 
           {/* Records = Closed + History */}
-          <SideBtn icon={<IcoDocument/>} label="Records" tooltip="Records" active={["Closed","History"].includes(tab)&&navStack.length===0} onClick={()=>{setNavStack([]);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
+          <SideBtn icon={<IcoDocument/>} label="Records" tooltip="Records" active={["Closed","History"].includes(tab)&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
         </nav>
 
         {/* Bottom — Settings */}
@@ -4652,7 +4654,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
         {/* Page content */}
         {navStack.length>0 ? (
-          <EntityDetailView entity={navStack[navStack.length-1]} data={data} update={update} onBack={()=>setNavStack(s=>s.slice(0,-1))} navigate={navigate}/>
+          <EntityDetailView entity={navStack[navStack.length-1]} data={data} update={update} onBack={()=>setNavStack(s=>s.slice(0,-1))} navigate={navStackNavigate}/>
         ) : (
           <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
             {/* Records sub-nav */}
@@ -4678,6 +4680,49 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           </div>
         )}
       </div>
+
+      {/* ── Slide-in detail panel ── */}
+      {panelStack.length>0&&(
+        <>
+          {/* Backdrop — click to dismiss */}
+          <div className="fixed inset-0 z-40 bg-black/30 dark:bg-black/50 backdrop-blur-[2px]" onClick={()=>setPanelStack([])}/>
+          {/* Panel */}
+          <div className="fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-[#F2F2F7] dark:bg-[#0A0A0A] shadow-2xl" style={{width:'min(700px,82vw)'}}>
+            {/* Panel chrome */}
+            <div className="flex items-center gap-3 px-4 py-2.5 border-b border-black/[0.06] dark:border-white/[0.05] bg-white/70 dark:bg-black/70 backdrop-blur-xl shrink-0">
+              {panelStack.length>1&&(
+                <button onClick={()=>setPanelStack(s=>s.slice(0,-1))}
+                  className="flex items-center gap-1 text-xs font-semibold text-slate-500 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                  Back
+                </button>
+              )}
+              <div className="flex-1"/>
+              <button
+                onClick={()=>{const e=panelStack[panelStack.length-1];setPanelStack([]);setNavStack([e]);}}
+                className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors">
+                View Full Page
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"/><path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"/></svg>
+              </button>
+              <button onClick={()=>setPanelStack([])}
+                className="w-6 h-6 flex items-center justify-center rounded-full bg-black/[0.06] dark:bg-white/[0.08] text-slate-500 dark:text-zinc-400 hover:bg-black/10 dark:hover:bg-white/15 transition-all ml-1">
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+              </button>
+            </div>
+            {/* Panel content — scrollable */}
+            <div className="flex-1 overflow-y-auto">
+              <EntityDetailView
+                entity={panelStack[panelStack.length-1]}
+                data={data}
+                update={update}
+                onBack={()=>setPanelStack(s=>s.slice(0,-1))}
+                navigate={entity=>setPanelStack(s=>[...s,entity])}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
     </div>
     </PanelContext.Provider>
     </PrivacyContext.Provider>
