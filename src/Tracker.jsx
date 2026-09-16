@@ -2374,12 +2374,15 @@ function AllLoansPage({ data }) {
     if(sortBy==="principal") return d*((a.principal||0)-(b.principal||0));
     if(sortBy==="balance") return d*(calcBalance(a)-calcBalance(b));
     if(sortBy==="property") return d*(a.propAddress||"").localeCompare(b.propAddress||"");
-    if(sortBy==="type") return d*(a.loanType||"private").localeCompare(b.loanType||"private");
     return d*(a.startDate||"").localeCompare(b.startDate||"");
   });
 
   const totalPrin = filtered.filter(l=>!l.endDate).reduce((s,l) => s + (l.principal||0), 0);
   const totalBal = filtered.filter(l=>!l.endDate).reduce((s,l) => s + calcBalance(l), 0);
+  const toggleSort = col => {
+    if (sortBy === col) setSortDir(d => d==="asc"?"desc":"asc");
+    else { setSortBy(col); setSortDir("desc"); }
+  };
 
   return (
     <div>
@@ -2401,14 +2404,8 @@ function AllLoansPage({ data }) {
         </div>
       )}
 
-      {/* Sort + filters + search */}
+      {/* Filters + search */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <SortDropdown value={sortBy} onChange={setSortBy}
-          options={[["date","Newest"],["lender","Lender A–Z"],["principal","By Principal"],["balance","By Balance"],["property","By Property"],["type","By Type"]]}/>
-        <button onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")}
-          className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
-          {sortDir==="asc"?"↑ Asc":"↓ Desc"}
-        </button>
         {["active","closed","all"].map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${filter===f?"bg-blue-600 text-white":"bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"}`}>
@@ -2427,12 +2424,27 @@ function AllLoansPage({ data }) {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/20">
-                <th className="px-4 pb-2.5 pt-3 text-left font-semibold">Lender</th>
-                <th className="px-3 pb-2.5 pt-3 text-left font-semibold">Property</th>
-                <th className="px-3 pb-2.5 pt-3 text-right font-semibold">Principal</th>
-                <th className="px-3 pb-2.5 pt-3 text-right font-semibold">Balance</th>
+                {[["lender","Lender","left","px-4"],["property","Property","left","px-3"],["principal","Principal","right","px-3"],["balance","Balance","right","px-3"]].map(([col,label,align,px])=>(
+                  <th key={col} onClick={()=>toggleSort(col)}
+                    className={`${px} pb-2.5 pt-3 text-${align} font-semibold cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors`}>
+                    <span className={`inline-flex items-center gap-0.5 ${align==="right"?"justify-end w-full":""}`}>
+                      {label}
+                      {sortBy===col
+                        ? <span className="text-blue-500 ml-0.5">{sortDir==="asc"?"↑":"↓"}</span>
+                        : <span className="opacity-30 ml-0.5">↕</span>}
+                    </span>
+                  </th>
+                ))}
                 <th className="px-3 pb-2.5 pt-3 text-right font-semibold">Rate</th>
-                <th className="px-3 pb-2.5 pt-3 text-right font-semibold">Started</th>
+                <th onClick={()=>toggleSort("date")}
+                  className="px-3 pb-2.5 pt-3 text-right font-semibold cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors">
+                  <span className="inline-flex items-center gap-0.5 justify-end w-full">
+                    Started
+                    {sortBy==="date"
+                      ? <span className="text-blue-500 ml-0.5">{sortDir==="asc"?"↑":"↓"}</span>
+                      : <span className="opacity-30 ml-0.5">↕</span>}
+                  </span>
+                </th>
                 <th className="px-4 pb-2.5 pt-3 text-right font-semibold">Status</th>
               </tr>
             </thead>
