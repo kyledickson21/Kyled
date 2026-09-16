@@ -289,16 +289,33 @@ function LenderAutocomplete({ value, onChange, properties }) {
 }
 
 // ─── Lender Money Form ────────────────────────────────────────────────────────
-function LenderMoneyForm({ properties, init, onSave, onClose }) {
+function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
   const activeProps = properties.filter(p=>!p.dateSold);
+
+  const initName = init?.lenderName || "";
+  const initExisting = lenders.find(l=>l.name===initName);
+  const [lenderSel, setLenderSel] = useState(
+    initExisting ? initExisting.id : (initName ? "_new_" : "")
+  );
+  const [newName, setNewName] = useState(initExisting ? "" : initName);
+  const [newType, setNewType] = useState(
+    initExisting ? "private" : (init?.loanType||"private")
+  );
+
+  const activeLender = (lenderSel && lenderSel !== "_new_")
+    ? lenders.find(l=>l.id===lenderSel) : null;
+  const currentLoanType = activeLender ? activeLender.loanType
+    : (lenderSel === "_new_" ? newType : "private");
+
   const [f, sf] = useState(()=>({
-    lenderName:"", loanType:"private", principal:"",
+    principal:"",
     startDate:TODAY, interestType:"percentage", interestRate:"", specialTerms:"", endDate:"",
     destination:"unassigned",
     paymentType:"closing", monthlyPayment:"", drawFacility:null,
     ...(init??{}),
     paymentType: init?.paymentType || (init?.loanType==="hard" ? "monthly_rate" : "closing"),
     monthlyPayment: String(init?.monthlyPayment||""),
+    drawFacility: init?.drawFacility||null,
   }));
   const [drawDate,setDrawDate]=useState(TODAY);
   const [drawAmt,setDrawAmt]=useState("");
@@ -315,16 +332,50 @@ function LenderMoneyForm({ properties, init, onSave, onClose }) {
     setDrawAmt("");
   };
   const handleSave = () => {
-    if (!f.lenderName?.trim()) { alert("Please enter a lender name."); return; }
+    const lenderName = activeLender ? activeLender.name : (lenderSel === "_new_" ? newName.trim() : "");
+    if (!lenderName) { alert("Please select or enter a lender."); return; }
     if (!f.startDate) { alert("Please enter a start date."); return; }
     if (!(parseFloat(f.principal) > 0)) { alert("Please enter an amount greater than zero."); return; }
-    onSave(f);
+    const loanType = currentLoanType;
+    const newLender = (lenderSel === "_new_" && lenderName)
+      ? {id: uid(), name: lenderName, loanType: newType}
+      : null;
+    onSave({...f, lenderName, loanType, newLender});
   };
 
   return (
     <div>
-      <LenderAutocomplete value={f.lenderName} onChange={s("lenderName")} properties={properties}/>
-      <Sel label="Money Type" value={f.loanType} onChange={s("loanType")} options={[["private","Private Money"],["hard","Hard Money"]]}/>
+      <div className="mb-3">
+        <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">
+          Lender <span className="text-red-400">*</span>
+        </label>
+        <select value={lenderSel} onChange={e=>setLenderSel(e.target.value)}
+          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none">
+          <option value="">— Select a lender —</option>
+          {lenders.map(l=>(
+            <option key={l.id} value={l.id}>{l.name} ({l.loanType==="hard"?"Hard Money":"Private Money"})</option>
+          ))}
+          <option value="_new_">➕ Add New Lender</option>
+        </select>
+      </div>
+      {lenderSel==="_new_"&&(
+        <div className="mb-3 p-3.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 space-y-2">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-2">New Lender Info</div>
+          <Inp label="Lender Name *" value={newName} onChange={setNewName} placeholder="Mike Dixon"/>
+          <Sel label="Lender Type *" value={newType} onChange={setNewType} options={[
+            ["private","Private Money — individual lender"],
+            ["hard","Hard Money — institutional / company lender"],
+          ]}/>
+        </div>
+      )}
+      {activeLender&&(
+        <div className="mb-3 flex items-center gap-2 px-1">
+          <TypeBadge type={activeLender.loanType}/>
+          <span className="text-xs text-slate-400 dark:text-zinc-500">
+            {activeLender.loanType==="hard"?"Hard Money Lender":"Private Money Lender"}
+          </span>
+        </div>
+      )}
       <div className="mb-3">
         <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Where Does This Money Go?</label>
         <select value={f.destination} onChange={e=>s("destination")(e.target.value)}
@@ -354,7 +405,7 @@ function LenderMoneyForm({ properties, init, onSave, onClose }) {
         )}
         <Inp label="Special Terms (optional)" value={f.specialTerms} onChange={s("specialTerms")} placeholder="Balloon, prepayment penalty, etc."/>
       </div>
-      {f.loanType==="hard"&&(
+      {currentLoanType==="hard"&&(
         <div className="mt-2 mb-4 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
           <label className="flex items-center gap-3 cursor-pointer mb-1">
             <input type="checkbox" checked={!!f.drawFacility}
@@ -1636,10 +1687,15 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     specialTerms:f.specialTerms||"", endDate:f.endDate||null,
   });
 
+  const upsertLender = (d, newLender) => {
+    if (!newLender) return d;
+    return {...d, lenders:[...(d.lenders||[]).filter(x=>x.name!==newLender.name), newLender]};
+  };
+
   const saveMoneyForm = (f, force=false) => {
     const base=loanFields(f);
     if(f.destination==="unassigned"){
-      update(d=>({...d,unassigned:[...d.unassigned,{id:uid(),...base}]}));
+      update(d=>upsertLender({...d,unassigned:[...d.unassigned,{id:uid(),...base}]},f.newLender));
       setModal(null);
     } else {
       const destProp=data.properties.find(p=>p.id===f.destination);
@@ -1647,7 +1703,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       if(conflict>0&&!force){
         if(!window.confirm(`⚠️ This loan started ${conflict} days before the property was acquired — the money would be uncollateralized for that period.\n\nPlace it anyway?`))return;
       }
-      update(d=>({...d,properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...p.loans,{id:uid(),...base}]})}));
+      update(d=>upsertLender({...d,properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...p.loans,{id:uid(),...base}]})},f.newLender));
       setModal(null);
     }
   };
@@ -1664,7 +1720,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 
   const saveEditedLoan = (propId,f,existing) => {
     const l={...existing,...loanFields(f)};
-    update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:p.loans.map(x=>x.id===l.id?l:x)})}));
+    update(d=>upsertLender({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:p.loans.map(x=>x.id===l.id?l:x)})},f.newLender));
     setModal(null);
   };
 
@@ -2126,20 +2182,23 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         })}
       </div>}
 
-      {(modal==="addMoney"||modal?.type==="addMoney")&&<Modal title="Add Lender Money" onClose={()=>setModal(null)}><LenderMoneyForm properties={data.properties} init={modal?.propId?{destination:modal.propId}:undefined} onSave={saveMoneyForm} onClose={()=>setModal(null)}/></Modal>}
+      {(modal==="addMoney"||modal?.type==="addMoney")&&<Modal title="Add Lender Money" onClose={()=>setModal(null)}><LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={modal?.propId?{destination:modal.propId}:undefined} onSave={saveMoneyForm} onClose={()=>setModal(null)}/></Modal>}
       {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
       {modal?.type==="editProp"&&<Modal title="Edit Property" onClose={()=>setModal(null)}><PropertyForm init={modal.prop} onSave={f=>saveProp(f,modal.prop)} onClose={()=>setModal(null)}/></Modal>}
       {modal?.type==="editLoan"&&<Modal title="Edit Loan" onClose={()=>setModal(null)}>
-        <LenderMoneyForm properties={data.properties} init={{...modal.loan,destination:modal.propId,principal:String(modal.loan.principal),interestRate:String(modal.loan.interestRate||""),interestType:modal.loan.interestType||"percentage",paymentType:modal.loan.paymentType||"closing",monthlyPayment:String(modal.loan.monthlyPayment||""),drawFacility:modal.loan.drawFacility||null}}
+        <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={{...modal.loan,destination:modal.propId,principal:String(modal.loan.principal),interestRate:String(modal.loan.interestRate||""),interestType:modal.loan.interestType||"percentage",paymentType:modal.loan.paymentType||"closing",monthlyPayment:String(modal.loan.monthlyPayment||""),drawFacility:modal.loan.drawFacility||null}}
           onSave={f=>saveEditedLoan(modal.propId,f,modal.loan)} onClose={()=>setModal(null)}/>
       </Modal>}
       {modal?.type==="editUnassigned"&&<Modal title="Edit Unassigned Fund" onClose={()=>setModal(null)}>
-        <LenderMoneyForm properties={data.properties}
+        <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]}
           init={{...modal.fund,destination:"unassigned",principal:String(modal.fund.principal||modal.fund.amount||""),interestRate:String(modal.fund.interestRate||""),interestType:modal.fund.interestType||"percentage"}}
           onSave={f=>{
             const updated={...modal.fund,lenderName:f.lenderName,loanType:f.loanType,principal:parseFloat(f.principal)||0,startDate:f.startDate,interestRate:parseFloat(f.interestRate)||0,interestType:f.interestType||"percentage",specialTerms:f.specialTerms||"",endDate:f.endDate||null};
-            if(f.destination!=="unassigned"){update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==modal.fund.id),properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...p.loans,{id:uid(),...updated}]})}));}
-            else{update(d=>({...d,unassigned:d.unassigned.map(u=>u.id===modal.fund.id?updated:u)}));}
+            const doUpdate = d => f.newLender
+              ? {...d,lenders:[...(d.lenders||[]).filter(x=>x.name!==f.newLender.name),f.newLender]}
+              : d;
+            if(f.destination!=="unassigned"){update(d=>doUpdate({...d,unassigned:d.unassigned.filter(u=>u.id!==modal.fund.id),properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...p.loans,{id:uid(),...updated}]})}));}
+            else{update(d=>doUpdate({...d,unassigned:d.unassigned.map(u=>u.id===modal.fund.id?updated:u)}));}
             setModal(null);
           }} onClose={()=>setModal(null)}/>
       </Modal>}
@@ -4377,19 +4436,43 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       const migrateLoans = loans => loans.map(l=>
         (!l.paymentType && l.loanType==="hard") ? {...l,paymentType:"monthly_rate"} : l
       );
+      const isHardOverride = name => {
+        const n = (name||"").toLowerCase();
+        return n.includes("phoenix") || n.includes("kiavi");
+      };
+      const fixLoanTypes = loans => loans.map(l=>
+        (l.lenderName && isHardOverride(l.lenderName) && l.loanType!=="hard")
+          ? {...l, loanType:"hard"} : l
+      );
       const needsPropMig = d.properties.some(p=>(!p.purchasePrice&&!p.rehabBudget)&&p.fundingNeeded>0);
       const needsLoanMig = d.properties.some(p=>p.loans.some(l=>!l.paymentType&&l.loanType==="hard"))
         || d.unassigned.some(l=>!l.paymentType&&l.loanType==="hard");
-      if (needsPropMig||needsLoanMig) {
+      const needsLenderMig = !d.lenders || d.lenders.length===0;
+      const needsPhoenixFix = [...d.properties.flatMap(p=>p.loans),...d.unassigned]
+        .some(l=>l.lenderName&&isHardOverride(l.lenderName)&&l.loanType!=="hard");
+      if (needsPropMig||needsLoanMig||needsLenderMig||needsPhoenixFix) {
+        const allLoans = [...d.properties.flatMap(p=>p.loans),...d.unassigned];
+        const lenderMap = {};
+        for (const l of allLoans) {
+          if (!l.lenderName) continue;
+          const name = l.lenderName.trim();
+          const type = isHardOverride(name) ? "hard" : (l.loanType||"private");
+          if (!lenderMap[name]) lenderMap[name] = {id:uid(), name, loanType:type};
+          else if (type==="hard") lenderMap[name].loanType = "hard";
+        }
+        const builtLenders = needsLenderMig
+          ? Object.values(lenderMap)
+          : d.lenders.map(l=>isHardOverride(l.name)?{...l,loanType:"hard"}:l);
         const migrated={...d,
+          lenders: builtLenders,
           properties:d.properties.map(p=>({
             ...p,
             ...(needsPropMig&&!p.purchasePrice&&!p.rehabBudget&&p.fundingNeeded>0
               ? {purchasePrice:p.fundingNeeded,rehabBudget:0,monthlyHolding:p.monthlyHolding??500}
               : {}),
-            loans:migrateLoans(p.loans),
+            loans:fixLoanTypes(migrateLoans(p.loans)),
           })),
-          unassigned:migrateLoans(d.unassigned),
+          unassigned:fixLoanTypes(migrateLoans(d.unassigned)),
         };
         save(migrated);
         setData(migrated);
