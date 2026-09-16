@@ -4565,9 +4565,11 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       <div className="ml-14 flex-1 flex flex-col min-h-screen">
         {/* Top bar */}
         <div className="sticky top-0 z-30 bg-[#F2F2F7]/90 dark:bg-black/80 backdrop-blur-xl border-b border-black/[0.04] dark:border-white/[0.04]">
-          <div className="px-5 py-1.5 flex items-center gap-2.5 w-full max-w-5xl mx-auto">
-            {/* Global search */}
-            <div ref={globalSearchRef} className="relative flex-1 max-w-sm">
+          <div className="px-5 py-1.5 flex items-center w-full">
+            {/* Left spacer */}
+            <div className="flex-1"/>
+            {/* Global search — centered */}
+            <div ref={globalSearchRef} className="relative w-72 shrink-0">
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-zinc-500 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"/></svg>
                 <input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)}
@@ -4608,10 +4610,11 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               )}
             </div>
 
-            {/* Actions button */}
+            {/* Right side — Actions button */}
+            <div className="flex-1 flex justify-end">
             <div ref={fabRef} className="relative shrink-0">
               <button onClick={()=>setFabOpen(o=>!o)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:border-blue-600 hover:text-white"}`}>
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:border-blue-600 hover:text-white dark:hover:text-white"}`}>
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
                 <span>Actions</span>
               </button>
@@ -4636,6 +4639,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                   )}
                 </div>
               )}
+            </div>
             </div>
           </div>
         </div>
