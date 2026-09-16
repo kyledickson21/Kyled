@@ -2352,7 +2352,7 @@ function LenderDashboard({ data }) {
 }
 
 // ─── All Loans Page ────────────────────────────────────────────────────────────
-function AllLoansPage({ data }) {
+function AllLoansPage({ data, onAdd }) {
   const prv = usePrivacy();
   const navigate = usePanel();
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
@@ -2403,6 +2403,7 @@ function AllLoansPage({ data }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Loans</h2>
+        <button onClick={onAdd} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm transition-all">+ Add Loan</button>
       </div>
 
       {/* Summary */}
@@ -4809,7 +4810,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             )}
             {tab==="Properties"    &&<PropertiesPage data={data} update={update} pendingAction={fabPending} onClearPendingAction={()=>setFabPending(null)}/>}
             {tab==="LenderDash"   &&<LenderDashboard data={data}/>}
-            {tab==="AllLoans"     &&<AllLoansPage data={data}/>}
+            {tab==="AllLoans"     &&<AllLoansPage data={data} onAdd={()=>setModal({type:"addMoney"})}/>}
             {tab==="PropDash"     &&<PropertyDashboard data={data}/>}
             {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
             {tab==="Closed"       &&<ClosedDealsPage data={data} update={update}/>}
