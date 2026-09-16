@@ -3333,7 +3333,7 @@ function CloseLenderModal({ data, update, onClose }) {
   return (
     <Modal title="Close Lender Loans" onClose={onClose}>
       <Sel label="Lender" value={lenderName} onChange={v=>setLenderName(v)}
-        options={[{value:'',label:'— select lender —'},...lenderNames.map(n=>({value:n,label:n}))]}/>
+        options={[['','— select lender —'],...lenderNames.map(n=>[n,n])]}/>
       {lenderName&&lenderLoans.length===0&&(
         <p className="text-sm text-slate-400 dark:text-zinc-500 text-center py-3">No active loans for {lenderName}.</p>
       )}
