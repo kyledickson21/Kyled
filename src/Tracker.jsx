@@ -4237,7 +4237,10 @@ function LoanDetailPage({ loanId, propId, data, onBack, navigate }) {
           Back
         </button>
         <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Loan</div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{loan.lenderName || "Unknown Lender"}</h1>
+        <button onClick={() => navigate({type:'lender', name:loan.lenderName})}
+          className="text-2xl font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left leading-tight">
+          {loan.lenderName || "Unknown Lender"}
+        </button>
         <div className="flex items-center gap-2 mt-1 flex-wrap">
           {prop && (
             <button onClick={() => navigate({type:'property', id:prop.id})} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">{prop.address}</button>
@@ -4350,7 +4353,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [fabPending,setFabPending]=useState(null);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [globalSearch,setGlobalSearch]=useState('');
-  const [detailPage,setDetailPage]=useState(null);
+  const [navStack,setNavStack]=useState([]);
   const [rehabHover,setRehabHover]=useState(false);
   const fabRef=useRef(null);
   const settingsRef=useRef(null);
@@ -4403,7 +4406,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       return next
     })
   }
-  const navigate = entity => setDetailPage(entity);
+  const navigate = entity => setNavStack(s=>[...s,entity]);
 
   if(loading) return (
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex items-center justify-center">
@@ -4496,18 +4499,18 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
         {/* Nav items */}
         <nav className="flex flex-col gap-0.5 px-2 flex-1">
-          <SideBtn icon={<IcoHome/>} label="Properties" active={tab==="Properties"&&!detailPage} onClick={()=>{setDetailPage(null);setTab("Properties");}}/>
-          <SideBtn icon={<IcoUsers/>} label="Lenders" active={tab==="LenderDash"&&!detailPage} onClick={()=>{setDetailPage(null);setTab("LenderDash");}}/>
-          <SideBtn icon={<IcoList/>} label="Loans" active={tab==="AllLoans"&&!detailPage} onClick={()=>{setDetailPage(null);setTab("AllLoans");}}/>
+          <SideBtn icon={<IcoHome/>} label="Properties" active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("Properties");}}/>
+          <SideBtn icon={<IcoUsers/>} label="Lenders" active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("LenderDash");}}/>
+          <SideBtn icon={<IcoList/>} label="Loans" active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setTab("AllLoans");}}/>
 
           {/* Renovation group — clicking parent does nothing, hover reveals submenu */}
           <div className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
-            <SideBtn icon={<IcoHardHat/>} label="Renovation" active={["RehabPriority","Draws","PropDash"].includes(tab)&&!detailPage} onClick={()=>{}}/>
+            <SideBtn icon={<IcoHardHat/>} label="Renovation" active={["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0} onClick={()=>{}}/>
             {rehabHover&&(
               <div className="absolute left-full top-0 ml-2 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
                 {[{id:"RehabPriority",ico:<IcoClipboard/>,l:"Rehab Priority"},{id:"Draws",ico:<IcoGrid/>,l:"Draw Tracker"},{id:"PropDash",ico:<IcoBar/>,l:"Dashboard"}].map(({id,ico,l})=>(
-                  <button key={id} onClick={()=>{setDetailPage(null);setTab(id);setRehabHover(false);}}
-                    className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id&&!detailPage?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+                  <button key={id} onClick={()=>{setNavStack([]);setTab(id);setRehabHover(false);}}
+                    className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id&&navStack.length===0?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
                     <span className="text-slate-400 dark:text-zinc-500 shrink-0">{ico}</span>{l}
                   </button>
                 ))}
@@ -4516,7 +4519,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           </div>
 
           {/* Records = Closed + History */}
-          <SideBtn icon={<IcoDocument/>} label="Records" active={["Closed","History"].includes(tab)&&!detailPage} onClick={()=>{setDetailPage(null);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
+          <SideBtn icon={<IcoDocument/>} label="Records" active={["Closed","History"].includes(tab)&&navStack.length===0} onClick={()=>{setNavStack([]);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
         </nav>
 
         {/* Bottom — Settings */}
@@ -4629,8 +4632,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         </div>
 
         {/* Page content */}
-        {detailPage ? (
-          <EntityDetailView entity={detailPage} data={data} update={update} onBack={()=>setDetailPage(null)} navigate={navigate}/>
+        {navStack.length>0 ? (
+          <EntityDetailView entity={navStack[navStack.length-1]} data={data} update={update} onBack={()=>setNavStack(s=>s.slice(0,-1))} navigate={navigate}/>
         ) : (
           <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
             {/* Records sub-nav */}
