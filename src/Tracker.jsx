@@ -1848,7 +1848,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       const d=propSortDir==="asc"?1:-1;
       if(propSortMode==="shortage"){
         const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};
-        return d*(shortOf(b)-shortOf(a));
+        return d*(shortOf(b)-shortOf(a))||(a.id||"").localeCompare(b.id||"");
       }
       if(propSortMode==="rehabPriority")return d*(rehabBurn(b)-rehabBurn(a));
       if(propSortMode==="dateAcquired")return d*propPurchaseDate(a).localeCompare(propPurchaseDate(b));
@@ -1858,7 +1858,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     });
   const rankMap=Object.fromEntries(
     [...visible].sort((a,b)=>{
-      if(propSortMode==="shortage"){const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};return shortOf(b)-shortOf(a);}
+      if(propSortMode==="shortage"){const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};return shortOf(b)-shortOf(a)||(a.id||"").localeCompare(b.id||"");}
       if(propSortMode==="rehabPriority")return rehabBurn(b)-rehabBurn(a);
       if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return (a.address||"").localeCompare(b.address||"");
