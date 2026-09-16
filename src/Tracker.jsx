@@ -1643,6 +1643,20 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
   );
 }
 
+const loanFields = f => ({
+  lenderName:f.lenderName, loanType:f.loanType, principal:parseFloat(f.principal)||0,
+  startDate:f.startDate, interestRate:parseFloat(f.interestRate)||0,
+  interestType:f.interestType||"percentage",
+  paymentType:f.paymentType||"closing",
+  monthlyPayment:parseFloat(f.monthlyPayment)||0,
+  drawFacility:f.drawFacility?{committed:parseFloat(f.drawFacility.committed)||0,draws:f.drawFacility.draws||[]}:null,
+  specialTerms:f.specialTerms||"", endDate:f.endDate||null,
+});
+const upsertLender = (d, newLender) => {
+  if (!newLender) return d;
+  return {...d, lenders:[...(d.lenders||[]).filter(x=>x.name!==newLender.name), newLender]};
+};
+
 // ─── Properties Page ──────────────────────────────────────────────────────────
 function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const prv=usePrivacy();
@@ -1681,21 +1695,6 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     setModal(pendingAction);
     onClearPendingAction?.();
   },[pendingAction]);
-
-  const loanFields = f => ({
-    lenderName:f.lenderName, loanType:f.loanType, principal:parseFloat(f.principal)||0,
-    startDate:f.startDate, interestRate:parseFloat(f.interestRate)||0,
-    interestType:f.interestType||"percentage",
-    paymentType:f.paymentType||"closing",
-    monthlyPayment:parseFloat(f.monthlyPayment)||0,
-    drawFacility:f.drawFacility?{committed:parseFloat(f.drawFacility.committed)||0,draws:f.drawFacility.draws||[]}:null,
-    specialTerms:f.specialTerms||"", endDate:f.endDate||null,
-  });
-
-  const upsertLender = (d, newLender) => {
-    if (!newLender) return d;
-    return {...d, lenders:[...(d.lenders||[]).filter(x=>x.name!==newLender.name), newLender]};
-  };
 
   const saveMoneyForm = (f, force=false) => {
     const base=loanFields(f);
@@ -2352,7 +2351,7 @@ function LenderDashboard({ data }) {
 }
 
 // ─── All Loans Page ────────────────────────────────────────────────────────────
-function AllLoansPage({ data, onAdd }) {
+function AllLoansPage({ data, update }) {
   const prv = usePrivacy();
   const navigate = usePanel();
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
@@ -2361,6 +2360,7 @@ function AllLoansPage({ data, onAdd }) {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = usePersistedState("nx-loansSortBy", "date");
   const [sortDir, setSortDir] = usePersistedState("nx-loansSortDir", "desc");
+  const [modal, setModal] = useState(null);
 
   const allLoans = [
     ...data.properties.flatMap(p => p.loans.map(l => ({...l, prop:p, propAddress:p.address, propId:p.id}))),
@@ -2389,6 +2389,7 @@ function AllLoansPage({ data, onAdd }) {
     if(sortBy==="balance") return d*(calcBalance(a)-calcBalance(b));
     if(sortBy==="property") return d*(a.propAddress||"").localeCompare(b.propAddress||"");
     if(sortBy==="type") return d*(a.loanType||"private").localeCompare(b.loanType||"private");
+    if(sortBy==="num") return d*(loanNumMap[a.id]-loanNumMap[b.id]);
     return d*(a.startDate||"").localeCompare(b.startDate||"");
   });
 
@@ -2400,10 +2401,11 @@ function AllLoansPage({ data, onAdd }) {
   };
 
   return (
+    <>
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Loans</h2>
-        <button onClick={onAdd} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm transition-all">+ Add Loan</button>
+        <button onClick={()=>setModal("addLoan")} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm transition-all">+ Add Loan</button>
       </div>
 
       {/* Summary */}
@@ -2440,7 +2442,11 @@ function AllLoansPage({ data, onAdd }) {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/20">
-                <th className="pl-4 pr-2 pb-2.5 pt-3 text-left font-semibold">#</th>
+                <th onClick={()=>toggleSort("num")} className="pl-4 pr-2 pb-2.5 pt-3 text-left font-semibold cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors">
+                  <span className="inline-flex items-center gap-0.5">#
+                    {sortBy==="num"?<span className="text-blue-500 ml-0.5">{sortDir==="asc"?"↑":"↓"}</span>:<span className="opacity-30 ml-0.5">↕</span>}
+                  </span>
+                </th>
                 {[["lender","Lender","left","px-3"],["property","Property","left","px-3"],["principal","Principal","right","px-3"],["balance","Balance","right","px-3"],["type","Type","left","px-3"]].map(([col,label,align,px])=>(
                   <th key={col} onClick={()=>toggleSort(col)}
                     className={`${px} pb-2.5 pt-3 text-${align} font-semibold cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors`}>
@@ -2500,6 +2506,20 @@ function AllLoansPage({ data, onAdd }) {
         )}
       </div>
     </div>
+    {modal==="addLoan"&&<Modal title="Add Loan" onClose={()=>setModal(null)}>
+      <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]}
+        onSave={f=>{
+          const base=loanFields(f);
+          if(f.destination==="unassigned"){
+            update(d=>upsertLender({...d,unassigned:[...(d.unassigned||[]),{id:uid(),...base}]},f.newLender));
+          } else {
+            update(d=>upsertLender({...d,properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...(p.loans||[]),{id:uid(),...base}]})},f.newLender));
+          }
+          setModal(null);
+        }}
+        onClose={()=>setModal(null)}/>
+    </Modal>}
+    </>
   );
 }
 
@@ -4810,7 +4830,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             )}
             {tab==="Properties"    &&<PropertiesPage data={data} update={update} pendingAction={fabPending} onClearPendingAction={()=>setFabPending(null)}/>}
             {tab==="LenderDash"   &&<LenderDashboard data={data}/>}
-            {tab==="AllLoans"     &&<AllLoansPage data={data} onAdd={()=>setModal({type:"addMoney"})}/>}
+            {tab==="AllLoans"     &&<AllLoansPage data={data} update={update}/>}
             {tab==="PropDash"     &&<PropertyDashboard data={data}/>}
             {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
             {tab==="Closed"       &&<ClosedDealsPage data={data} update={update}/>}
