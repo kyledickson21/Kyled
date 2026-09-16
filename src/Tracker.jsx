@@ -2348,7 +2348,7 @@ function AllLoansPage({ data }) {
                 return (
                   <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer" onClick={() => navigate({type:'loan', loanId:l.id, propId:l.propId})}>
                     <td className="px-4 py-3">
-                      <button onClick={e=>{e.stopPropagation();navigate({type:'lender',name:l.lenderName});}} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">
+                      <button onClick={e=>{e.stopPropagation();navigate({type:'loan',loanId:l.id,propId:l.propId});}} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">
                         {l.lenderName||"Unknown"}
                       </button>
                       <TypeBadge type={l.loanType} sm/>
@@ -3914,14 +3914,11 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                 <div key={l.id} className="px-5 py-4">
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <button onClick={() => navigate({type:'lender', name:l.lenderName})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-sm text-left">
+                      <button onClick={() => navigate({type:'loan', loanId:l.id, propId:prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-sm text-left">
                         {l.lenderName || "Unknown Lender"}
                       </button>
                       <TypeBadge type={l.loanType} sm/>
                     </div>
-                    <button onClick={() => navigate({type:'loan', loanId:l.id, propId:prop.id})} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap transition-colors">
-                      View Loan →
-                    </button>
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
                     {[
@@ -3987,7 +3984,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
               {closed.map(l => (
                 <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
                   <td className="px-5 py-3">
-                    <button onClick={() => navigate({type:'lender', name:l.lenderName})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">{l.lenderName||"Unknown"}</button>
+                    <button onClick={() => navigate({type:'loan', loanId:l.id, propId:prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">{l.lenderName||"Unknown"}</button>
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</td>
                   <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{hr(l)}</td>
@@ -4018,7 +4015,10 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
               {cd.lenderPayoffs.map((lp,i) => (
                 <tr key={i} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
                   <td className="px-5 py-3">
-                    <button onClick={() => navigate({type:'lender', name:lp.lenderName})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">{lp.lenderName||"Unknown"}</button>
+                    {lp.loanId
+                      ? <button onClick={() => navigate({type:'loan', loanId:lp.loanId, propId:prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">{lp.lenderName||"Unknown"}</button>
+                      : <span className="font-semibold text-slate-700 dark:text-zinc-200">{lp.lenderName||"Unknown"}</span>
+                    }
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(lp.principalPayoff||0)}</td>
                   <td className="px-5 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(lp.wireAmount||0)}</td>
