@@ -3753,7 +3753,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       </div>
 
       {/* Floating Action Button */}
-      <div ref={fabRef} className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+      <div ref={fabRef} className="fixed bottom-6 right-16 z-50 flex flex-col items-end gap-2">
         {fabOpen&&(
           <div className="flex flex-col gap-1.5 mb-2 items-end">
             {[
@@ -3774,7 +3774,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           </div>
         )}
         <button onClick={()=>setFabOpen(o=>!o)}
-          className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-2xl font-light transition-all active:scale-95 ${fabOpen?"bg-slate-700 text-white rotate-45":"bg-slate-900 dark:bg-zinc-100 text-white dark:text-zinc-900"}`}
+          className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-2xl font-light transition-all active:scale-95 ${fabOpen?"bg-blue-700 text-white rotate-45":"bg-blue-600 text-white"}`}
           style={{boxShadow:"0 4px 24px rgba(0,0,0,0.25)"}}>
           +
         </button>
