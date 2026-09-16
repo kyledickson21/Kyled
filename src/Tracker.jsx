@@ -411,48 +411,91 @@ const propSizeConflict = (loanAmount, prop) => {
   if (needed <= 0) return false;
   const funded = active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
   const shortage = Math.max(0, needed - funded);
-  return loanAmount > shortage;
+  return loanAmount > shortage + needed * 0.10; // allow 10% contingency
+};
+// Returns 'date' | 'size' | null — date takes priority if both apply
+const propConflict = (loanStartDate, loanAmount, prop) => {
+  if (loanPropConflict(loanStartDate, prop) > 0) return 'date';
+  if (propSizeConflict(loanAmount, prop)) return 'size';
+  return null;
 };
 
 function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
   const activeProps = properties.filter(p=>!p.dateSold);
   const loanAmt = fund.principal||fund.amount||0;
-  const [dest, setDest] = useState(activeProps[0]?.id ?? "");
-  const [warned, setWarned] = useState(false);
-  const changeDest = v => { setDest(v); setWarned(false); };
-  const selectedProp = activeProps.find(p=>p.id===dest);
-  const dateConflict = selectedProp ? loanPropConflict(fund.startDate, selectedProp) : 0;
-  const sizeConflict = selectedProp ? propSizeConflict(loanAmt, selectedProp) : false;
-  const hasConflict = dateConflict>0||sizeConflict;
-  const handlePlace = () => { if(hasConflict&&!warned){setWarned(true);return;} onPlace(dest); };
-  const propLabel = p => {
-    const dc=loanPropConflict(fund.startDate,p)>0, sc=propSizeConflict(loanAmt,p);
-    return (dc||sc)?`⚠️ ${p.address}`:p.address;
-  };
+  const [blockMsg, setBlockMsg] = useState('');
+
   if (!activeProps.length) return (
     <Modal title="Place on Property" onClose={onClose}>
       <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No active properties. Add one first.</p>
       <Btn onClick={onClose} color="ghost" full>Close</Btn>
     </Modal>
   );
+
+  const available=[], blockedDate=[], blockedSize=[];
+  for (const p of activeProps) {
+    const c=propConflict(fund.startDate,loanAmt,p);
+    if (!c) available.push(p);
+    else if (c==='date') blockedDate.push(p);
+    else blockedSize.push(p);
+  }
+
+  const handleClick = p => {
+    const c=propConflict(fund.startDate,loanAmt,p);
+    if (c==='date') { setBlockMsg("Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period. Please pick a property that started before this loan."); return; }
+    if (c==='size') { setBlockMsg("Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need."); return; }
+    onPlace(p.id);
+  };
+
   return (
     <Modal title={`Place ${fund.lenderName}'s Money`} onClose={onClose}>
       <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
         <div className="font-bold text-slate-900 dark:text-zinc-100">{fund.lenderName}</div>
         <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(loanAmt)} · {fmtRate(fund)} · <TypeBadge type={fund.loanType} sm/></div>
       </div>
-      <Sel label="Place on which property?" value={dest} onChange={changeDest} options={activeProps.map(p=>[p.id,propLabel(p)])}/>
-      {warned&&hasConflict&&(
-        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 space-y-1">
-          {dateConflict>0&&<p>⚠️ This loan started <strong>{dateConflict} days</strong> before the property was acquired — the money was uncollateralized for that period.</p>}
-          {sizeConflict&&<p>⚠️ This loan ({$$(loanAmt)}) is larger than the remaining funding shortage on this property.</p>}
-          <p className="font-semibold">Click again to place anyway.</p>
-        </div>
-      )}
-      <div className="flex gap-2 pt-1">
-        <Btn onClick={handlePlace} color={warned&&hasConflict?"red":"green"} full>{warned&&hasConflict?"Place anyway →":"Place on Property →"}</Btn>
-        <Btn onClick={onClose} color="ghost">Cancel</Btn>
+      {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-3">{blockMsg}</div>}
+      <div className="space-y-4">
+        {available.length>0&&(
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Available</div>
+            <div className="space-y-1.5">
+              {available.map(p=>(
+                <button key={p.id} onClick={()=>{setBlockMsg('');handleClick(p);}}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                  <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">🏠 {p.address}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {blockedDate.length>0&&(
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Not Available — Timing Issue</div>
+            <div className="space-y-1.5">
+              {blockedDate.map(p=>(
+                <button key={p.id} onClick={()=>handleClick(p)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                  <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {blockedSize.length>0&&(
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Not Available — No Funding Gap</div>
+            <div className="space-y-1.5">
+              {blockedSize.map(p=>(
+                <button key={p.id} onClick={()=>handleClick(p)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                  <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+      <div className="pt-3"><Btn onClick={onClose} color="ghost" full>Cancel</Btn></div>
     </Modal>
   );
 }
@@ -464,46 +507,93 @@ function MoveModal({ item, properties, onMove, onClose }) {
   const amount = item.type==="loan" ? item.loan.principal : item.fund.principal;
   const loanStartDate = item.type==="loan" ? item.loan.startDate : item.fund?.startDate;
   const currentLoc = item.type==="loan" ? (properties.find(p=>p.id===item.propId)?.address||"a property") : "Unassigned";
-  const moveLabel = p => {
-    const dc=loanPropConflict(loanStartDate,p)>0, sc=propSizeConflict(amount,p);
-    return (dc||sc)?`⚠️ 🏠  ${p.address}`:`🏠  ${p.address}`;
-  };
-  const destOptions = [
-    ...activeProps.filter(p=>item.type!=="loan"||p.id!==item.propId).map(p=>[p.id,moveLabel(p)]),
-    ...(item.type==="loan"?[["unassigned","💼  Unassigned"]]:[]),
-  ];
-  const [dest,setDest]=useState(destOptions[0]?.[0]??"");
-  const [warned,setWarned]=useState(false);
-  const changeDest = v => { setDest(v); setWarned(false); };
-  const selectedProp = properties.find(p=>p.id===dest);
-  const dateConflict = selectedProp ? loanPropConflict(loanStartDate, selectedProp) : 0;
-  const sizeConflict = selectedProp ? propSizeConflict(amount, selectedProp) : false;
-  const hasConflict = dateConflict>0||sizeConflict;
-  const handleMove = () => { if(hasConflict&&!warned){setWarned(true);return;} onMove(dest); };
-  if(!destOptions.length) return (
+  const [blockMsg, setBlockMsg] = useState('');
+
+  const candidateProps = activeProps.filter(p=>item.type!=="loan"||p.id!==item.propId);
+  const showUnassigned = item.type==="loan";
+
+  const available=[], blockedDate=[], blockedSize=[];
+  for (const p of candidateProps) {
+    const c=propConflict(loanStartDate,amount,p);
+    if (!c) available.push(p);
+    else if (c==='date') blockedDate.push(p);
+    else blockedSize.push(p);
+  }
+
+  if (!candidateProps.length&&!showUnassigned) return (
     <Modal title="Move Money" onClose={onClose}>
       <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No other properties to move to.</p>
       <Btn onClick={onClose} color="ghost" full>Close</Btn>
     </Modal>
   );
+
+  const handleClick = id => {
+    if (id==='unassigned') { onMove('unassigned'); return; }
+    const p=properties.find(x=>x.id===id);
+    const c=propConflict(loanStartDate,amount,p);
+    if (c==='date') { setBlockMsg("Cannot move here — this property was acquired after this loan started. The loan would have been uncollateralized during that period. Please pick a property that started before this loan."); return; }
+    if (c==='size') { setBlockMsg("Cannot move here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need."); return; }
+    onMove(id);
+  };
+
   return (
     <Modal title="Move Lender Money" onClose={onClose}>
       <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
         <div className="font-bold text-slate-900 dark:text-zinc-100">{lenderName}</div>
         <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(amount)} · on <span className="font-medium">{currentLoc}</span></div>
       </div>
-      <Sel label="Move to" value={dest} onChange={changeDest} options={destOptions}/>
-      {warned&&hasConflict&&(
-        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 space-y-1">
-          {dateConflict>0&&<p>⚠️ This loan started <strong>{dateConflict} days</strong> before the property was acquired — the money was uncollateralized for that period.</p>}
-          {sizeConflict&&<p>⚠️ This loan ({$$(amount)}) is larger than the remaining funding shortage on this property.</p>}
-          <p className="font-semibold">Click again to move anyway.</p>
-        </div>
-      )}
-      <div className="flex gap-2 pt-1">
-        <Btn onClick={handleMove} color={warned&&hasConflict?"red":"blue"} full>{warned&&hasConflict?"Move anyway →":"Move →"}</Btn>
-        <Btn onClick={onClose} color="ghost">Cancel</Btn>
+      {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-3">{blockMsg}</div>}
+      <div className="space-y-4">
+        {showUnassigned&&(
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Remove from Property</div>
+            <button onClick={()=>handleClick('unassigned')}
+              className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+              <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">💼 Move to Unassigned</span>
+            </button>
+          </div>
+        )}
+        {available.length>0&&(
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Available Properties</div>
+            <div className="space-y-1.5">
+              {available.map(p=>(
+                <button key={p.id} onClick={()=>{setBlockMsg('');handleClick(p.id);}}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                  <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">🏠 {p.address}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {blockedDate.length>0&&(
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Not Available — Timing Issue</div>
+            <div className="space-y-1.5">
+              {blockedDate.map(p=>(
+                <button key={p.id} onClick={()=>handleClick(p.id)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                  <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {blockedSize.length>0&&(
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Not Available — No Funding Gap</div>
+            <div className="space-y-1.5">
+              {blockedSize.map(p=>(
+                <button key={p.id} onClick={()=>handleClick(p.id)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                  <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+      <div className="pt-3"><Btn onClick={onClose} color="ghost" full>Cancel</Btn></div>
     </Modal>
   );
 }
@@ -524,11 +614,8 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
   const remaining = (loan.principal||loan.amount||0) - totalSplit;
   const valid = splits.every(r=>r.propId&&parseFloat(r.amount)>0) && Math.abs(remaining)<0.01;
 
-  const propOptions = activeProps.map(p=>{
-    const dc=loanPropConflict(loan.startDate,p)>0;
-    const sc=propSizeConflict(loan.principal||loan.amount||0,p);
-    return [p.id,(dc||sc)?`⚠️ ${p.address}`:p.address];
-  });
+  const availableProps = activeProps.filter(p=>loanPropConflict(loan.startDate,p)===0);
+  const blockedProps = activeProps.filter(p=>loanPropConflict(loan.startDate,p)>0);
   return (
     <Modal title={`Split Funds — ${loan.lenderName}`} onClose={onClose}>
       <div className="space-y-4">
@@ -546,7 +633,10 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
                   className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
                   <option value="">— pick destination —</option>
                   <option value="unassigned">💼 Leave unassigned</option>
-                  {propOptions.map(([id,addr])=><option key={id} value={id}>{addr}</option>)}
+                  {availableProps.map(p=><option key={p.id} value={p.id}>🏠 {p.address}</option>)}
+                  {blockedProps.length>0&&<optgroup label="— Not Available (Loan predates property) —">
+                    {blockedProps.map(p=><option key={p.id} value={p.id} disabled>🕐 {p.address}</option>)}
+                  </optgroup>}
                 </select>
               </div>
               <div className="w-32">
@@ -1381,6 +1471,14 @@ function PropertiesPage({ data, update }) {
   const [propSortMode,setPropSortMode]=usePersistedState("nx-propSortMode","shortage");
   const [propSortDir,setPropSortDir]=usePersistedState("nx-propSortDir","asc");
   const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt}
+  const [menuOpen,setMenuOpen]=useState(false);
+  const menuRef=useRef(null);
+  useEffect(()=>{
+    if(!menuOpen) return;
+    const h=e=>{if(!menuRef.current?.contains(e.target))setMenuOpen(false);};
+    document.addEventListener('mousedown',h);
+    return()=>document.removeEventListener('mousedown',h);
+  },[menuOpen]);
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const unassignedTotal = data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
@@ -1583,7 +1681,25 @@ function PropertiesPage({ data, update }) {
               </button>
             ))}
           </div>
-          <Btn onClick={()=>setModal("addProp")} color="ghost" sm>+ Property</Btn>
+          <div className="relative" ref={menuRef}>
+            <button onClick={()=>setMenuOpen(m=>!m)}
+              className="w-9 h-9 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xl flex items-center justify-center shadow-md shadow-blue-500/30 transition-all">+</button>
+            {menuOpen&&(
+              <div className="absolute right-0 top-full mt-1.5 bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-xl dark:shadow-zinc-950 border border-slate-100 dark:border-zinc-800 z-50 min-w-[190px] overflow-hidden">
+                {[
+                  {label:'Add new property',icon:'🏠',action:'addProp'},
+                  {label:'Add new lender',icon:'💼',action:'addMoney'},
+                  {label:'Close property',icon:'🏁',action:'closePropPicker'},
+                  {label:'Close lender loans',icon:'🔒',action:'closeLender'},
+                ].map(item=>(
+                  <button key={item.action} onClick={()=>{setMenuOpen(false);setModal(item.action==='addProp'||item.action==='addMoney'||item.action==='closeLender'?item.action:{type:item.action});}}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left border-b last:border-b-0 border-slate-100 dark:border-zinc-800">
+                    <span className="text-base">{item.icon}</span><span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1615,15 +1731,6 @@ function PropertiesPage({ data, update }) {
           onEdit={u=>setModal({type:"editUnassigned",fund:u})} onDelete={delUnassigned}
           onSplit={u=>setModal({type:"splitLoan",fund:u})}/>
       )}
-
-      <button onClick={()=>setModal("addMoney")}
-        className="w-full mb-5 py-4 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_18px_rgba(0,0,0,0.10)] dark:hover:bg-white/[0.04] transition-all flex items-center justify-center gap-3 group">
-        <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-lg font-bold group-hover:scale-105 transition-transform shadow-sm shadow-blue-500/30">+</div>
-        <div className="text-left">
-          <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Add Lender Money</div>
-          <div className="text-xs text-slate-400 dark:text-zinc-500">Place on a property or hold as unassigned</div>
-        </div>
-      </button>
 
       {visible.length===0&&(
         <div className="text-center py-12 text-slate-400 dark:text-zinc-500 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl">
@@ -1925,6 +2032,8 @@ function PropertiesPage({ data, update }) {
       {modal?.type==="moveLoan"&&<MoveModal item={{type:"loan",propId:modal.propId,loan:modal.loan}} properties={data.properties} onMove={dest=>handleMove({type:"loan",propId:modal.propId,loan:modal.loan},dest)} onClose={()=>setModal(null)}/>}
       {modal?.type==="moveUnassigned"&&<MoveModal item={{type:"unassigned",fund:modal.fund}} properties={data.properties} onMove={dest=>{placeOnProperty(modal.fund,dest);setModal(null);}} onClose={()=>setModal(null)}/>}
       {modal?.type==="markSold"&&<MarkSoldModal prop={modal.prop} allProperties={data.properties} onConfirm={(d,disp,cd,ir)=>handleMarkSold(modal.prop,d,disp,cd,ir)} onClose={()=>setModal(null)}/>}
+      {modal==="closeLender"&&<CloseLenderModal data={data} update={update} onClose={()=>setModal(null)}/>}
+      {modal?.type==="closePropPicker"&&<ClosePropertyPickerModal properties={data.properties} onPick={prop=>setModal({type:"markSold",prop})} onClose={()=>setModal(null)}/>}
     </div>
   );
 }
@@ -3207,6 +3316,105 @@ function RehabPriorityPage({ data, update }) {
         })}
       </div>
     </div>
+  );
+}
+
+// ─── Close Lender Loans Modal ────────────────────────────────────────────────
+function CloseLenderModal({ data, update, onClose }) {
+  const [lenderName, setLenderName] = useState('');
+  const [date, setDate] = useState(TODAY);
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  const allActiveLoans = [
+    ...(data.properties||[]).filter(p=>!p.dateSold).flatMap(p=>
+      (p.loans||[]).filter(l=>!l.endDate).map(l=>({...l,propAddress:p.address,propId:p.id}))
+    ),
+    ...(data.unassigned||[]).filter(l=>!l.endDate).map(l=>({...l,propAddress:null,propId:null}))
+  ];
+  const lenderNames=[...new Set(allActiveLoans.map(l=>l.lenderName).filter(Boolean))].sort();
+  const lenderLoans=allActiveLoans.filter(l=>l.lenderName===lenderName);
+  const allSelected=lenderLoans.length>0&&selectedIds.length===lenderLoans.length;
+
+  useEffect(()=>{
+    if(lenderName) setSelectedIds(lenderLoans.map(l=>l.id));
+  },[lenderName]);
+
+  const toggle=id=>setSelectedIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);
+
+  const handleClose=()=>{
+    if(!date||!selectedIds.length) return;
+    update(d=>({
+      ...d,
+      properties:d.properties.map(p=>({...p,loans:p.loans.map(l=>selectedIds.includes(l.id)?{...l,endDate:date}:l)})),
+      unassigned:(d.unassigned||[]).map(l=>selectedIds.includes(l.id)?{...l,endDate:date}:l),
+    }));
+    onClose();
+  };
+
+  return (
+    <Modal title="Close Lender Loans" onClose={onClose}>
+      <Sel label="Lender" value={lenderName} onChange={v=>setLenderName(v)}
+        options={[{value:'',label:'— select lender —'},...lenderNames.map(n=>({value:n,label:n}))]}/>
+      {lenderName&&lenderLoans.length===0&&(
+        <p className="text-sm text-slate-400 dark:text-zinc-500 text-center py-3">No active loans for {lenderName}.</p>
+      )}
+      {lenderName&&lenderLoans.length>0&&(
+        <>
+          <DateInp label="Close Date" value={date} onChange={setDate}/>
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">
+              <span>Loans to Close</span>
+              <button onClick={()=>setSelectedIds(allSelected?[]:lenderLoans.map(l=>l.id))}
+                className="text-blue-600 dark:text-blue-400 font-semibold text-[11px] normal-case tracking-normal">
+                {allSelected?'Deselect all':'Select all'}
+              </button>
+            </div>
+            <div className="space-y-1.5 max-h-56 overflow-y-auto">
+              {lenderLoans.map(l=>(
+                <button key={l.id} onClick={()=>toggle(l.id)}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${selectedIds.includes(l.id)?'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700':'bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700'}`}>
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-semibold text-slate-800 dark:text-zinc-200 truncate">{l.propAddress||'Unassigned'}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-zinc-400">{$$(l.principal)} · started {l.startDate}</div>
+                  </div>
+                  <div className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedIds.includes(l.id)?'bg-blue-500 border-blue-500':'border-slate-300 dark:border-zinc-600'}`}>
+                    {selectedIds.includes(l.id)&&<span className="text-white text-[10px] leading-none">✓</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+          <Btn onClick={handleClose} color="red" full disabled={!selectedIds.length}>
+            Close {allSelected?'All':selectedIds.length} Loan{selectedIds.length!==1?'s':''} →
+          </Btn>
+        </>
+      )}
+      <Btn onClick={onClose} color="ghost" full>Cancel</Btn>
+    </Modal>
+  );
+}
+
+// ─── Close Property Picker Modal ─────────────────────────────────────────────
+function ClosePropertyPickerModal({ properties, onPick, onClose }) {
+  const active=(properties||[]).filter(p=>!p.dateSold);
+  return (
+    <Modal title="Close a Property" onClose={onClose}>
+      {active.length===0
+        ? <><p className="text-sm text-slate-400 dark:text-zinc-500 mb-3">No active properties to close.</p><Btn onClick={onClose} color="ghost" full>Close</Btn></>
+        : <>
+            <p className="text-xs text-slate-400 dark:text-zinc-500 mb-3">Select the property to mark as sold:</p>
+            <div className="space-y-1.5 mb-3">
+              {active.map(p=>(
+                <button key={p.id} onClick={()=>onPick(p)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                  <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">🏠 {p.address}</span>
+                </button>
+              ))}
+            </div>
+            <Btn onClick={onClose} color="ghost" full>Cancel</Btn>
+          </>
+      }
+    </Modal>
   );
 }
 
