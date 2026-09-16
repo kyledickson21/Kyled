@@ -1529,7 +1529,7 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
             return (
               <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 bg-white dark:bg-[#1C1C1E] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
                 <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                  <button onClick={()=>openPanel({type:'lender',name:u.lenderName})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{u.lenderName}</button>
+                  <button onClick={()=>openPanel({type:'loan',loanId:u.id,propId:null})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{u.lenderName}</button>
                   <TypeBadge type={u.loanType} sm/>
                   <span className="font-bold text-violet-700 dark:text-violet-300 text-sm tabular-nums">{h$(principal)}</span>
                   {(u.interestRate!=null)&&<span className="text-xs text-slate-400 dark:text-zinc-500">{hr(u)}</span>}
@@ -2036,7 +2036,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                           <div className="flex items-start gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                                <button onClick={()=>openPanel?.({type:'lender',name:loan.lenderName})} className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px] hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors">{hn(loan.lenderName)}</button>
+                                <button onClick={()=>openPanel?.({type:'loan',loanId:loan.id,propId:prop.id})} className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px] hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors">{hn(loan.lenderName)}</button>
                                 <TypeBadge type={loan.loanType} sm/>
                                 {loan.endDate&&<Chip color="gray">Closed {loan.endDate}</Chip>}
                               </div>
@@ -4068,7 +4068,7 @@ function LenderDetailPage({ name, data, onBack, navigate }) {
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
           Back
         </button>
-        <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Lender</div>
+        <div className="text-[11px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 mb-1">Lender</div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{name || "Unknown"}</h1>
         <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">
           {active.length} active loan{active.length!==1?"s":""} · {hist.length} closed
@@ -4228,16 +4228,22 @@ function LoanDetailPage({ loanId, propId, data, onBack, navigate }) {
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
           Back
         </button>
-        <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Loan</div>
+        <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-2">Loan</div>
         <button onClick={() => navigate({type:'lender', name:loan.lenderName})}
           className="text-2xl font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left leading-tight">
           {loan.lenderName || "Unknown Lender"}
         </button>
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
-          {prop && (
-            <button onClick={() => navigate({type:'property', id:prop.id})} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">{prop.address}</button>
-          )}
-          {!prop && <span className="text-sm text-slate-400 dark:text-zinc-500">Unassigned</span>}
+        {prop ? (
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <span className="text-[13px] text-slate-400 dark:text-zinc-500">at</span>
+            <button onClick={() => navigate({type:'property', id:prop.id})} className="text-[15px] font-semibold text-slate-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors text-left">
+              {prop.address}
+            </button>
+          </div>
+        ) : (
+          <div className="text-sm text-slate-400 dark:text-zinc-500 mt-1.5 italic">Unassigned</div>
+        )}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${loan.endDate ? "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400" : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"}`}>
             {loan.endDate ? `Closed ${loan.endDate}` : "Active"}
           </span>
