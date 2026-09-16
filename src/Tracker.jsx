@@ -664,19 +664,27 @@ function MoveModal({ item, properties, onMove, onClose }) {
   const [blockMsg, setBlockMsg] = useState('');
 
   const candidateProps = activeProps.filter(p=>item.type!=="loan"||p.id!==item.propId);
-  const showUnassigned = item.type==="loan";
 
-  const available=[], blockedDate=[], blockedSize=[];
+  const available=[], blockedSize=[];
   for (const p of candidateProps) {
     const c=propConflict(loanStartDate,amount,p);
     if (!c) available.push(p);
-    else if (c==='date') blockedDate.push(p);
-    else blockedSize.push(p);
+    else if (c==='size') blockedSize.push(p);
+    // date-conflict properties are silently excluded — nowhere useful to move them
   }
 
-  if (!candidateProps.length&&!showUnassigned) return (
-    <Modal title="Move Money" onClose={onClose}>
-      <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No other properties to move to.</p>
+  // Only show Unassigned if there's at least one non-timing-conflict destination;
+  // otherwise moving to unassigned just strands the loan with no valid re-home.
+  const hasViableDestination = available.length > 0 || blockedSize.length > 0;
+  const showUnassigned = item.type==="loan" && hasViableDestination;
+
+  if (!hasViableDestination && !showUnassigned) return (
+    <Modal title="Move Lender Money" onClose={onClose}>
+      <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
+        <div className="font-bold text-slate-900 dark:text-zinc-100">{lenderName}</div>
+        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(amount)} · on <span className="font-medium">{currentLoc}</span></div>
+      </div>
+      <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No valid destination — all other properties have a timing conflict with this loan's start date.</p>
       <Btn onClick={onClose} color="ghost" full>Close</Btn>
     </Modal>
   );
@@ -685,7 +693,6 @@ function MoveModal({ item, properties, onMove, onClose }) {
     if (id==='unassigned') { onMove('unassigned'); return; }
     const p=properties.find(x=>x.id===id);
     const c=propConflict(loanStartDate,amount,p);
-    if (c==='date') { setBlockMsg("Cannot move here — this property was acquired after this loan started. The loan would have been uncollateralized during that period. Please pick a property that started before this loan."); return; }
     if (c==='size') { setBlockMsg("Cannot move here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need."); return; }
     onMove(id);
   };
@@ -720,22 +727,9 @@ function MoveModal({ item, properties, onMove, onClose }) {
             </div>
           </div>
         )}
-        {blockedDate.length>0&&(
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Not Available — Timing Issue</div>
-            <div className="space-y-1.5">
-              {blockedDate.map(p=>(
-                <button key={p.id} onClick={()=>handleClick(p.id)}
-                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
-                  <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
         {blockedSize.length>0&&(
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Not Available — No Funding Gap</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">No Funding Gap — Consider Splitting</div>
             <div className="space-y-1.5">
               {blockedSize.map(p=>(
                 <button key={p.id} onClick={()=>handleClick(p.id)}
