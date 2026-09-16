@@ -4611,20 +4611,24 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 <span>Actions</span>
               </button>
               {fabOpen&&(
-                <div className="absolute right-0 top-10 w-48 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50 py-1">
+                <div className="absolute right-0 top-10 w-52 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50 py-1">
                   {[
                     {label:"Add Property",modal:"addProp"},
                     {label:"Add Lender Money",modal:{type:"addMoney"}},
-                    {label:"Close Property",modal:{type:"closePropPicker"}},
-                    {label:"Close Lender Loans",modal:"closeLender"},
+                    "divider",
+                    {label:"Close Property & All Loans",modal:{type:"closePropPicker"}},
+                    {label:"Close Lender Only",modal:"closeLender"},
+                    "divider",
                     {label:"Record Draw",modal:{type:"quickDraw"}},
-                  ].map(item=>(
-                    <button key={typeof item.modal==="string"?item.modal:item.modal.type}
-                      onClick={()=>{setFabOpen(false);setTab("Properties");setFabPending(item.modal);}}
-                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
-                      {item.label}
-                    </button>
-                  ))}
+                  ].map((item,i)=>
+                    item==="divider"
+                      ?<div key={i} className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
+                      :<button key={typeof item.modal==="string"?item.modal:item.modal.type}
+                        onClick={()=>{setFabOpen(false);setTab("Properties");setFabPending(item.modal);}}
+                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
+                        {item.label}
+                      </button>
+                  )}
                 </div>
               )}
             </div>
