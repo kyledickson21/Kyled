@@ -4610,8 +4610,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               )}
             </div>
 
-            {/* Right side — Actions button */}
-            <div className="flex-1 flex justify-end">
+            {/* Right side — Actions button, adjacent to search */}
+            <div className="flex-1 flex justify-start pl-3">
             <div ref={fabRef} className="relative shrink-0">
               <button onClick={()=>setFabOpen(o=>!o)}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:border-blue-600 hover:text-white dark:hover:text-white"}`}>
