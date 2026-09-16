@@ -1498,6 +1498,39 @@ function PropertyForm({ init, onSave, onClose }) {
   );
 }
 
+// ─── Shared page toolbar components ───────────────────────────────────────────
+const SEARCH_CLS = "ml-auto w-52 px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shrink-0";
+
+function SortDropdown({ value, onChange, options }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = e => { if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const label = options.find(([v]) => v === value)?.[1] ?? value;
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button onClick={() => setOpen(o=>!o)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all border border-slate-200 dark:border-zinc-700">
+        <span>Sort: {label}</span>
+        <span className="text-slate-400 dark:text-zinc-500">{open?"▲":"▼"}</span>
+      </button>
+      {open&&(
+        <div className="absolute left-0 top-9 w-44 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-30 py-1">
+          {options.map(([v,l])=>(
+            <button key={v} onClick={()=>{onChange(v);setOpen(false);}}
+              className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${value===v?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-semibold":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Collapsible Unassigned Funds ─────────────────────────────────────────────
 function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete, onSplit }) {
   const prv=usePrivacy();
@@ -1571,13 +1604,6 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const [propSortMode,setPropSortMode]=usePersistedState("nx-propSortMode","shortage");
   const [propSortDir,setPropSortDir]=usePersistedState("nx-propSortDir","asc");
   const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt}
-  const [sortOpen,setSortOpen]=useState(false);
-  const sortRef=useRef(null);
-  useEffect(()=>{
-    const h=e=>{if(sortRef.current&&!sortRef.current.contains(e.target))setSortOpen(false);};
-    document.addEventListener('mousedown',h);
-    return()=>document.removeEventListener('mousedown',h);
-  },[]);
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const unassignedTotal = data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
@@ -1794,34 +1820,16 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         </div>
       </div>
 
-      {/* Search + Sort */}
-      <div className="mb-4 space-y-2">
+      {/* Sort + Search */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <SortDropdown value={propSortMode} onChange={setPropSortMode}
+          options={[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]]}/>
+        <button onClick={()=>setPropSortDir(d=>d==="asc"?"desc":"asc")}
+          className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
+          {propSortDir==="asc"?"↑ Asc":"↓ Desc"}
+        </button>
         <input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
-          placeholder="Search by address or lender…"
-          className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
-        <div className="flex items-center gap-2">
-          <div ref={sortRef} className="relative">
-            <button onClick={()=>setSortOpen(o=>!o)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all border border-slate-200 dark:border-zinc-700">
-              <span>Sort: {[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]].find(([v])=>v===propSortMode)?.[1]??propSortMode}</span>
-              <span className="text-slate-400 dark:text-zinc-500">{sortOpen?"▲":"▼"}</span>
-            </button>
-            {sortOpen&&(
-              <div className="absolute left-0 top-9 w-44 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-30">
-                {[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]].map(([v,l])=>(
-                  <button key={v} onClick={()=>{setPropSortMode(v);setSortOpen(false);}}
-                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${propSortMode===v?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-semibold":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button onClick={()=>setPropSortDir(d=>d==="asc"?"desc":"asc")}
-            className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
-            {propSortDir==="asc"?"↑ Asc":"↓ Desc"}
-          </button>
-        </div>
+          placeholder="Search address or lender…" className={SEARCH_CLS}/>
       </div>
 
       {data.unassigned.length>0&&(
@@ -2201,9 +2209,7 @@ function LenderDashboard({ data }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Lenders</h2>
-        </div>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Lenders</h2>
       </div>
 
       {/* Summary */}
@@ -2220,17 +2226,12 @@ function LenderDashboard({ data }) {
         ))}
       </div>
 
-      {/* Search + sort */}
-      <div className="flex items-center gap-2 mb-4">
-        <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search lenders or properties…"
-          className="flex-1 px-3 py-2 rounded-xl text-sm bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-        <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
-          className="px-3 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
-          <option value="name">A–Z</option>
-          <option value="principal">By Principal</option>
-          <option value="balance">By Balance</option>
-          <option value="loans">By # Loans</option>
-        </select>
+      {/* Sort + search */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <SortDropdown value={sortBy} onChange={setSortBy}
+          options={[["name","A–Z"],["principal","By Principal"],["balance","By Balance"],["loans","By # Loans"]]}/>
+        <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="Search lenders or properties…" className={SEARCH_CLS}/>
       </div>
 
       {/* Lender cards */}
@@ -2275,17 +2276,24 @@ function AllLoansPage({ data }) {
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [filter, setFilter] = usePersistedState("nx-loansFilter", "active");
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = usePersistedState("nx-loansSortBy", "date");
 
   const allLoans = [
     ...data.properties.flatMap(p => p.loans.map(l => ({...l, prop:p, propAddress:p.address, propId:p.id}))),
     ...(data.unassigned||[]).map(l => ({...l, prop:null, propAddress:null, propId:null})),
-  ].sort((a,b) => (b.startDate||"").localeCompare(a.startDate||""));
+  ];
 
   const filtered = allLoans.filter(l => {
     const matchFilter = filter === "all" || (filter === "active" ? !l.endDate : !!l.endDate);
     const q = search.toLowerCase();
     const matchSearch = !search || l.lenderName?.toLowerCase().includes(q) || l.propAddress?.toLowerCase().includes(q);
     return matchFilter && matchSearch;
+  }).sort((a,b) => {
+    if(sortBy==="lender") return (a.lenderName||"").localeCompare(b.lenderName||"");
+    if(sortBy==="principal") return (b.principal||0)-(a.principal||0);
+    if(sortBy==="balance") return calcBalance(b)-calcBalance(a);
+    if(sortBy==="property") return (a.propAddress||"").localeCompare(b.propAddress||"");
+    return (b.startDate||"").localeCompare(a.startDate||"");
   });
 
   const totalPrin = filtered.filter(l=>!l.endDate).reduce((s,l) => s + (l.principal||0), 0);
@@ -2294,9 +2302,7 @@ function AllLoansPage({ data }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Loans</h2>
-        </div>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Loans</h2>
       </div>
 
       {/* Summary */}
@@ -2313,16 +2319,18 @@ function AllLoansPage({ data }) {
         </div>
       )}
 
-      {/* Filters + search */}
+      {/* Sort + filters + search */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <SortDropdown value={sortBy} onChange={setSortBy}
+          options={[["date","Newest"],["lender","Lender A–Z"],["principal","By Principal"],["balance","By Balance"],["property","By Property"]]}/>
         {["active","closed","all"].map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${filter===f?"bg-blue-600 text-white":"bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"}`}>
             {f.charAt(0).toUpperCase()+f.slice(1)}
           </button>
         ))}
-        <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search lender or property…"
-          className="ml-auto w-52 px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="Search lender or property…" className={SEARCH_CLS}/>
       </div>
 
       {/* Loans table */}
@@ -2410,9 +2418,8 @@ function PropertyDashboard({ data }) {
 
   return (
     <div>
-      <div className="mb-5">
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Property Dashboard</h2>
-        <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Capital deployment overview</p>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Dashboard</h2>
       </div>
 
       {/* Monthly burn banner */}
@@ -2627,13 +2634,6 @@ function ClosedDealsPage({ data, update }) {
   const [rentalSortDir,setRentalSortDir]=usePersistedState("nx-rentalSortDir","desc");
   const [editModal,setEditModal]=useState(null);
   const [closeModal,setCloseModal]=useState(null);
-  const [closedSortOpen,setClosedSortOpen]=useState(false);
-  const closedSortRef=useRef(null);
-  useEffect(()=>{
-    const h=e=>{if(closedSortRef.current&&!closedSortRef.current.contains(e.target))setClosedSortOpen(false);};
-    document.addEventListener('mousedown',h);
-    return()=>document.removeEventListener('mousedown',h);
-  },[]);
   const [showClosePicker,setShowClosePicker]=useState(false);
 
   const toggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
@@ -2791,10 +2791,7 @@ function ClosedDealsPage({ data, update }) {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Closed Deals</h2>
-          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">
-            {flips.length} flip{flips.length!==1?"s":""} · {rentals.length} rental{rentals.length!==1?"s":""}
-          </p>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Closed Deals</h2>
         </div>
         <div className="relative">
           <button onClick={()=>setShowClosePicker(v=>!v)}
@@ -2872,35 +2869,17 @@ function ClosedDealsPage({ data, update }) {
         <div className="text-center text-slate-400 dark:text-zinc-500 py-4 text-sm mb-2">No closing data recorded yet.</div>
       )}
 
-      {/* Search + Sort */}
+      {/* Sort + search */}
       {current.length>0&&(
-        <div className="mb-4 space-y-2">
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <SortDropdown value={sortMode} onChange={setSortMode}
+            options={[["dateSold","Date Sold"],["dateAcquired","Acquired"],["profit","Profit"],["address","A–Z"]]}/>
+          <button onClick={()=>setCurrentDir(d=>d==="asc"?"desc":"asc")}
+            className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
+            {currentDir==="asc"?"↑ Asc":"↓ Desc"}
+          </button>
           <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
-            placeholder="Search by address or lender…"
-            className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
-          <div className="flex items-center gap-2">
-            <div ref={closedSortRef} className="relative">
-              <button onClick={()=>setClosedSortOpen(o=>!o)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all border border-slate-200 dark:border-zinc-700">
-                <span>Sort: {[["dateSold","Date Sold"],["dateAcquired","Acquired"],["profit","Profit"],["address","A–Z"]].find(([v])=>v===sortMode)?.[1]??sortMode}</span>
-                <span className="text-slate-400 dark:text-zinc-500">{closedSortOpen?"▲":"▼"}</span>
-              </button>
-              {closedSortOpen&&(
-                <div className="absolute left-0 top-9 w-40 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-30">
-                  {[["dateSold","Date Sold"],["dateAcquired","Acquired"],["profit","Profit"],["address","A–Z"]].map(([v,l])=>(
-                    <button key={v} onClick={()=>{setSortMode(v);setClosedSortOpen(false);}}
-                      className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${sortMode===v?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-semibold":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button onClick={()=>setCurrentDir(d=>d==="asc"?"desc":"asc")}
-              className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
-              {currentDir==="asc"?"↑ Asc":"↓ Desc"}
-            </button>
-          </div>
+            placeholder="Search address or lender…" className={SEARCH_CLS}/>
         </div>
       )}
 
@@ -3039,11 +3018,8 @@ function HistoryPage({ data }) {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">History</h2>
-          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">{view==="trail"?"Auto-generated transaction log":"Closed loan records"}</p>
-        </div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">History</h2>
         <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{view==="trail"?`${filtered.length} events`:`${ledgerRows.length} loans`}</span>
       </div>
       <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 mb-4 self-start gap-1">
@@ -3054,19 +3030,18 @@ function HistoryPage({ data }) {
           </button>
         ))}
       </div>
-      <div className="space-y-2 mb-4">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <select value={lf} onChange={e=>setLf(e.target.value)}
+          className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="all">All Lenders</option>
+          {(view==="trail"?allL:allLedgerLenders).map((l,i)=><option key={l} value={l}>{prv?`Lender ${i+1}`:l}</option>)}
+        </select>
+        <select value={tf} onChange={e=>setTf(e.target.value)}
+          className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="all">All Types</option><option value="private">Private</option><option value="hard">Hard</option>
+        </select>
         {view==="trail"&&<input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
-          placeholder="Search by address, lender, date, event type…"
-          className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>}
-        <div className="flex gap-2">
-          <select value={lf} onChange={e=>setLf(e.target.value)} className="flex-1 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
-            <option value="all">All Lenders</option>
-            {(view==="trail"?allL:allLedgerLenders).map((l,i)=><option key={l} value={l}>{prv?`Lender ${i+1}`:l}</option>)}
-          </select>
-          <select value={tf} onChange={e=>setTf(e.target.value)} className="rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0">
-            <option value="all">All Types</option><option value="private">Private</option><option value="hard">Hard</option>
-          </select>
-        </div>
+          placeholder="Search address, lender, date…" className={SEARCH_CLS}/>}
       </div>
       {view==="ledger"&&(
         <div>
@@ -3276,6 +3251,7 @@ function RehabPriorityPage({ data, update }) {
   const prv=usePrivacy();
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const [dir,setDir]=usePersistedState("nx-rehabDir","desc");
+  const [rehabSearch,setRehabSearch]=useState("");
   const [projectFull,setProjectFull]=usePersistedState("nx-rehabProject",false);
   const [avgDaysBehind,setAvgDaysBehind]=usePersistedState("nx-rehabDaysBehind","");
   // Stored in Supabase so all sessions/devices stay in sync
@@ -3313,7 +3289,8 @@ function RehabPriorityPage({ data, update }) {
       const daysOwned=prop.purchaseDate?daysBetween(prop.purchaseDate,TODAY):null;
       return{prop,active,burn,projBurn,totalBurn,gap,needed,funded,daysOwned};
     })
-    .sort((a,b)=>dir==="desc"?b.totalBurn-a.totalBurn:a.totalBurn-b.totalBurn);
+    .sort((a,b)=>dir==="desc"?b.totalBurn-a.totalBurn:a.totalBurn-b.totalBurn)
+    .filter(r=>!rehabSearch||r.prop.address?.toLowerCase().includes(rehabSearch.toLowerCase()));
 
   const grandTotal=rows.reduce((s,r)=>s+r.totalBurn,0);
   const daysNum=parseFloat(avgDaysBehind)||0;
@@ -3324,16 +3301,17 @@ function RehabPriorityPage({ data, update }) {
     <div>
       <div className="flex justify-between items-center mb-3">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Rehab Priority</h2>
-          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Ranked by interest that exits at sale — finish these first</p>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Rehab Priority</h2>
         </div>
-        <div className="flex items-center gap-2">
-          {grandTotal>0&&<span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{h$(grandTotal)}/mo total</span>}
-          <button onClick={()=>setDir(d=>d==="desc"?"asc":"desc")}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#1C1C1E] shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none text-sm font-semibold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors border-0">
-            {dir==="desc"?"Highest First ↓":"Lowest First ↑"}
-          </button>
-        </div>
+        {grandTotal>0&&<span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{h$(grandTotal)}/mo total</span>}
+      </div>
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <button onClick={()=>setDir(d=>d==="desc"?"asc":"desc")}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all border border-slate-200 dark:border-zinc-700">
+          {dir==="desc"?"Highest First ↓":"Lowest First ↑"}
+        </button>
+        <input type="text" value={rehabSearch} onChange={e=>setRehabSearch(e.target.value)}
+          placeholder="Search by address…" className={SEARCH_CLS}/>
       </div>
 
       {/* Project fully funded toggle */}
@@ -3627,6 +3605,9 @@ function ManageLendersPage({ data }) {
 
   return (
     <div className="space-y-5">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Accounts</h2>
+      </div>
       <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4">
         <div className="font-bold text-[14px] text-slate-800 dark:text-zinc-100 mb-1">Create Lender Account</div>
         <div className="text-[12px] text-slate-400 dark:text-zinc-500 mb-4">Give a lender their own login to see only their loans.</div>
@@ -3691,10 +3672,12 @@ function ManageLendersPage({ data }) {
 function DrawsPage({ data }) {
   const privacy = usePrivacy();
   const h$ = v => { const s=$$(v); return privacy?maskMoney(s):s; };
+  const [drawSearch,setDrawSearch]=useState("");
+  const [drawSort,setDrawSort]=usePersistedState("nx-drawSort","overdue");
 
   // Collect all active properties that have at least one draw-facility loan
   const rows = (data.properties||[])
-    .filter(p => !p.dateSold)
+    .filter(p => !p.dateSold && (!drawSearch||p.address?.toLowerCase().includes(drawSearch.toLowerCase())))
     .map(p => {
       const drawLoans = (p.loans||[]).filter(l => !l.endDate && l.drawFacility);
       if (!drawLoans.length) return null;
@@ -3714,7 +3697,10 @@ function DrawsPage({ data }) {
     })
     .filter(Boolean)
     .sort((a, b) => {
-      // Most overdue (most days since last draw or never drawn) first
+      if(drawSort==="available") return b.totalAvailable-a.totalAvailable;
+      if(drawSort==="drawn") return b.totalDrawn-a.totalDrawn;
+      if(drawSort==="address") return (a.prop.address||"").localeCompare(b.prop.address||"");
+      // overdue: most days since last draw first
       const da = a.daysSinceDraw ?? 99999;
       const db = b.daysSinceDraw ?? 99999;
       return db - da;
@@ -3732,6 +3718,15 @@ function DrawsPage({ data }) {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Draws</h2>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <SortDropdown value={drawSort} onChange={setDrawSort}
+          options={[["overdue","Most Overdue"],["available","By Available"],["drawn","By Drawn"],["address","A–Z"]]}/>
+        <input type="text" value={drawSearch} onChange={e=>setDrawSearch(e.target.value)}
+          placeholder="Search by address…" className={SEARCH_CLS}/>
+      </div>
       {/* Summary bar */}
       <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4 flex items-center justify-between">
         <div>
