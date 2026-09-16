@@ -1456,7 +1456,7 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
 }
 
 // ─── Properties Page ──────────────────────────────────────────────────────────
-function PropertiesPage({ data, update }) {
+function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const prv=usePrivacy();
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
@@ -1471,14 +1471,6 @@ function PropertiesPage({ data, update }) {
   const [propSortMode,setPropSortMode]=usePersistedState("nx-propSortMode","shortage");
   const [propSortDir,setPropSortDir]=usePersistedState("nx-propSortDir","asc");
   const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt}
-  const [menuOpen,setMenuOpen]=useState(false);
-  const menuRef=useRef(null);
-  useEffect(()=>{
-    if(!menuOpen) return;
-    const h=e=>{if(!menuRef.current?.contains(e.target))setMenuOpen(false);};
-    document.addEventListener('mousedown',h);
-    return()=>document.removeEventListener('mousedown',h);
-  },[menuOpen]);
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const unassignedTotal = data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
@@ -1494,6 +1486,12 @@ function PropertiesPage({ data, update }) {
     })}));
     setInlineDraw(null);
   };
+
+  useEffect(()=>{
+    if(!pendingAction) return;
+    setModal(pendingAction);
+    onClearPendingAction?.();
+  },[pendingAction]);
 
   const loanFields = f => ({
     lenderName:f.lenderName, loanType:f.loanType, principal:parseFloat(f.principal)||0,
@@ -1680,25 +1678,6 @@ function PropertiesPage({ data, update }) {
                 {icon}
               </button>
             ))}
-          </div>
-          <div className="relative" ref={menuRef}>
-            <button onClick={()=>setMenuOpen(m=>!m)}
-              className="w-9 h-9 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xl flex items-center justify-center shadow-md shadow-blue-500/30 transition-all">+</button>
-            {menuOpen&&(
-              <div className="absolute right-0 top-full mt-1.5 bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-xl dark:shadow-zinc-950 border border-slate-100 dark:border-zinc-800 z-50 min-w-[190px] overflow-hidden">
-                {[
-                  {label:'Add new property',icon:'🏠',action:'addProp'},
-                  {label:'Add new lender',icon:'💼',action:'addMoney'},
-                  {label:'Close property',icon:'🏁',action:'closePropPicker'},
-                  {label:'Close lender loans',icon:'🔒',action:'closeLender'},
-                ].map(item=>(
-                  <button key={item.action} onClick={()=>{setMenuOpen(false);setModal(item.action==='addProp'||item.action==='addMoney'||item.action==='closeLender'?item.action:{type:item.action});}}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left border-b last:border-b-0 border-slate-100 dark:border-zinc-800">
-                    <span className="text-base">{item.icon}</span><span>{item.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -3657,6 +3636,15 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [tab,setTab]=usePersistedState("nx-activeTab","Properties");
   const [loading,setLoading]=useState(true);
   const [privacyMode,setPrivacyMode]=useState(false);
+  const [fabOpen,setFabOpen]=useState(false);
+  const [fabPending,setFabPending]=useState(null);
+  const fabRef=useRef(null);
+
+  useEffect(()=>{
+    const handler=e=>{if(fabRef.current&&!fabRef.current.contains(e.target))setFabOpen(false);};
+    document.addEventListener('mousedown',handler);
+    return ()=>document.removeEventListener('mousedown',handler);
+  },[]);
 
   useEffect(()=>{
     load().then(d=>{
@@ -3753,8 +3741,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       </div>
 
       {/* Page content */}
-      <div className="px-4 pt-5 max-w-2xl mx-auto pb-20">
-        {tab==="Properties"   &&<PropertiesPage data={data} update={update}/>}
+      <div className="px-4 pt-5 max-w-2xl mx-auto pb-28">
+        {tab==="Properties"   &&<PropertiesPage data={data} update={update} pendingAction={fabPending} onClearPendingAction={()=>setFabPending(null)}/>}
         {tab==="LenderDash"  &&<LenderDashboard data={data}/>}
         {tab==="PropDash"    &&<PropertyDashboard data={data}/>}
         {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
@@ -3762,6 +3750,34 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         {tab==="History"     &&<HistoryPage data={data}/>}
         {tab==="Draws"       &&<DrawsPage data={data}/>}
         {tab==="LenderAccts" &&<ManageLendersPage data={data}/>}
+      </div>
+
+      {/* Floating Action Button */}
+      <div ref={fabRef} className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+        {fabOpen&&(
+          <div className="flex flex-col gap-1.5 mb-2 items-end">
+            {[
+              {label:"Add Property",icon:"🏠",modal:"addProp"},
+              {label:"Add Lender Money",icon:"💰",modal:{type:"addMoney"}},
+              {label:"Close Property",icon:"🏁",modal:{type:"closePropPicker"}},
+              {label:"Close Lender Loans",icon:"✅",modal:"closeLender"},
+            ].map(item=>(
+              <button key={typeof item.modal==="string"?item.modal:item.modal.type} onClick={()=>{
+                setFabOpen(false);
+                setTab("Properties");
+                setFabPending(item.modal);
+              }}
+                className="flex items-center gap-2 bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 text-sm font-semibold px-4 py-2.5 rounded-2xl shadow-lg dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 whitespace-nowrap active:scale-95 transition-transform">
+                <span>{item.icon}</span>{item.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <button onClick={()=>setFabOpen(o=>!o)}
+          className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-2xl font-light transition-all active:scale-95 ${fabOpen?"bg-slate-700 text-white rotate-45":"bg-slate-900 dark:bg-zinc-100 text-white dark:text-zinc-900"}`}
+          style={{boxShadow:"0 4px 24px rgba(0,0,0,0.25)"}}>
+          +
+        </button>
       </div>
     </div>
     </PrivacyContext.Provider>
