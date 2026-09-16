@@ -4565,7 +4565,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       <div className="ml-14 flex-1 flex flex-col min-h-screen">
         {/* Top bar */}
         <div className="sticky top-0 z-30 bg-[#F2F2F7]/90 dark:bg-black/80 backdrop-blur-xl border-b border-black/[0.04] dark:border-white/[0.04]">
-          <div className="px-4 py-1.5 flex items-center gap-2.5 w-full">
+          <div className="px-5 py-1.5 flex items-center gap-2.5 w-full max-w-5xl mx-auto">
             {/* Global search */}
             <div ref={globalSearchRef} className="relative flex-1 max-w-sm">
               <div className="relative">
@@ -4611,7 +4611,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             {/* Actions button */}
             <div ref={fabRef} className="relative shrink-0">
               <button onClick={()=>setFabOpen(o=>!o)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-slate-300 dark:border-zinc-600 text-slate-600 dark:text-zinc-300 hover:border-blue-500 hover:text-blue-600 dark:hover:border-blue-400 dark:hover:text-blue-400"}`}>
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:border-blue-600 hover:text-white"}`}>
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
                 <span>Actions</span>
               </button>
