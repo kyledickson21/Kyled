@@ -3674,7 +3674,7 @@ function DrawsPage({ data }) {
 }
 
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
-const TABS=[{id:"Properties",label:"🏠",full:"Active Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab Priority"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"},{id:"Draws",label:"🏗️",full:"Draw Tracker"},{id:"LenderAccts",label:"🔑",full:"Lender Accounts"}];
+const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab"},{id:"Closed",label:"🏁",full:"Closed"},{id:"History",label:"📋",full:"History"},{id:"Draws",label:"🏗️",full:"Draws"},{id:"LenderAccts",label:"🔑",full:"Accounts"}];
 
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
@@ -3787,14 +3787,29 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             </div>
           </div>
           {/* Tabs */}
-          <div className="flex overflow-x-auto -mb-px gap-0">
-            {TABS.map(t=>(
-              <button key={t.id} onClick={()=>setTab(t.id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-[12px] font-semibold whitespace-nowrap border-b-2 transition-all shrink-0 ${tab===t.id?"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400":"border-transparent text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
-                <span>{t.label}</span><span className="tracking-[-0.1px]">{t.full}</span>
-              </button>
-            ))}
-          </div>
+          {(()=>{
+            const counts={
+              Properties:data.properties.filter(p=>!p.dateSold).length,
+              LenderDash:[...new Set([...data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>l.lenderName)),...data.unassigned.filter(l=>!l.endDate).map(l=>l.lenderName)].filter(Boolean))].length,
+              Closed:data.properties.filter(p=>p.dateSold).length,
+              Draws:data.properties.filter(p=>!p.dateSold&&p.loans.some(l=>!l.endDate&&l.drawFacility)).length,
+            };
+            return(
+              <div className="flex overflow-x-auto -mb-px gap-0 scrollbar-none">
+                {TABS.map(t=>{
+                  const n=counts[t.id];
+                  return(
+                    <button key={t.id} onClick={()=>setTab(t.id)}
+                      className={`flex items-center gap-1 px-3 py-2.5 text-[12px] font-semibold whitespace-nowrap border-b-2 transition-all shrink-0 ${tab===t.id?"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400":"border-transparent text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
+                      <span>{t.label}</span>
+                      <span className="tracking-[-0.1px]">{t.full}</span>
+                      {n!=null&&n>0&&<span className={`text-[10px] font-bold tabular-nums ${tab===t.id?"text-blue-500 dark:text-blue-400":"text-slate-400 dark:text-zinc-500"}`}>({n})</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
