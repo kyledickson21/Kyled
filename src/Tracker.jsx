@@ -325,11 +325,9 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
   }));
   const [drawDate,setDrawDate]=useState(TODAY);
   const [drawAmt,setDrawAmt]=useState("");
+  const [blockMsg,setBlockMsg]=useState("");
   const s = k => v => sf(p=>({...p,[k]:v}));
-  const destOptions = [
-    ["unassigned","💼  Unassigned — not yet placed on a property"],
-    ...activeProps.map(p=>[p.id, `🏠  ${p.address}`]),
-  ];
+
   const isFixed = (f.interestType || "percentage") === "fixed";
   const addDraw = () => {
     const amount = parseFloat(drawAmt);
@@ -340,8 +338,8 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
   const handleSave = () => {
     const lenderName = activeLender ? activeLender.name : (lenderSel === "_new_" ? newName.trim() : "");
     if (!lenderName) { alert("Please select or enter a lender."); return; }
-    if (!f.startDate) { alert("Please enter a start date."); return; }
     if (!(parseFloat(f.principal) > 0)) { alert("Please enter an amount greater than zero."); return; }
+    if (!f.startDate) { alert("Please enter a start date."); return; }
     const loanType = currentLoanType;
     const newLender = (lenderSel === "_new_" && lenderName)
       ? {id: uid(), name: lenderName, loanType: newType}
@@ -349,8 +347,33 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
     onSave({...f, lenderName, loanType, newLender});
   };
 
+  // Property picker: categorise based on entered amount + startDate
+  const loanAmt = parseFloat(f.principal) || 0;
+  const canShowConflicts = loanAmt > 0 && !!f.startDate;
+  const available=[], blockedSize=[], blockedDate=[];
+  if (canShowConflicts) {
+    for (const p of activeProps) {
+      const c = propConflict(f.startDate, loanAmt, p);
+      if (!c) available.push(p);
+      else if (c==='size') blockedSize.push(p);
+      else blockedDate.push(p);
+    }
+  }
+
+  const handleDestClick = pid => {
+    if (!canShowConflicts) { s("destination")(pid); return; }
+    const p = activeProps.find(x=>x.id===pid);
+    if (!p) { s("destination")(pid); return; }
+    const c = propConflict(f.startDate, loanAmt, p);
+    if (c==='date') { setBlockMsg("Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period."); return; }
+    if (c==='size') { setBlockMsg("Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need."); return; }
+    setBlockMsg("");
+    s("destination")(pid);
+  };
+
   return (
     <div>
+      {/* Lender */}
       <div className="mb-3">
         <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">
           Lender <span className="text-red-400">*</span>
@@ -382,17 +405,88 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
           </span>
         </div>
       )}
-      <div className="mb-3">
-        <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Where Does This Money Go?</label>
-        <select value={f.destination} onChange={e=>s("destination")(e.target.value)}
-          className="w-full border-2 border-blue-400 dark:border-blue-600 bg-blue-50 dark:bg-blue-950 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none">
-          {destOptions.map(([v,l])=><option key={v} value={v}>{l}</option>)}
-        </select>
-      </div>
+
+      {/* Amount + Dates */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1">
-        <Inp label="Amount ($) *" type="number" value={f.principal} onChange={s("principal")} placeholder="100000"/>
-        <DateInp label="Start Date *" value={f.startDate} onChange={s("startDate")}/>
+        <Inp label="Amount ($) *" type="number" value={f.principal} onChange={v=>{s("principal")(v);setBlockMsg("");}} placeholder="100000"/>
+        <DateInp label="Start Date *" value={f.startDate} onChange={v=>{s("startDate")(v);setBlockMsg("");}}/>
         <DateInp label="End / Payoff Date" value={f.endDate} onChange={s("endDate")} helpText="Leave blank while the loan is active"/>
+      </div>
+
+      {/* Where does this money go? */}
+      <div className="mt-3 mb-1">
+        <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">
+          Where Does This Money Go?
+        </label>
+        {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-2">{blockMsg}</div>}
+        {/* Unassigned option */}
+        <button type="button" onClick={()=>{setBlockMsg("");s("destination")("unassigned");}}
+          className={`w-full text-left px-3 py-2.5 rounded-xl mb-1.5 border transition-all ${f.destination==="unassigned"?"bg-violet-50 dark:bg-violet-900/20 border-violet-400 dark:border-violet-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-violet-50/40 dark:hover:bg-violet-900/10 hover:border-violet-300 dark:hover:border-violet-700"}`}>
+          <span className={`font-medium text-[13px] ${f.destination==="unassigned"?"text-violet-700 dark:text-violet-300":"text-slate-700 dark:text-zinc-300"}`}>💼 Unassigned — not yet placed on a property</span>
+        </button>
+        {!canShowConflicts&&activeProps.length>0&&(
+          <div className="text-[11px] text-slate-400 dark:text-zinc-500 italic px-1 mb-2">Enter amount and start date above to see property availability.</div>
+        )}
+        {canShowConflicts&&(
+          <div className="space-y-3">
+            {available.length>0&&(
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Available</div>
+                <div className="space-y-1.5">
+                  {available.map(p=>(
+                    <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all ${f.destination===p.id?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700"}`}>
+                      <span className={`font-medium text-[13px] ${f.destination===p.id?"text-emerald-700 dark:text-emerald-300":"text-slate-800 dark:text-zinc-200"}`}>🏠 {p.address}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {blockedSize.length>0&&(
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400 mb-1.5">No Funding Gap — Consider Splitting</div>
+                <div className="space-y-1.5">
+                  {blockedSize.map(p=>(
+                    <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
+                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                      <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {blockedDate.length>0&&(
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Timing Conflict — Cannot Place</div>
+                <div className="space-y-1.5">
+                  {blockedDate.map(p=>(
+                    <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
+                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                      <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {available.length===0&&blockedSize.length===0&&blockedDate.length===0&&(
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 italic px-1">No active properties. Add one first.</div>
+            )}
+          </div>
+        )}
+        {!canShowConflicts&&activeProps.length>0&&(
+          <div className="space-y-1.5">
+            {activeProps.map(p=>(
+              <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
+                className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all ${f.destination===p.id?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700"}`}>
+                <span className={`font-medium text-[13px] ${f.destination===p.id?"text-emerald-700 dark:text-emerald-300":"text-slate-800 dark:text-zinc-200"}`}>🏠 {p.address}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Loan terms */}
+      <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-3">
         <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={[
           ["percentage","% Rate — accrues daily (e.g. 10%/yr)"],
           ["fixed","Fixed Amount — flat dollar return (e.g. lend $100k, get back $105k)"],
@@ -2360,7 +2454,6 @@ function AllLoansPage({ data, update }) {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = usePersistedState("nx-loansSortBy", "date");
   const [sortDir, setSortDir] = usePersistedState("nx-loansSortDir", "desc");
-  const [modal, setModal] = useState(null);
 
   const allLoans = [
     ...data.properties.flatMap(p => p.loans.map(l => ({...l, prop:p, propAddress:p.address, propId:p.id}))),
@@ -2401,11 +2494,9 @@ function AllLoansPage({ data, update }) {
   };
 
   return (
-    <>
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Loans</h2>
-        <button onClick={()=>setModal("addLoan")} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm transition-all">+ Add Loan</button>
       </div>
 
       {/* Summary */}
@@ -2506,20 +2597,6 @@ function AllLoansPage({ data, update }) {
         )}
       </div>
     </div>
-    {modal==="addLoan"&&<Modal title="Add Loan" onClose={()=>setModal(null)}>
-      <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]}
-        onSave={f=>{
-          const base=loanFields(f);
-          if(f.destination==="unassigned"){
-            update(d=>upsertLender({...d,unassigned:[...(d.unassigned||[]),{id:uid(),...base}]},f.newLender));
-          } else {
-            update(d=>upsertLender({...d,properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...(p.loans||[]),{id:uid(),...base}]})},f.newLender));
-          }
-          setModal(null);
-        }}
-        onClose={()=>setModal(null)}/>
-    </Modal>}
-    </>
   );
 }
 
