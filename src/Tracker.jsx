@@ -4564,8 +4564,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       {/* ── Main content ── */}
       <div className="ml-14 flex-1 flex flex-col min-h-screen">
         {/* Top bar */}
-        <div className="sticky top-0 z-30 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.07]">
-          <div className="px-5 py-2.5 flex items-center gap-2.5 w-full">
+        <div className="sticky top-0 z-30 bg-[#F2F2F7]/90 dark:bg-black/80 backdrop-blur-xl border-b border-black/[0.04] dark:border-white/[0.04]">
+          <div className="px-5 py-2 flex items-center gap-2.5 w-full">
             {/* Global search */}
             <div ref={globalSearchRef} className="relative flex-1">
               <div className="relative">
