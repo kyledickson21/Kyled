@@ -528,27 +528,27 @@ function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
             </div>
           </div>
         )}
-        {blockedDate.length>0&&(
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Not Available — Timing Issue</div>
-            <div className="space-y-1.5">
-              {blockedDate.map(p=>(
-                <button key={p.id} onClick={()=>handleClick(p)}
-                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
-                  <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
         {blockedSize.length>0&&(
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Not Available — No Funding Gap</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">No Funding Gap — Consider Splitting</div>
             <div className="space-y-1.5">
               {blockedSize.map(p=>(
                 <button key={p.id} onClick={()=>handleClick(p)}
                   className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
                   <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {blockedDate.length>0&&(
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Timing Conflict — Cannot Place</div>
+            <div className="space-y-1.5">
+              {blockedDate.map(p=>(
+                <button key={p.id} onClick={()=>handleClick(p)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                  <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
                 </button>
               ))}
             </div>
