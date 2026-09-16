@@ -1889,7 +1889,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       {/* Sort + Search */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <SortDropdown value={propSortMode} onChange={setPropSortMode}
-          options={[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]]}/>
+          options={[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["address","A–Z"]]}/>
         <button onClick={()=>setPropSortDir(d=>d==="asc"?"desc":"asc")}
           className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
           {propSortDir==="asc"?"↑ Asc":"↓ Desc"}
@@ -2269,6 +2269,11 @@ function LenderDashboard({ data }) {
     if (sortBy === "principal") return d*(a.totalPrin - b.totalPrin);
     if (sortBy === "balance") return d*(a.totalBal - b.totalBal);
     if (sortBy === "loans") return d*(a.activeLoans.length - b.activeLoans.length);
+    if (sortBy === "type") {
+      const ta = a.types.includes("hard") ? "hard" : "private";
+      const tb = b.types.includes("hard") ? "hard" : "private";
+      return d*ta.localeCompare(tb);
+    }
     return d*(a.name||"").localeCompare(b.name||"");
   });
 
@@ -2299,7 +2304,7 @@ function LenderDashboard({ data }) {
       {/* Sort + search */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <SortDropdown value={sortBy} onChange={setSortBy}
-          options={[["name","A–Z"],["principal","By Principal"],["balance","By Balance"],["loans","By # Loans"]]}/>
+          options={[["name","A–Z"],["principal","By Principal"],["balance","By Balance"],["loans","By # Loans"],["type","By Type"]]}/>
         <button onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")}
           className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
           {sortDir==="asc"?"↑ Asc":"↓ Desc"}
@@ -2369,6 +2374,7 @@ function AllLoansPage({ data }) {
     if(sortBy==="principal") return d*((a.principal||0)-(b.principal||0));
     if(sortBy==="balance") return d*(calcBalance(a)-calcBalance(b));
     if(sortBy==="property") return d*(a.propAddress||"").localeCompare(b.propAddress||"");
+    if(sortBy==="type") return d*(a.loanType||"private").localeCompare(b.loanType||"private");
     return d*(a.startDate||"").localeCompare(b.startDate||"");
   });
 
@@ -2398,7 +2404,7 @@ function AllLoansPage({ data }) {
       {/* Sort + filters + search */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <SortDropdown value={sortBy} onChange={setSortBy}
-          options={[["date","Newest"],["lender","Lender A–Z"],["principal","By Principal"],["balance","By Balance"],["property","By Property"]]}/>
+          options={[["date","Newest"],["lender","Lender A–Z"],["principal","By Principal"],["balance","By Balance"],["property","By Property"],["type","By Type"]]}/>
         <button onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")}
           className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
           {sortDir==="asc"?"↑ Asc":"↓ Desc"}
