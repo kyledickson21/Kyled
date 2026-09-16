@@ -1796,6 +1796,16 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       if(propSortMode==="dateSold")return d*(a.dateSold||"0000").localeCompare(b.dateSold||"0000");
       return d*propSellDate(a).localeCompare(propSellDate(b));
     });
+  const rankMap=Object.fromEntries(
+    [...visible].sort((a,b)=>{
+      if(propSortMode==="shortage"){const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};return shortOf(b)-shortOf(a);}
+      if(propSortMode==="rehabPriority")return rehabBurn(b)-rehabBurn(a);
+      if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
+      if(propSortMode==="address")return (a.address||"").localeCompare(b.address||"");
+      if(propSortMode==="dateSold")return (a.dateSold||"0000").localeCompare(b.dateSold||"0000");
+      return propSellDate(a).localeCompare(propSellDate(b));
+    }).map((p,i)=>[p.id,i+1])
+  );
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
 
@@ -1906,10 +1916,9 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 </thead>
                 <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
                   {sorted.map(({prop,active,funded,needed,short,over,under,full},i)=>{
-                    const rankCls=propSortMode==="rehabPriority"&&!propSort.col?(i===0?"text-red-500 dark:text-red-400":i===1?"text-orange-500 dark:text-orange-400":i===2?"text-amber-500 dark:text-amber-400":"text-slate-300 dark:text-zinc-600"):"text-slate-300 dark:text-zinc-600";
                     return(
                     <tr key={prop.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
-                      <td className={`py-2.5 px-4 tabular-nums font-semibold ${rankCls}`}>{i+1}</td>
+                      <td className="py-2.5 px-4 tabular-nums text-[11px] text-slate-300 dark:text-zinc-600">{rankMap[prop.id]}</td>
                       <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">{prop.address||"Unnamed"}</td>
                       <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">{active.length}</td>
                       <td className="py-2.5 px-4 text-right tabular-nums text-slate-700 dark:text-zinc-200 font-medium">{funded>0?$$(funded):"—"}</td>
@@ -1968,7 +1977,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
               <div className={`px-5 py-3.5 cursor-pointer ${under?"bg-red-50/60 dark:bg-red-950/15":""}`} onClick={()=>toggle(prop.id)}>
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 min-w-0 mr-3">
-                    {propSortMode==="rehabPriority"&&<span className={`text-[11px] font-bold w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${visIdx===0?"text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20":visIdx===1?"text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20":visIdx===2?"text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20":"text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800"}`}>#{visIdx+1}</span>}
+                    <span className="text-[11px] text-slate-300 dark:text-zinc-600 tabular-nums font-medium shrink-0">{rankMap[prop.id]}</span>
                     <button onClick={e=>{e.stopPropagation();openPanel?.({type:'property',id:prop.id});}} className="font-semibold text-slate-900 dark:text-zinc-100 truncate hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</button>
                   </div>
                   <div className="shrink-0 flex items-center gap-1.5">
