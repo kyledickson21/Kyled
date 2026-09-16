@@ -1777,11 +1777,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Active Properties</h2>
-          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
-            <span className="font-semibold text-slate-600 dark:text-zinc-300">{activeCount} active</span>
-            {totalCount>activeCount&&<span> · {totalCount-activeCount} sold</span>}
-          </p>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Properties</h2>
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-zinc-400 cursor-pointer select-none">
@@ -2207,7 +2203,6 @@ function LenderDashboard({ data }) {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Lenders</h2>
-          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">{lenders.length} lender{lenders.length!==1?"s":""}</p>
         </div>
       </div>
 
@@ -2300,10 +2295,7 @@ function AllLoansPage({ data }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">All Loans</h2>
-          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">
-            {allLoans.filter(l=>!l.endDate).length} active · {allLoans.filter(l=>!!l.endDate).length} closed
-          </p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Loans</h2>
         </div>
       </div>
 
