@@ -2222,6 +2222,7 @@ function LenderDashboard({ data }) {
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = usePersistedState("nx-lenderSortBy2", "name");
+  const [sortDir, setSortDir] = usePersistedState("nx-lenderSortDir", "asc");
 
   const allActive = [
     ...data.properties.flatMap(prop =>
@@ -2264,10 +2265,11 @@ function LenderDashboard({ data }) {
   }
 
   lenders.sort((a,b) => {
-    if (sortBy === "principal") return b.totalPrin - a.totalPrin;
-    if (sortBy === "balance") return b.totalBal - a.totalBal;
-    if (sortBy === "loans") return b.activeLoans.length - a.activeLoans.length;
-    return (a.name||"").localeCompare(b.name||"");
+    const d = sortDir==="asc" ? 1 : -1;
+    if (sortBy === "principal") return d*(a.totalPrin - b.totalPrin);
+    if (sortBy === "balance") return d*(a.totalBal - b.totalBal);
+    if (sortBy === "loans") return d*(a.activeLoans.length - b.activeLoans.length);
+    return d*(a.name||"").localeCompare(b.name||"");
   });
 
   const totalPrin = Object.values(byLender).reduce((s,ld) => s + ld.totalPrin, 0);
@@ -2298,6 +2300,10 @@ function LenderDashboard({ data }) {
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <SortDropdown value={sortBy} onChange={setSortBy}
           options={[["name","A–Z"],["principal","By Principal"],["balance","By Balance"],["loans","By # Loans"]]}/>
+        <button onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")}
+          className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
+          {sortDir==="asc"?"↑ Asc":"↓ Desc"}
+        </button>
         <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
           placeholder="Search lenders or properties…" className={SEARCH_CLS}/>
       </div>
@@ -2345,6 +2351,7 @@ function AllLoansPage({ data }) {
   const [filter, setFilter] = usePersistedState("nx-loansFilter", "active");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = usePersistedState("nx-loansSortBy", "date");
+  const [sortDir, setSortDir] = usePersistedState("nx-loansSortDir", "desc");
 
   const allLoans = [
     ...data.properties.flatMap(p => p.loans.map(l => ({...l, prop:p, propAddress:p.address, propId:p.id}))),
@@ -2357,11 +2364,12 @@ function AllLoansPage({ data }) {
     const matchSearch = !search || l.lenderName?.toLowerCase().includes(q) || l.propAddress?.toLowerCase().includes(q);
     return matchFilter && matchSearch;
   }).sort((a,b) => {
-    if(sortBy==="lender") return (a.lenderName||"").localeCompare(b.lenderName||"");
-    if(sortBy==="principal") return (b.principal||0)-(a.principal||0);
-    if(sortBy==="balance") return calcBalance(b)-calcBalance(a);
-    if(sortBy==="property") return (a.propAddress||"").localeCompare(b.propAddress||"");
-    return (b.startDate||"").localeCompare(a.startDate||"");
+    const d = sortDir==="asc" ? 1 : -1;
+    if(sortBy==="lender") return d*(a.lenderName||"").localeCompare(b.lenderName||"");
+    if(sortBy==="principal") return d*((a.principal||0)-(b.principal||0));
+    if(sortBy==="balance") return d*(calcBalance(a)-calcBalance(b));
+    if(sortBy==="property") return d*(a.propAddress||"").localeCompare(b.propAddress||"");
+    return d*(a.startDate||"").localeCompare(b.startDate||"");
   });
 
   const totalPrin = filtered.filter(l=>!l.endDate).reduce((s,l) => s + (l.principal||0), 0);
@@ -2391,6 +2399,10 @@ function AllLoansPage({ data }) {
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <SortDropdown value={sortBy} onChange={setSortBy}
           options={[["date","Newest"],["lender","Lender A–Z"],["principal","By Principal"],["balance","By Balance"],["property","By Property"]]}/>
+        <button onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")}
+          className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
+          {sortDir==="asc"?"↑ Asc":"↓ Desc"}
+        </button>
         {["active","closed","all"].map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${filter===f?"bg-blue-600 text-white":"bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"}`}>
@@ -3742,6 +3754,7 @@ function DrawsPage({ data }) {
   const h$ = v => { const s=$$(v); return privacy?maskMoney(s):s; };
   const [drawSearch,setDrawSearch]=useState("");
   const [drawSort,setDrawSort]=usePersistedState("nx-drawSort","overdue");
+  const [drawSortDir,setDrawSortDir]=usePersistedState("nx-drawSortDir","desc");
 
   // Collect all active properties that have at least one draw-facility loan
   const rows = (data.properties||[])
@@ -3765,13 +3778,13 @@ function DrawsPage({ data }) {
     })
     .filter(Boolean)
     .sort((a, b) => {
-      if(drawSort==="available") return b.totalAvailable-a.totalAvailable;
-      if(drawSort==="drawn") return b.totalDrawn-a.totalDrawn;
-      if(drawSort==="address") return (a.prop.address||"").localeCompare(b.prop.address||"");
-      // overdue: most days since last draw first
+      const d = drawSortDir==="asc" ? 1 : -1;
+      if(drawSort==="available") return d*(a.totalAvailable-b.totalAvailable);
+      if(drawSort==="drawn") return d*(a.totalDrawn-b.totalDrawn);
+      if(drawSort==="address") return d*(a.prop.address||"").localeCompare(b.prop.address||"");
       const da = a.daysSinceDraw ?? 99999;
       const db = b.daysSinceDraw ?? 99999;
-      return db - da;
+      return d*(da-db);
     });
 
   if (!rows.length) return (
@@ -3792,6 +3805,10 @@ function DrawsPage({ data }) {
       <div className="flex items-center gap-2 flex-wrap">
         <SortDropdown value={drawSort} onChange={setDrawSort}
           options={[["overdue","Most Overdue"],["available","By Available"],["drawn","By Drawn"],["address","A–Z"]]}/>
+        <button onClick={()=>setDrawSortDir(d=>d==="asc"?"desc":"asc")}
+          className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
+          {drawSortDir==="asc"?"↑ Asc":"↓ Desc"}
+        </button>
         <input type="text" value={drawSearch} onChange={e=>setDrawSearch(e.target.value)}
           placeholder="Search by address…" className={SEARCH_CLS}/>
       </div>
