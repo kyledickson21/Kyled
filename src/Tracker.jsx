@@ -2367,6 +2367,16 @@ function AllLoansPage({ data }) {
     ...(data.unassigned||[]).map(l => ({...l, prop:null, propAddress:null, propId:null})),
   ];
 
+  const loanNumMap = Object.fromEntries(
+    [...allLoans].sort((a,b)=>(a.startDate||"").localeCompare(b.startDate||""))
+      .map((l,i)=>[l.id,i+1])
+  );
+  const filterCounts = {
+    active: allLoans.filter(l=>!l.endDate).length,
+    closed: allLoans.filter(l=>!!l.endDate).length,
+    all: allLoans.length,
+  };
+
   const filtered = allLoans.filter(l => {
     const matchFilter = filter === "all" || (filter === "active" ? !l.endDate : !!l.endDate);
     const q = search.toLowerCase();
@@ -2414,7 +2424,7 @@ function AllLoansPage({ data }) {
         {["active","closed","all"].map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${filter===f?"bg-blue-600 text-white":"bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"}`}>
-            {f.charAt(0).toUpperCase()+f.slice(1)}
+            {f.charAt(0).toUpperCase()+f.slice(1)}{filter===f?` (${filterCounts[f]})` : ""}
           </button>
         ))}
         <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
@@ -2429,7 +2439,8 @@ function AllLoansPage({ data }) {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/20">
-                {[["lender","Lender","left","px-4"],["property","Property","left","px-3"],["principal","Principal","right","px-3"],["balance","Balance","right","px-3"],["type","Type","left","px-3"]].map(([col,label,align,px])=>(
+                <th className="pl-4 pr-2 pb-2.5 pt-3 text-left font-semibold">#</th>
+                {[["lender","Lender","left","px-3"],["property","Property","left","px-3"],["principal","Principal","right","px-3"],["balance","Balance","right","px-3"],["type","Type","left","px-3"]].map(([col,label,align,px])=>(
                   <th key={col} onClick={()=>toggleSort(col)}
                     className={`${px} pb-2.5 pt-3 text-${align} font-semibold cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors`}>
                     <span className={`inline-flex items-center gap-0.5 ${align==="right"?"justify-end w-full":""}`}>
@@ -2458,7 +2469,8 @@ function AllLoansPage({ data }) {
                 const bal = calcBalance(l);
                 return (
                   <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer" onClick={() => navigate({type:'loan', loanId:l.id, propId:l.propId})}>
-                    <td className="px-4 py-3">
+                    <td className="pl-4 pr-2 py-3 tabular-nums text-[11px] text-slate-300 dark:text-zinc-600">{loanNumMap[l.id]}</td>
+                    <td className="px-3 py-3">
                       <button onClick={e=>{e.stopPropagation();navigate({type:'loan',loanId:l.id,propId:l.propId});}} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">
                         {l.lenderName||"Unknown"}
                       </button>
