@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
-import { loadData, saveData, subscribeToChanges } from './supabase'
+import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, deleteLenderAccount } from './supabase'
 
 const load = loadData
 const save = saveData
@@ -3210,6 +3210,107 @@ function RehabPriorityPage({ data, update }) {
   );
 }
 
+// ─── Manage Lenders Page ─────────────────────────────────────────────────────
+function ManageLendersPage({ data }) {
+  const [lenders, setLenders] = useState(null)
+  const [fetching, setFetching] = useState(true)
+  const [form, setForm] = useState({ lenderName: '', email: '', password: '' })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const [ok, setOk] = useState('')
+
+  const allNames = [...new Set([
+    ...(data.properties || []).flatMap(p => (p.loans || []).map(l => l.lenderName)),
+    ...(data.unassigned || []).map(l => l.lenderName),
+  ].filter(Boolean))].sort()
+
+  const load = () => {
+    setFetching(true)
+    listLenderAccounts().then(r => setLenders(r.lenders || [])).catch(e => setErr(e.message)).finally(() => setFetching(false))
+  }
+  useEffect(load, [])
+
+  const handleCreate = async e => {
+    e.preventDefault()
+    setSaving(true); setErr(''); setOk('')
+    try {
+      await createLenderAccount(form)
+      setOk(`Account created for ${form.lenderName} — they can now log in at this URL.`)
+      setForm({ lenderName: '', email: '', password: '' })
+      load()
+    } catch(ex) { setErr(ex.message) }
+    finally { setSaving(false) }
+  }
+
+  const handleDelete = async (userId, name) => {
+    if (!window.confirm(`Remove portal access for ${name}? They will no longer be able to log in.`)) return
+    setErr('')
+    try { await deleteLenderAccount(userId); load() }
+    catch(ex) { setErr(ex.message) }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4">
+        <div className="font-bold text-[14px] text-slate-800 dark:text-zinc-100 mb-1">Create Lender Account</div>
+        <div className="text-[12px] text-slate-400 dark:text-zinc-500 mb-4">Give a lender their own login to see only their loans.</div>
+        <form onSubmit={handleCreate} className="space-y-3">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Lender Name</label>
+            <select value={form.lenderName} onChange={e => setForm(f => ({...f, lenderName: e.target.value}))} required
+              className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">— select lender —</option>
+              {allNames.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Email</label>
+            <input type="email" value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} required placeholder="their@email.com"
+              className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Password</label>
+            <input type="text" value={form.password} onChange={e => setForm(f => ({...f, password: e.target.value}))} required placeholder="temporary password"
+              className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+          </div>
+          {err && <p className="text-red-500 text-xs font-medium">{err}</p>}
+          {ok  && <p className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">{ok}</p>}
+          <button type="submit" disabled={saving}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-2.5 text-sm font-semibold transition-all disabled:opacity-50">
+            {saving ? 'Creating…' : 'Create Account'}
+          </button>
+        </form>
+      </div>
+
+      <div>
+        <div className="text-[13px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-3">
+          Lender Accounts {lenders ? `(${lenders.length})` : ''}
+        </div>
+        {fetching ? (
+          <div className="text-slate-400 dark:text-zinc-500 text-sm text-center py-8">Loading…</div>
+        ) : !lenders?.length ? (
+          <div className="text-slate-300 dark:text-zinc-600 text-sm text-center py-8">No lender accounts yet</div>
+        ) : (
+          <div className="space-y-2">
+            {lenders.map(l => (
+              <div key={l.id} className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-200 truncate">{l.lender_name}</div>
+                  <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{l.email}</div>
+                </div>
+                <button onClick={() => handleDelete(l.auth_user_id, l.lender_name)}
+                  className="shrink-0 text-[11px] font-semibold text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors">
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Draws Page ───────────────────────────────────────────────────────────────
 function DrawsPage({ data }) {
   const privacy = usePrivacy();
@@ -3341,7 +3442,7 @@ function DrawsPage({ data }) {
 }
 
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
-const TABS=[{id:"Properties",label:"🏠",full:"Active Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab Priority"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"},{id:"Draws",label:"🏗️",full:"Draw Tracker"}];
+const TABS=[{id:"Properties",label:"🏠",full:"Active Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Prop Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab Priority"},{id:"Closed",label:"🏁",full:"Closed Deals"},{id:"History",label:"📋",full:"History"},{id:"Draws",label:"🏗️",full:"Draw Tracker"},{id:"LenderAccts",label:"🔑",full:"Lender Accounts"}];
 
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
@@ -3452,6 +3553,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         {tab==="Closed"      &&<ClosedDealsPage data={data} update={update}/>}
         {tab==="History"     &&<HistoryPage data={data}/>}
         {tab==="Draws"       &&<DrawsPage data={data}/>}
+        {tab==="LenderAccts" &&<ManageLendersPage data={data}/>}
       </div>
     </div>
     </PrivacyContext.Provider>

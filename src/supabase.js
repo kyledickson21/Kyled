@@ -34,3 +34,30 @@ export function subscribeToChanges(callback) {
     )
     .subscribe()
 }
+
+const fnUrl = name => `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${name}`
+
+async function authFetch(name, opts = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch(fnUrl(name), {
+    ...opts,
+    headers: { Authorization: `Bearer ${session?.access_token}`, ...opts.headers },
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error || res.statusText)
+  return json
+}
+
+export const getLenderData = () => authFetch('lender-data')
+
+export const listLenderAccounts = () => authFetch('manage-lenders')
+
+export const createLenderAccount = ({ email, lenderName, password }) =>
+  authFetch('manage-lenders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, lenderName, password }),
+  })
+
+export const deleteLenderAccount = (userId) =>
+  authFetch(`manage-lenders?userId=${userId}`, { method: 'DELETE' })

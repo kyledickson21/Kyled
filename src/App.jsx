@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 import Tracker from './Tracker'
 import Home from './Home'
+import LenderPortal from './LenderPortal'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -77,6 +78,9 @@ export default function App() {
       </div>
     </div>
   )
+
+  if (session.user.user_metadata?.role === 'lender')
+    return <LenderPortal session={session} onSignOut={signOut} dark={dark} onToggleDark={() => setDark(d => !d)} />
 
   if (view === 'tracker') return <Tracker onSignOut={signOut} onHome={() => setView('home')} userEmail={session.user.email} dark={dark} onToggleDark={() => setDark(d => !d)} />
 
