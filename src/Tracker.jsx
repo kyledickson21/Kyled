@@ -2145,206 +2145,244 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 
 // ─── Lender Dashboard ─────────────────────────────────────────────────────────
 function LenderDashboard({ data }) {
-  const prv=usePrivacy();
-  const openPanel=usePanel();
-  const h$=v=>prv?maskMoney($$(v)):$$(v);
-  const hc=v=>prv?maskMoney($$c(v)):$$c(v);
-  const hn=n=>n??"";
-  const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
-  const [view,setView]=usePersistedState("nx-lenderView","loans");
-  const [sort,setSort]=usePersistedState("nx-lenderSort",{col:null,dir:"asc"});
-  const [lenderSort,setLenderSort]=usePersistedState("nx-lenderSortBy","name");
-  const [search,setSearch]=useState("");
-  const [lenderSortOpen,setLenderSortOpen]=useState(false);
-  const lenderSortRef=useRef(null);
-  useEffect(()=>{
-    const h=e=>{if(lenderSortRef.current&&!lenderSortRef.current.contains(e.target))setLenderSortOpen(false);};
-    document.addEventListener('mousedown',h);
-    return()=>document.removeEventListener('mousedown',h);
-  },[]);
-  const toggleSort = col => setSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
-  const allActive=[
-    ...data.properties.flatMap(prop=>
-      prop.loans.filter(l=>!l.endDate).map(l=>({...l,propAddress:prop.address,propId:prop.id,bal:calcBalance(l),intEarned:calcIntEarned(l)}))
-    ),
-    ...data.unassigned.map(u=>{const p=u.principal||u.amount||0;const l={...u,principal:p};return{...l,propAddress:"Unassigned",propId:null,bal:calcBalance(l),intEarned:calcIntEarned(l)};}),
-  ].sort((a,b)=>a.lenderName.localeCompare(b.lenderName));
+  const prv = usePrivacy();
+  const navigate = usePanel();
+  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = usePersistedState("nx-lenderSortBy2", "name");
 
-  const byLender={};
-  allActive.forEach(l=>{
-    if(!byLender[l.lenderName])byLender[l.lenderName]={name:l.lenderName,loans:[],totalPrin:0,totalBal:0,totalInt:0,props:[],types:new Set()};
-    const ld=byLender[l.lenderName];
-    ld.loans.push(l);ld.totalPrin+=l.principal||0;ld.totalBal+=l.bal;ld.totalInt+=l.intEarned;
-    if(!ld.props.includes(l.propAddress))ld.props.push(l.propAddress);
+  const allActive = [
+    ...data.properties.flatMap(prop =>
+      prop.loans.filter(l => !l.endDate).map(l => ({...l, propAddress:prop.address, propId:prop.id}))
+    ),
+    ...(data.unassigned||[]).map(u => {const p=u.principal||u.amount||0;const l={...u,principal:p};return{...l,propAddress:null,propId:null};}),
+  ];
+
+  const byLender = {};
+  allActive.forEach(l => {
+    if (!byLender[l.lenderName]) byLender[l.lenderName] = {name:l.lenderName, activeLoans:[], totalPrin:0, totalBal:0, totalInt:0, props:new Set(), types:new Set()};
+    const ld = byLender[l.lenderName];
+    ld.activeLoans.push(l);
+    ld.totalPrin += (l.principal||0);
+    ld.totalBal += calcBalance(l);
+    ld.totalInt += calcIntEarned(l);
+    if (l.propAddress) ld.props.add(l.propAddress);
     ld.types.add(l.loanType);
   });
-  const lenders=Object.values(byLender).map(ld=>({...ld,types:[...ld.types],avgRate:ld.loans.reduce((s,l)=>s+(l.interestRate||0),0)/ld.loans.length})).sort((a,b)=>a.name.localeCompare(b.name));
-  const privPrin=allActive.filter(l=>l.loanType==="private").reduce((s,l)=>s+l.principal,0);
-  const hardPrin=allActive.filter(l=>l.loanType==="hard").reduce((s,l)=>s+l.principal,0);
-  const totalBal=allActive.reduce((s,l)=>s+l.bal,0);
-  const searchedActive=search?allActive.filter(l=>{const q=search.toLowerCase();return l.lenderName?.toLowerCase().includes(q)||l.propAddress?.toLowerCase().includes(q);}):allActive;
-  const searchedLenders=search?lenders.filter(ld=>{const q=search.toLowerCase();return ld.name?.toLowerCase().includes(q)||ld.props.some(p=>p.toLowerCase().includes(q));}):lenders;
+
+  // Also count all historical loans
+  const allHistorical = data.properties.flatMap(p => p.loans.filter(l => l.endDate).map(l => ({...l, propAddress:p.address})));
+  allHistorical.forEach(l => {
+    if (!byLender[l.lenderName]) byLender[l.lenderName] = {name:l.lenderName, activeLoans:[], totalPrin:0, totalBal:0, totalInt:0, props:new Set(), types:new Set()};
+    byLender[l.lenderName].types.add(l.loanType);
+  });
+  const closedByLender = {};
+  allHistorical.forEach(l => { closedByLender[l.lenderName] = (closedByLender[l.lenderName]||0) + 1; });
+
+  let lenders = Object.values(byLender).map(ld => ({
+    ...ld,
+    props: [...ld.props],
+    types: [...ld.types],
+    closedCount: closedByLender[ld.name] || 0,
+  }));
+
+  if (search) {
+    const q = search.toLowerCase();
+    lenders = lenders.filter(ld => ld.name?.toLowerCase().includes(q) || ld.props.some(p => p.toLowerCase().includes(q)));
+  }
+
+  lenders.sort((a,b) => {
+    if (sortBy === "principal") return b.totalPrin - a.totalPrin;
+    if (sortBy === "balance") return b.totalBal - a.totalBal;
+    if (sortBy === "loans") return b.activeLoans.length - a.activeLoans.length;
+    return (a.name||"").localeCompare(b.name||"");
+  });
+
+  const totalPrin = Object.values(byLender).reduce((s,ld) => s + ld.totalPrin, 0);
+  const totalBal = Object.values(byLender).reduce((s,ld) => s + ld.totalBal, 0);
+  const totalInt = Object.values(byLender).reduce((s,ld) => s + ld.totalInt, 0);
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Lender Dashboard</h2>
-        <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
-          <span className="font-semibold text-slate-600 dark:text-zinc-300">{lenders.length} lender{lenders.length!==1?"s":""}</span>
-          <span> · {allActive.length} loan{allActive.length!==1?"s":""}</span>
-        </p>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {[
-          {label:"Private",     val:privPrin, num:"text-sky-600 dark:text-sky-400"},
-          {label:"Hard Money",  val:hardPrin, num:"text-amber-600 dark:text-amber-400"},
-          {label:"Total Payoff", val:totalBal, num:"text-blue-600 dark:text-blue-400"},
-        ].map(({label,val,num})=>(
-          <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 text-center shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
-            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{label}</div>
-            <div className={`text-xl font-bold tabular-nums ${num}`}>{hc(val)}</div>
-          </div>
-        ))}
-      </div>
-
-      <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
-        placeholder="Search by lender or property…"
-        className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0 mb-4"/>
-
-      <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 mb-4 gap-1">
-        {[["loans","All Active Loans"],["lenders","By Lender"]].map(([v,l])=>(
-          <button key={v} onClick={()=>setView(v)}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${view===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>{l}</button>
-        ))}
-      </div>
-
-      {view==="loans"&&(()=>{
-        const sortedLoans=[...searchedActive].sort((a,b)=>{
-          if(!sort.col)return 0;
-          const d=sort.dir==="asc"?1:-1;
-          switch(sort.col){
-            case"Lender":   return d*a.lenderName.localeCompare(b.lenderName);
-            case"Property": return d*a.propAddress.localeCompare(b.propAddress);
-            case"Type":     return d*a.loanType.localeCompare(b.loanType);
-            case"Principal":return d*(a.principal-b.principal);
-            case"Rate":     return d*((a.interestRate||0)-(b.interestRate||0));
-            case"Payoff Bal": return d*(a.bal-b.bal);
-            case"Int Paid":   return d*(a.intEarned-b.intEarned);
-            case"Started":  return d*(a.startDate||"").localeCompare(b.startDate||"");
-            default:        return 0;
-          }
-        });
-        const COLS=[
-          {h:"Lender",   left:true,  sort:true},
-          {h:"Type",     left:true,  sort:true},
-          {h:"Property", left:true,  sort:true},
-          {h:"Principal",left:false, sort:true},
-          {h:"Rate",      left:false, sort:true},
-          {h:"Payoff Bal",left:false, sort:true},
-          {h:"Int Paid",  left:false, sort:true},
-          {h:"Started",  left:false, sort:true},
-        ];
-        return (
-          <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
-            {searchedActive.length===0&&<div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">{search?"No loans match your search.":"No active loans on properties."}</div>}
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-[#F9F9FB] dark:bg-black/20 text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-wider text-[10px] border-b border-black/[0.05] dark:border-white/[0.05]">
-                    {COLS.map(({h,left,sort:canSort})=>{
-                      const isActive=sort.col===h;
-                      return (
-                        <th key={h}
-                          onClick={canSort?()=>toggleSort(h):undefined}
-                          className={`py-3 px-3 ${left?"text-left":"text-right"} ${canSort?"cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-colors":""} ${isActive?"text-slate-700 dark:text-zinc-200":""}`}>
-                          <span className={`inline-flex items-center gap-0.5 ${left?"":"justify-end w-full"}`}>
-                            {h}
-                            {canSort&&(isActive
-                              ? <span className="text-blue-500 ml-0.5">{sort.dir==="asc"?"↑":"↓"}</span>
-                              : <span className="opacity-40 ml-0.5">↕</span>
-                            )}
-                          </span>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
-                  {sortedLoans.map(l=>(
-                    <tr key={l.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
-                      <td className="py-3 px-3 font-bold text-slate-900 dark:text-zinc-100 whitespace-nowrap"><button onClick={()=>openPanel?.({type:'lender',name:l.lenderName})} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(l.lenderName)}</button></td>
-                      <td className="py-3 px-3"><TypeBadge type={l.loanType} sm/></td>
-                      <td className="py-3 px-3 text-slate-500 dark:text-zinc-400 max-w-[130px] truncate">{l.propId?<button onClick={()=>openPanel?.({type:'property',id:l.propId})} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left truncate max-w-full block">{l.propAddress}</button>:<span>{l.propAddress}</span>}</td>
-                      <td className="py-3 px-3 text-right text-slate-700 dark:text-zinc-200 tabular-nums">{h$(l.principal)}</td>
-                      <td className="py-3 px-3 text-right text-slate-500 dark:text-zinc-400 whitespace-nowrap">{hr(l)}</td>
-                      <td className="py-3 px-3 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{h$(l.bal)}</td>
-                      <td className="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400 tabular-nums">{h$(l.intEarned)}</td>
-                      <td className="py-3 px-3 text-right text-slate-500 dark:text-zinc-400 whitespace-nowrap tabular-nums">{l.startDate||"—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })()}
-
-      {view==="lenders"&&(
+      <div className="flex items-center justify-between mb-5">
         <div>
-          {lenders.length>0&&searchedLenders.length>0&&(
-            <div className="flex items-center gap-2 mb-3">
-              <div ref={lenderSortRef} className="relative">
-                <button onClick={()=>setLenderSortOpen(o=>!o)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all border border-slate-200 dark:border-zinc-700">
-                  <span>Sort: {[["name","A–Z"],["high","High → Low"],["low","Low → High"]].find(([v])=>v===lenderSort)?.[1]??lenderSort}</span>
-                  <span className="text-slate-400 dark:text-zinc-500">{lenderSortOpen?"▲":"▼"}</span>
-                </button>
-                {lenderSortOpen&&(
-                  <div className="absolute left-0 top-9 w-40 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-30">
-                    {[["name","A–Z"],["high","High → Low"],["low","Low → High"]].map(([v,l])=>(
-                      <button key={v} onClick={()=>{setLenderSort(v);setLenderSortOpen(false);}}
-                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${lenderSort===v?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-semibold":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          <div className="space-y-3">
-          {searchedLenders.length===0&&<div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">{search?"No lenders match your search.":"No active lenders."}</div>}
-          {[...searchedLenders].sort((a,b)=>{
-            if(lenderSort==="high")return b.totalBal-a.totalBal;
-            if(lenderSort==="low")return a.totalBal-b.totalBal;
-            return a.name.localeCompare(b.name);
-          }).map(ld=>(
-            <div key={ld.name} className="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] dark:hover:shadow-none transition-shadow">
-              <div className="px-5 py-4 flex justify-between items-start">
-                <div>
-                  <button onClick={()=>openPanel?.({type:'lender',name:ld.name})} className="font-bold text-slate-900 dark:text-zinc-100 text-[15px] hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(ld.name)}</button>
-                  <div className="flex gap-1.5 mt-1.5 flex-wrap">{ld.types.map(t=><TypeBadge key={t} type={t} sm/>)}</div>
-                  <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">{ld.loans.length} loan{ld.loans.length!==1?"s":""} · {ld.props.join(" / ")}</div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Lenders</h2>
+          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">{lenders.length} lender{lenders.length!==1?"s":""}</p>
+        </div>
+      </div>
+
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        {[
+          ["Total Principal", h$(totalPrin), "text-slate-900 dark:text-zinc-100"],
+          ["Total Balance", h$(totalBal), "text-blue-600 dark:text-blue-400"],
+          ["Interest Accrued", h$(totalInt), "text-emerald-600 dark:text-emerald-400"],
+        ].map(([label, val, color]) => (
+          <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
+            <div className={`text-xl font-bold tabular-nums ${color}`}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Search + sort */}
+      <div className="flex items-center gap-2 mb-4">
+        <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search lenders or properties…"
+          className="flex-1 px-3 py-2 rounded-xl text-sm bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
+          className="px-3 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
+          <option value="name">A–Z</option>
+          <option value="principal">By Principal</option>
+          <option value="balance">By Balance</option>
+          <option value="loans">By # Loans</option>
+        </select>
+      </div>
+
+      {/* Lender cards */}
+      <div className="space-y-2">
+        {lenders.length === 0 ? (
+          <div className="py-12 text-center text-slate-400 dark:text-zinc-500 text-sm">No lenders yet</div>
+        ) : lenders.map(ld => (
+          <button key={ld.name} onClick={() => navigate({type:'lender', name:ld.name})}
+            className="w-full text-left bg-white dark:bg-[#1C1C1E] rounded-2xl px-5 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:shadow-none dark:hover:bg-[#2C2C2E] transition-all group">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[15px] group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{ld.name}</span>
+                  {ld.types.map(t => <TypeBadge key={t} type={t} sm/>)}
                 </div>
-                <div className="text-right">
-                  <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1">Current Payoff</div>
-                  <div className="font-bold text-blue-700 dark:text-blue-400 text-2xl tabular-nums">{h$(ld.totalBal)}</div>
+                <div className="text-xs text-slate-400 dark:text-zinc-500">
+                  {ld.activeLoans.length} active loan{ld.activeLoans.length!==1?"s":""}
+                  {ld.closedCount > 0 && ` · ${ld.closedCount} closed`}
+                  {ld.props.length > 0 && ` · ${ld.props.slice(0,2).join(", ")}${ld.props.length>2?` +${ld.props.length-2} more`:""}`}
                 </div>
               </div>
-              <div className="grid grid-cols-3 divide-x divide-black/[0.05] dark:divide-white/[0.05] border-t border-black/[0.05] dark:border-white/[0.05] bg-[#F9F9FB] dark:bg-black/20">
-                {[["Principal",h$(ld.totalPrin),"text-slate-800 dark:text-zinc-100"],["Interest",h$(ld.totalInt),"text-emerald-600 dark:text-emerald-400"],["Avg Rate",prv?"∙∙%":ld.avgRate.toFixed(1)+"%","text-slate-800 dark:text-zinc-100"]].map(([l,v,c])=>(
-                  <div key={l} className="px-4 py-3 text-center">
-                    <div className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-widest mb-1">{l}</div>
-                    <div className={`font-bold tabular-nums ${c}`}>{v}</div>
-                  </div>
-                ))}
+              <div className="text-right shrink-0">
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Balance</div>
+                <div className="font-bold text-blue-600 dark:text-blue-400 tabular-nums text-sm">{h$(ld.totalBal)}</div>
               </div>
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-300 dark:text-zinc-600 shrink-0 group-hover:text-blue-400 transition-colors">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/>
+              </svg>
             </div>
-          ))}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── All Loans Page ────────────────────────────────────────────────────────────
+function AllLoansPage({ data }) {
+  const prv = usePrivacy();
+  const navigate = usePanel();
+  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
+  const [filter, setFilter] = usePersistedState("nx-loansFilter", "active");
+  const [search, setSearch] = useState("");
+
+  const allLoans = [
+    ...data.properties.flatMap(p => p.loans.map(l => ({...l, prop:p, propAddress:p.address, propId:p.id}))),
+    ...(data.unassigned||[]).map(l => ({...l, prop:null, propAddress:null, propId:null})),
+  ].sort((a,b) => (b.startDate||"").localeCompare(a.startDate||""));
+
+  const filtered = allLoans.filter(l => {
+    const matchFilter = filter === "all" || (filter === "active" ? !l.endDate : !!l.endDate);
+    const q = search.toLowerCase();
+    const matchSearch = !search || l.lenderName?.toLowerCase().includes(q) || l.propAddress?.toLowerCase().includes(q);
+    return matchFilter && matchSearch;
+  });
+
+  const totalPrin = filtered.filter(l=>!l.endDate).reduce((s,l) => s + (l.principal||0), 0);
+  const totalBal = filtered.filter(l=>!l.endDate).reduce((s,l) => s + calcBalance(l), 0);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">All Loans</h2>
+          <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">
+            {allLoans.filter(l=>!l.endDate).length} active · {allLoans.filter(l=>!!l.endDate).length} closed
+          </p>
+        </div>
+      </div>
+
+      {/* Summary */}
+      {filter !== "closed" && (
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Active Principal</div>
+            <div className="text-xl font-bold tabular-nums text-slate-900 dark:text-zinc-100">{h$(totalPrin)}</div>
+          </div>
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Active Balance</div>
+            <div className="text-xl font-bold tabular-nums text-blue-600 dark:text-blue-400">{h$(totalBal)}</div>
           </div>
         </div>
       )}
+
+      {/* Filters + search */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        {["active","closed","all"].map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${filter===f?"bg-blue-600 text-white":"bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"}`}>
+            {f.charAt(0).toUpperCase()+f.slice(1)}
+          </button>
+        ))}
+        <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search lender or property…"
+          className="ml-auto w-52 px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+      </div>
+
+      {/* Loans table */}
+      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+        {filtered.length === 0 ? (
+          <div className="py-12 text-center text-slate-400 dark:text-zinc-500 text-sm">No loans match this filter</div>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/20">
+                <th className="px-4 pb-2.5 pt-3 text-left font-semibold">Lender</th>
+                <th className="px-3 pb-2.5 pt-3 text-left font-semibold">Property</th>
+                <th className="px-3 pb-2.5 pt-3 text-right font-semibold">Principal</th>
+                <th className="px-3 pb-2.5 pt-3 text-right font-semibold">Balance</th>
+                <th className="px-3 pb-2.5 pt-3 text-right font-semibold">Rate</th>
+                <th className="px-3 pb-2.5 pt-3 text-right font-semibold">Started</th>
+                <th className="px-4 pb-2.5 pt-3 text-right font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
+              {filtered.map(l => {
+                const bal = calcBalance(l);
+                return (
+                  <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer" onClick={() => navigate({type:'loan', loanId:l.id, propId:l.propId})}>
+                    <td className="px-4 py-3">
+                      <button onClick={e=>{e.stopPropagation();navigate({type:'lender',name:l.lenderName});}} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">
+                        {l.lenderName||"Unknown"}
+                      </button>
+                      <TypeBadge type={l.loanType} sm/>
+                    </td>
+                    <td className="px-3 py-3">
+                      {l.prop
+                        ? <button onClick={e=>{e.stopPropagation();navigate({type:'property',id:l.propId});}} className="text-slate-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline text-left max-w-[160px] truncate block">{l.propAddress}</button>
+                        : <span className="text-slate-400 dark:text-zinc-500 italic">Unassigned</span>
+                      }
+                    </td>
+                    <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800 dark:text-zinc-200">{h$(l.principal)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-blue-600 dark:text-blue-400">{h$(bal)}</td>
+                    <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{hr(l)}</td>
+                    <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{l.startDate||"—"}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${l.endDate?"bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400":"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"}`}>
+                        {l.endDate ? "Closed" : "Active"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
@@ -3787,213 +3825,518 @@ function DrawsPage({ data }) {
   );
 }
 
-// ─── Main Tracker ─────────────────────────────────────────────────────────────
-// ─── Detail Panel ─────────────────────────────────────────────────────────────
-function DetailPanel({panel,data,onClose,onOpen}){
-  const prv=usePrivacy();
-  const h$=v=>prv?maskMoney($$(v)):$$(v);
-  const hn=n=>n??"";
-  const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
-  if(!panel)return null;
+// ─── Entity Detail Pages ──────────────────────────────────────────────────────
+function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
+  const prv = usePrivacy();
+  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const hs = v => prv ? maskMoney($$s(v)) : $$s(v);
+  const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
 
-  const CloseBtn=()=>(
-    <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors shrink-0">✕</button>
-  );
-  const StatBox=({label,val,color=""})=>(
-    <div className="bg-slate-50 dark:bg-zinc-800/80 rounded-xl p-3">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">{label}</div>
-      <div className={`font-bold text-sm mt-0.5 ${color||"text-slate-900 dark:text-zinc-100"}`}>{val}</div>
+  const prop = data.properties.find(p => p.id === propId);
+  if (!prop) return (
+    <div className="flex flex-col items-center justify-center py-20 gap-3 px-5">
+      <div className="text-slate-400 dark:text-zinc-500 text-sm">Property not found</div>
+      <button onClick={onBack} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">← Back</button>
     </div>
   );
 
-  let content=null;
+  const active = prop.loans.filter(l => !l.endDate);
+  const closed = prop.loans.filter(l => l.endDate).sort((a,b) => (b.endDate||"").localeCompare(a.endDate||""));
+  const needed = propNeeded(prop, active);
+  const funded = active.reduce((s,l) => s + (l.principal||0) + (l.drawFacility?.committed||0), 0);
+  const shortage = Math.max(0, needed - funded);
+  const cd = prop.closingData;
 
-  if(panel.type==="lender"){
-    const name=panel.name;
-    const allLoans=[
-      ...data.properties.flatMap(p=>p.loans.map(l=>({...l,prop:p}))),
-      ...data.unassigned.map(l=>({...l,prop:null}))
-    ].filter(l=>l.lenderName===name);
-    const active=allLoans.filter(l=>!l.endDate);
-    const hist=allLoans.filter(l=>l.endDate).sort((a,b)=>(b.endDate||"").localeCompare(a.endDate||""));
-    const totPrincipal=active.reduce((s,l)=>s+(l.principal||0),0);
-    const totInterest=active.reduce((s,l)=>s+calcIntEarned(l),0);
-    const totBalance=active.reduce((s,l)=>s+calcBalance(l),0);
-    content=(
-      <div className="flex flex-col h-full">
-        <div className="px-5 pt-5 pb-4 border-b border-slate-100 dark:border-zinc-800 shrink-0">
-          <div className="flex items-start justify-between mb-4"><div><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Lender</div><div className="font-bold text-[18px] text-slate-900 dark:text-zinc-100">{hn(name)}</div></div><CloseBtn/></div>
-          <div className="grid grid-cols-3 gap-2">
-            <StatBox label="Principal" val={h$(totPrincipal)}/>
-            <StatBox label="Interest" val={h$(totInterest)} color="text-emerald-600 dark:text-emerald-400"/>
-            <StatBox label="Balance" val={h$(totBalance)} color="text-blue-600 dark:text-blue-400"/>
+  const SectionHead = ({title, count}) => (
+    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-2">
+      {title}{count != null && <span className="text-slate-300 dark:text-zinc-600">({count})</span>}
+    </div>
+  );
+
+  return (
+    <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
+      {/* Back + header */}
+      <div className="mb-5">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-3">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+          Back
+        </button>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${prop.dateSold ? "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400" : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"}`}>
+                {prop.dateSold ? `Sold ${prop.dateSold}` : "Active"}
+              </span>
+              {prop.isRental && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400">Rental</span>}
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{prop.address || "Unnamed Property"}</h1>
+            {prop.purchaseDate && <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Acquired {prop.purchaseDate}</p>}
           </div>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {active.length>0&&<div className="px-5 py-4">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">Active Loans ({active.length})</div>
-            <div className="space-y-2">
-              {active.map(l=>(
-                <div key={l.id} className="bg-white dark:bg-zinc-800 rounded-xl p-3.5 border border-slate-100 dark:border-zinc-700">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <button onClick={()=>l.prop&&onOpen({type:'property',id:l.prop.id})} className={`font-semibold text-sm text-left ${l.prop?"text-blue-600 dark:text-blue-400 hover:underline":"text-slate-500 dark:text-zinc-400"}`}>{l.prop?.address||"Unassigned"}</button>
-                    <button onClick={()=>onOpen({type:'loan',loanId:l.id,propId:l.prop?.id||null})} className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap">View →</button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <div><span className="text-slate-400 dark:text-zinc-500">Principal </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</span></div>
-                    <div><span className="text-slate-400 dark:text-zinc-500">Balance </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{h$(calcBalance(l))}</span></div>
-                    <div><span className="text-slate-400 dark:text-zinc-500">Rate </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{hr(l)}</span></div>
-                    <div><span className="text-slate-400 dark:text-zinc-500">Days </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{daysBetween(l.startDate,TODAY)}</span></div>
-                    <div><span className="text-slate-400 dark:text-zinc-500">Interest </span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{h$(calcIntEarned(l))}</span></div>
-                    <div><span className="text-slate-400 dark:text-zinc-500">Since </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{l.startDate}</span></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>}
-          {hist.length>0&&<div className="px-5 py-4 border-t border-slate-100 dark:border-zinc-800">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">History ({hist.length})</div>
-            <div className="space-y-0">
-              {hist.map(l=>(
-                <div key={l.id} className="flex items-center justify-between py-2.5 border-b border-slate-50 dark:border-zinc-800 last:border-0 gap-3">
-                  <div className="min-w-0">
-                    <button onClick={()=>l.prop&&onOpen({type:'property',id:l.prop.id})} className={`text-sm font-medium text-left truncate block max-w-full ${l.prop?"text-blue-600 dark:text-blue-400 hover:underline":"text-slate-500 dark:text-zinc-400"}`}>{l.prop?.address||"Unassigned"}</button>
-                    <div className="text-xs text-slate-400 dark:text-zinc-500">{l.startDate} → {l.endDate}</div>
-                  </div>
-                  <div className="text-right shrink-0"><div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</div><div className="text-xs text-slate-400 dark:text-zinc-500">{h$(calcIntEarned(l))} int</div></div>
-                </div>
-              ))}
-            </div>
-          </div>}
-          {active.length===0&&hist.length===0&&<div className="px-5 py-10 text-center text-slate-400 dark:text-zinc-500 text-sm">No loans found</div>}
         </div>
       </div>
-    );
-  }
 
-  else if(panel.type==="property"){
-    const prop=data.properties.find(p=>p.id===panel.id)||(panel.address?data.properties.find(p=>p.address===panel.address):null);
-    if(!prop){content=<div className="flex items-center justify-center h-full gap-3 flex-col"><div className="text-slate-400 dark:text-zinc-500">Property not found</div><CloseBtn/></div>;}
-    else{
-      const active=prop.loans.filter(l=>!l.endDate);
-      const hist=prop.loans.filter(l=>l.endDate).sort((a,b)=>(b.endDate||"").localeCompare(a.endDate||""));
-      const needed=propNeeded(prop,active);
-      const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
-      const shortage=Math.max(0,needed-funded);
-      const cd=prop.closingData;
-      content=(
-        <div className="flex flex-col h-full">
-          <div className="px-5 pt-5 pb-4 border-b border-slate-100 dark:border-zinc-800 shrink-0">
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{prop.dateSold?"Sold Property":"Active Property"}</div><div className="font-bold text-[16px] text-slate-900 dark:text-zinc-100 leading-snug">{prop.address||"Unnamed"}</div>{prop.purchaseDate&&<div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Acquired {prop.purchaseDate}</div>}</div>
-              <CloseBtn/>
+      {/* Stats */}
+      {!prop.dateSold ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          {[
+            ["Purchase Price", h$(prop.purchasePrice||0), ""],
+            ["Rehab Budget", h$(prop.rehabBudget||0), ""],
+            ["Funded", h$(funded), "text-blue-600 dark:text-blue-400"],
+            ["Shortage", h$(shortage), shortage>0?"text-red-500 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"],
+          ].map(([label, val, color]) => (
+            <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
+              <div className={`text-lg font-bold tabular-nums ${color || "text-slate-900 dark:text-zinc-100"}`}>{val}</div>
             </div>
-            {!prop.dateSold?<div className="grid grid-cols-2 gap-2">
-              <StatBox label="Needed" val={h$(needed)}/>
-              <StatBox label="Funded" val={h$(funded)}/>
-              <StatBox label="Shortage" val={h$(shortage)} color={shortage>0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}/>
-              <StatBox label="Purchase" val={h$(prop.purchasePrice||0)}/>
-            </div>:cd?<div className="grid grid-cols-2 gap-2">
-              <StatBox label="Sold" val={prop.dateSold}/>
-              <StatBox label="Profit" val={h$(cd.profit||0)} color={(cd.profit||0)>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}/>
-              <StatBox label="Cash to Close" val={h$(cd.cashToClose||0)}/>
-              <StatBox label="Rehab" val={h$(cd.rehab||0)}/>
-            </div>:null}
+          ))}
+        </div>
+      ) : cd ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          {[
+            ["Cash to Close", h$(cd.cashToClose||0), ""],
+            ["Rehab", h$(cd.rehab||0), ""],
+            ["Money Costs", h$(cd.moneyCosts||0), ""],
+            ["Profit", hs(cd.profit||0), (cd.profit||0)>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"],
+          ].map(([label, val, color]) => (
+            <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
+              <div className={`text-lg font-bold tabular-nums ${color || "text-slate-900 dark:text-zinc-100"}`}>{val}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Active loans */}
+      {active.length > 0 && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
+            <SectionHead title="Active Loans" count={active.length}/>
           </div>
-          <div className="flex-1 overflow-y-auto">
-            {active.length>0&&<div className="px-5 py-4">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">Active Loans ({active.length})</div>
-              <div className="space-y-2">
-                {active.map(l=>(
-                  <div key={l.id} className="bg-white dark:bg-zinc-800 rounded-xl p-3.5 border border-slate-100 dark:border-zinc-700">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <button onClick={()=>onOpen({type:'lender',name:l.lenderName})} className="font-semibold text-sm text-blue-600 dark:text-blue-400 hover:underline text-left">{hn(l.lenderName)||"Unknown"}</button>
-                      <button onClick={()=>onOpen({type:'loan',loanId:l.id,propId:prop.id})} className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap">View →</button>
+          <div className="divide-y divide-slate-50 dark:divide-zinc-800">
+            {active.map(l => {
+              const bal = calcBalance(l);
+              const earned = calcIntEarned(l);
+              const draws = l.drawFacility?.draws || [];
+              const drawn = draws.reduce((s,d) => s + (d.amount||0), 0);
+              return (
+                <div key={l.id} className="px-5 py-4">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button onClick={() => navigate({type:'lender', name:l.lenderName})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-sm text-left">
+                        {l.lenderName || "Unknown Lender"}
+                      </button>
+                      <TypeBadge type={l.loanType} sm/>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                      <div><span className="text-slate-400 dark:text-zinc-500">Principal </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</span></div>
-                      <div><span className="text-slate-400 dark:text-zinc-500">Balance </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{h$(calcBalance(l))}</span></div>
-                      <div><span className="text-slate-400 dark:text-zinc-500">Rate </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{hr(l)}</span></div>
-                      <div><span className="text-slate-400 dark:text-zinc-500">Since </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{l.startDate}</span></div>
-                    </div>
+                    <button onClick={() => navigate({type:'loan', loanId:l.id, propId:prop.id})} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap transition-colors">
+                      View Loan →
+                    </button>
                   </div>
-                ))}
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
+                    {[
+                      ["Principal", h$(l.principal)],
+                      ["Balance", h$(bal)],
+                      ["Interest", h$(earned)],
+                      ["Rate", hr(l)],
+                      ["Since", l.startDate||"—"],
+                      ["Days", String(daysBetween(l.startDate, TODAY))],
+                    ].map(([lbl, val]) => (
+                      <div key={lbl}>
+                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-0.5">{lbl}</div>
+                        <div className="font-semibold text-slate-800 dark:text-zinc-200 tabular-nums">{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {l.drawFacility && (
+                    <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-100 dark:border-blue-900/40">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Draw Facility</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-xs text-center mb-2">
+                        {[["Committed", h$(l.drawFacility.committed||0),"text-blue-700 dark:text-blue-300"],["Drawn",h$(drawn),"text-amber-600 dark:text-amber-400"],["Available",h$(drawRemaining(l)),"text-emerald-600 dark:text-emerald-400"]].map(([lbl,val,c])=>(
+                          <div key={lbl}><div className="text-[9px] text-blue-400 dark:text-blue-500 uppercase mb-0.5">{lbl}</div><div className={`font-bold tabular-nums ${c}`}>{val}</div></div>
+                        ))}
+                      </div>
+                      {draws.length > 0 && (
+                        <div className="space-y-1">
+                          {[...draws].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(d => (
+                            <div key={d.id} className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400">
+                              <span>{d.date}</span><span className="tabular-nums font-medium">{h$(d.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {l.specialTerms && <div className="mt-2 text-xs text-slate-400 dark:text-zinc-500 italic">{l.specialTerms}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Loan history */}
+      {closed.length > 0 && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
+            <SectionHead title="Loan History" count={closed.length}/>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
+                <th className="px-5 pb-2 pt-3 text-left font-semibold">Lender</th>
+                <th className="px-3 pb-2 pt-3 text-right font-semibold">Principal</th>
+                <th className="px-3 pb-2 pt-3 text-right font-semibold">Rate</th>
+                <th className="px-3 pb-2 pt-3 text-right font-semibold">Started</th>
+                <th className="px-5 pb-2 pt-3 text-right font-semibold">Closed</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
+              {closed.map(l => (
+                <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
+                  <td className="px-5 py-3">
+                    <button onClick={() => navigate({type:'lender', name:l.lenderName})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">{l.lenderName||"Unknown"}</button>
+                  </td>
+                  <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</td>
+                  <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{hr(l)}</td>
+                  <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{l.startDate||"—"}</td>
+                  <td className="px-5 py-3 text-right text-slate-500 dark:text-zinc-400">{l.endDate||"—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Closing data lender payoffs */}
+      {cd?.lenderPayoffs?.length > 0 && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
+            <SectionHead title="Payoffs at Close"/>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
+                <th className="px-5 pb-2 pt-3 text-left font-semibold">Lender</th>
+                <th className="px-3 pb-2 pt-3 text-right font-semibold">Principal</th>
+                <th className="px-5 pb-2 pt-3 text-right font-semibold">Wire Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
+              {cd.lenderPayoffs.map((lp,i) => (
+                <tr key={i} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
+                  <td className="px-5 py-3">
+                    <button onClick={() => navigate({type:'lender', name:lp.lenderName})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">{lp.lenderName||"Unknown"}</button>
+                  </td>
+                  <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(lp.principalPayoff||0)}</td>
+                  <td className="px-5 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(lp.wireAmount||0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {prop.loans.length === 0 && (
+        <div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">No loans recorded for this property.</div>
+      )}
+    </div>
+  );
+}
+
+function LenderDetailPage({ name, data, onBack, navigate }) {
+  const prv = usePrivacy();
+  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
+
+  const allLoans = [
+    ...data.properties.flatMap(p => p.loans.map(l => ({...l, prop:p}))),
+    ...(data.unassigned||[]).map(l => ({...l, prop:null})),
+  ].filter(l => l.lenderName === name);
+  const active = allLoans.filter(l => !l.endDate);
+  const hist = allLoans.filter(l => l.endDate).sort((a,b) => (b.endDate||"").localeCompare(a.endDate||""));
+  const totPrin = active.reduce((s,l) => s + (l.principal||0), 0);
+  const totBal = active.reduce((s,l) => s + calcBalance(l), 0);
+  const totInt = active.reduce((s,l) => s + calcIntEarned(l), 0);
+  const totHistPrin = hist.reduce((s,l) => s + (l.principal||0), 0);
+  const totHistInt = hist.reduce((s,l) => s + calcIntEarned(l), 0);
+
+  const account = (data.lenderAccounts||[]).find(a => a.name === name || a.lenderName === name);
+
+  const SectionHead = ({title, count}) => (
+    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-2">
+      {title}{count != null && <span className="text-slate-300 dark:text-zinc-600">({count})</span>}
+    </div>
+  );
+
+  return (
+    <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
+      <div className="mb-5">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-3">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+          Back
+        </button>
+        <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Lender</div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{name || "Unknown"}</h1>
+        <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">
+          {active.length} active loan{active.length!==1?"s":""} · {hist.length} closed
+        </p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        {[
+          ["Active Principal", h$(totPrin), "text-slate-900 dark:text-zinc-100"],
+          ["Balance", h$(totBal), "text-blue-600 dark:text-blue-400"],
+          ["Interest (Active)", h$(totInt), "text-emerald-600 dark:text-emerald-400"],
+          ["All-Time Paid", h$(totHistPrin), "text-violet-600 dark:text-violet-400"],
+        ].map(([label, val, color]) => (
+          <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
+            <div className={`text-lg font-bold tabular-nums ${color}`}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Account info */}
+      {account && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 p-5">
+          <SectionHead title="Account Info"/>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+            {account.email && <div><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-0.5">Email</div><div className="font-medium text-slate-800 dark:text-zinc-200">{account.email}</div></div>}
+            {account.phone && <div><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-0.5">Phone</div><div className="font-medium text-slate-800 dark:text-zinc-200">{account.phone}</div></div>}
+            {account.entity && <div><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-0.5">Entity</div><div className="font-medium text-slate-800 dark:text-zinc-200">{account.entity}</div></div>}
+            {account.notes && <div className="sm:col-span-3"><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-0.5">Notes</div><div className="text-slate-600 dark:text-zinc-300">{account.notes}</div></div>}
+          </div>
+        </div>
+      )}
+
+      {/* Active loans */}
+      {active.length > 0 && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
+            <SectionHead title="Active Loans" count={active.length}/>
+          </div>
+          <div className="divide-y divide-slate-50 dark:divide-zinc-800">
+            {active.map(l => {
+              const bal = calcBalance(l);
+              const earned = calcIntEarned(l);
+              return (
+                <div key={l.id} className="px-5 py-4">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {l.prop
+                        ? <button onClick={() => navigate({type:'property', id:l.prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-sm text-left">{l.prop.address}</button>
+                        : <span className="font-semibold text-slate-500 dark:text-zinc-400 text-sm">Unassigned</span>
+                      }
+                      <TypeBadge type={l.loanType} sm/>
+                    </div>
+                    <button onClick={() => navigate({type:'loan', loanId:l.id, propId:l.prop?.id||null})} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap transition-colors">
+                      View Loan →
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
+                    {[
+                      ["Principal", h$(l.principal)],
+                      ["Balance", h$(bal)],
+                      ["Interest", h$(earned)],
+                      ["Rate", hr(l)],
+                      ["Since", l.startDate||"—"],
+                      ["Days", String(daysBetween(l.startDate, TODAY))],
+                    ].map(([lbl, val]) => (
+                      <div key={lbl}>
+                        <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-0.5">{lbl}</div>
+                        <div className="font-semibold text-slate-800 dark:text-zinc-200 tabular-nums">{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {l.specialTerms && <div className="mt-2 text-xs text-slate-400 dark:text-zinc-500 italic">{l.specialTerms}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Loan history */}
+      {hist.length > 0 && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
+            <div className="flex items-center justify-between">
+              <SectionHead title="Loan History" count={hist.length}/>
+              <div className="text-xs text-slate-400 dark:text-zinc-500 mb-3">
+                {h$(totHistPrin)} principal · {h$(totHistInt)} interest
               </div>
-            </div>}
-            {hist.length>0&&<div className="px-5 py-4 border-t border-slate-100 dark:border-zinc-800">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">Loan History</div>
-              {hist.map(l=>(
-                <div key={l.id} className="flex justify-between items-start py-2.5 border-b border-slate-50 dark:border-zinc-800 last:border-0 gap-3">
-                  <div><button onClick={()=>onOpen({type:'lender',name:l.lenderName})} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline text-left">{hn(l.lenderName)||"Unknown"}</button><div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{l.startDate} → {l.endDate}</div></div>
-                  <div className="text-right shrink-0"><div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</div></div>
-                </div>
-              ))}
-            </div>}
+            </div>
           </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
+                <th className="px-5 pb-2 pt-3 text-left font-semibold">Property</th>
+                <th className="px-3 pb-2 pt-3 text-right font-semibold">Principal</th>
+                <th className="px-3 pb-2 pt-3 text-right font-semibold">Interest</th>
+                <th className="px-3 pb-2 pt-3 text-right font-semibold">Started</th>
+                <th className="px-5 pb-2 pt-3 text-right font-semibold">Closed</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
+              {hist.map(l => (
+                <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
+                  <td className="px-5 py-3">
+                    {l.prop
+                      ? <button onClick={() => navigate({type:'property', id:l.prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">{l.prop.address}</button>
+                      : <span className="text-slate-500 dark:text-zinc-400">Unassigned</span>
+                    }
+                  </td>
+                  <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{h$(calcIntEarned(l))}</td>
+                  <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{l.startDate||"—"}</td>
+                  <td className="px-5 py-3 text-right text-slate-500 dark:text-zinc-400">{l.endDate||"—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      );
-    }
-  }
+      )}
 
-  else if(panel.type==="loan"){
-    let loan=null,prop=null;
-    if(panel.propId){prop=data.properties.find(p=>p.id===panel.propId);loan=prop?.loans.find(l=>l.id===panel.loanId);}
-    if(!loan){loan=data.unassigned.find(l=>l.id===panel.loanId);if(loan)prop=null;}
-    if(!loan){data.properties.forEach(p=>{const l=p.loans.find(l=>l.id===panel.loanId);if(l){loan=l;prop=p;}});}
-    if(!loan){content=<div className="flex items-center justify-center h-full flex-col gap-3"><div className="text-slate-400 dark:text-zinc-500">Loan not found</div><CloseBtn/></div>;}
-    else{
-      const bal=calcBalance(loan);
-      const earned=calcIntEarned(loan);
-      const draws=loan.drawFacility?.draws||[];
-      const drawn=draws.reduce((s,d)=>s+(d.amount||0),0);
-      const rows=[["Type",loan.loanType==="hard"?"Hard Money":"Private Money"],["Payment",fmtRate(loan)],["Started",loan.startDate||"—"],["Status",loan.endDate?`Closed ${loan.endDate}`:"Active"],...(loan.drawFacility?[["Draw Committed",h$(loan.drawFacility?.committed||0)],["Drawn",h$(drawn)],["Remaining",h$(Math.max(0,(loan.drawFacility?.committed||0)-drawn))]]:[]),(loan.specialTerms?[["Terms",loan.specialTerms]]:[]).flat()];
-      content=(
-        <div className="flex flex-col h-full">
-          <div className="px-5 pt-5 pb-4 border-b border-slate-100 dark:border-zinc-800 shrink-0">
-            <div className="flex items-start justify-between gap-3 mb-4"><div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Loan</div><div className="font-bold text-[18px] text-slate-900 dark:text-zinc-100">{hn(loan.lenderName)||"Unknown"}</div>{prop&&<div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{prop.address}</div>}</div><CloseBtn/></div>
-            <div className="grid grid-cols-2 gap-2">
-              <StatBox label="Principal" val={h$(loan.principal)}/>
-              <StatBox label="Balance" val={h$(bal)} color="text-blue-600 dark:text-blue-400"/>
-              <StatBox label="Interest" val={h$(earned)} color="text-emerald-600 dark:text-emerald-400"/>
-              <StatBox label="Rate" val={hr(loan)}/>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-            <div className="bg-white dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700 divide-y divide-slate-50 dark:divide-zinc-700 overflow-hidden">
-              {rows.map(([label,val],i)=>(
-                <div key={label} className={`flex items-center justify-between px-4 py-2.5 ${i%2===0?"bg-slate-50/30 dark:bg-zinc-900/20":""}`}>
-                  <span className="text-xs text-slate-500 dark:text-zinc-400 shrink-0 mr-3">{label}</span>
-                  <span className="text-sm font-semibold text-slate-800 dark:text-zinc-200 text-right">{val}</span>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              {loan.lenderName&&<button onClick={()=>onOpen({type:'lender',name:loan.lenderName})} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">👥 Lender</button>}
-              {prop&&<button onClick={()=>onOpen({type:'property',id:prop.id})} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">🏠 Property</button>}
-            </div>
-            {draws.length>0&&<div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Draw History</div>
-              {[...draws].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(d=>(
-                <div key={d.id} className="flex justify-between py-2 border-b border-slate-100 dark:border-zinc-800 last:border-0 text-sm">
-                  <span className="text-slate-500 dark:text-zinc-400">{d.date}</span>
-                  <span className="font-semibold text-slate-800 dark:text-zinc-200">{h$(d.amount)}</span>
-                </div>
-              ))}
-            </div>}
-          </div>
-        </div>
-      );
-    }
-  }
-
-  return(
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-[2px]" onClick={onClose}/>
-      <div className="relative h-full w-full max-w-sm bg-white dark:bg-[#1C1C1E] shadow-2xl overflow-hidden flex flex-col" onClick={e=>e.stopPropagation()}>
-        {content}
-      </div>
+      {allLoans.length === 0 && (
+        <div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">No loans found for this lender.</div>
+      )}
     </div>
   );
+}
+
+function LoanDetailPage({ loanId, propId, data, onBack, navigate }) {
+  const prv = usePrivacy();
+  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
+
+  let loan = null, prop = null;
+  if (propId) { prop = data.properties.find(p => p.id === propId); loan = prop?.loans.find(l => l.id === loanId); }
+  if (!loan) { const u = (data.unassigned||[]).find(l => l.id === loanId); if(u){loan=u;prop=null;} }
+  if (!loan) { data.properties.forEach(p => { const l=p.loans.find(l=>l.id===loanId); if(l){loan=l;prop=p;} }); }
+
+  if (!loan) return (
+    <div className="flex flex-col items-center justify-center py-20 gap-3 px-5">
+      <div className="text-slate-400 dark:text-zinc-500 text-sm">Loan not found</div>
+      <button onClick={onBack} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">← Back</button>
+    </div>
+  );
+
+  const bal = calcBalance(loan);
+  const earned = calcIntEarned(loan);
+  const draws = loan.drawFacility?.draws || [];
+  const drawn = draws.reduce((s,d) => s + (d.amount||0), 0);
+  const available = Math.max(0, (loan.drawFacility?.committed||0) - drawn);
+
+  return (
+    <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
+      <div className="mb-5">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-3">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+          Back
+        </button>
+        <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Loan</div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{loan.lenderName || "Unknown Lender"}</h1>
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          {prop && (
+            <button onClick={() => navigate({type:'property', id:prop.id})} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">{prop.address}</button>
+          )}
+          {!prop && <span className="text-sm text-slate-400 dark:text-zinc-500">Unassigned</span>}
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${loan.endDate ? "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400" : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"}`}>
+            {loan.endDate ? `Closed ${loan.endDate}` : "Active"}
+          </span>
+          <TypeBadge type={loan.loanType} sm/>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        {[
+          ["Principal", h$(loan.principal), "text-slate-900 dark:text-zinc-100"],
+          ["Balance", h$(bal), "text-blue-600 dark:text-blue-400"],
+          ["Interest Earned", h$(earned), "text-emerald-600 dark:text-emerald-400"],
+          ["Days Active", String(daysBetween(loan.startDate, loan.endDate||TODAY)), ""],
+        ].map(([label, val, color]) => (
+          <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
+            <div className={`text-lg font-bold tabular-nums ${color || "text-slate-900 dark:text-zinc-100"}`}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Detail table */}
+      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+        <div className="divide-y divide-slate-50 dark:divide-zinc-800">
+          {[
+            ["Type", loan.loanType === "hard" ? "Hard Money" : "Private Money"],
+            ["Rate / Terms", hr(loan)],
+            ["Start Date", loan.startDate||"—"],
+            ["End Date", loan.endDate||"Active"],
+            ...(loan.specialTerms ? [["Special Terms", loan.specialTerms]] : []),
+            ...(loan.drawFacility ? [
+              ["Draw Committed", h$(loan.drawFacility.committed||0)],
+              ["Total Drawn", h$(drawn)],
+              ["Draw Available", h$(available)],
+            ] : []),
+          ].map(([label, val], i) => (
+            <div key={label} className={`flex items-center justify-between px-5 py-3 ${i%2===0?"":"bg-slate-50/40 dark:bg-zinc-900/20"}`}>
+              <span className="text-xs text-slate-500 dark:text-zinc-400 shrink-0 mr-4">{label}</span>
+              <span className="text-sm font-semibold text-slate-800 dark:text-zinc-200 text-right">{val}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Navigation buttons */}
+      <div className="flex gap-3 mb-6">
+        {loan.lenderName && (
+          <button onClick={() => navigate({type:'lender', name:loan.lenderName})}
+            className="flex-1 py-3 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.06)] text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
+            View Lender →
+          </button>
+        )}
+        {prop && (
+          <button onClick={() => navigate({type:'property', id:prop.id})}
+            className="flex-1 py-3 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.06)] text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
+            View Property →
+          </button>
+        )}
+      </div>
+
+      {/* Draw history */}
+      {draws.length > 0 && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Draw History ({draws.length})</div>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
+                <th className="px-5 pb-2 pt-3 text-left font-semibold">Date</th>
+                <th className="px-5 pb-2 pt-3 text-right font-semibold">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
+              {[...draws].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(d => (
+                <tr key={d.id}>
+                  <td className="px-5 py-3 text-slate-600 dark:text-zinc-300">{d.date}</td>
+                  <td className="px-5 py-3 text-right tabular-nums font-semibold text-slate-800 dark:text-zinc-200">{h$(d.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EntityDetailView({ entity, data, update, onBack, navigate }) {
+  if (entity.type === 'property') return <PropertyDetailPage propId={entity.id} data={data} update={update} onBack={onBack} navigate={navigate}/>;
+  if (entity.type === 'lender') return <LenderDetailPage name={entity.name} data={data} onBack={onBack} navigate={navigate}/>;
+  if (entity.type === 'loan') return <LoanDetailPage loanId={entity.loanId} propId={entity.propId} data={data} onBack={onBack} navigate={navigate}/>;
+  return null;
 }
 
 const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab"},{id:"Closed",label:"🏁",full:"Closed"},{id:"History",label:"📋",full:"History"},{id:"Draws",label:"🏗️",full:"Draws"},{id:"LenderAccts",label:"🔑",full:"Accounts"}];
@@ -4007,7 +4350,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [fabPending,setFabPending]=useState(null);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [globalSearch,setGlobalSearch]=useState('');
-  const [panel,setPanel]=useState(null);
+  const [detailPage,setDetailPage]=useState(null);
   const [rehabHover,setRehabHover]=useState(false);
   const fabRef=useRef(null);
   const settingsRef=useRef(null);
@@ -4060,6 +4403,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       return next
     })
   }
+  const navigate = entity => setDetailPage(entity);
 
   if(loading) return (
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex items-center justify-center">
@@ -4105,6 +4449,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const IcoClipboard=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9zM4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"/></svg>;
   const IcoGrid=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z" clipRule="evenodd"/></svg>;
   const IcoBar=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>;
+  const IcoList=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd"/></svg>;
 
   // ── Sidebar nav button ──
   const SideBtn=({icon,label,active,onClick,children})=>(
@@ -4118,8 +4463,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
   return (
     <PrivacyContext.Provider value={privacyMode}>
-    <PanelContext.Provider value={setPanel}>
-    {panel&&<DetailPanel panel={panel} data={data} onClose={()=>setPanel(null)} onOpen={setPanel}/>}
+    <PanelContext.Provider value={navigate}>
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex transition-colors duration-300">
 
       {/* ── Left Sidebar ── */}
@@ -4133,17 +4477,18 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
         {/* Nav items */}
         <nav className="flex flex-col gap-0.5 px-2 flex-1">
-          <SideBtn icon={<IcoHome/>} label="Properties" active={tab==="Properties"} onClick={()=>setTab("Properties")}/>
-          <SideBtn icon={<IcoUsers/>} label="Lenders" active={tab==="LenderDash"} onClick={()=>setTab("LenderDash")}/>
+          <SideBtn icon={<IcoHome/>} label="Properties" active={tab==="Properties"&&!detailPage} onClick={()=>{setDetailPage(null);setTab("Properties");}}/>
+          <SideBtn icon={<IcoUsers/>} label="Lenders" active={tab==="LenderDash"&&!detailPage} onClick={()=>{setDetailPage(null);setTab("LenderDash");}}/>
+          <SideBtn icon={<IcoList/>} label="Loans" active={tab==="AllLoans"&&!detailPage} onClick={()=>{setDetailPage(null);setTab("AllLoans");}}/>
 
           {/* Renovation group — clicking parent does nothing, hover reveals submenu */}
           <div className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
-            <SideBtn icon={<IcoHardHat/>} label="Renovation" active={["RehabPriority","Draws","PropDash"].includes(tab)} onClick={()=>{}}/>
+            <SideBtn icon={<IcoHardHat/>} label="Renovation" active={["RehabPriority","Draws","PropDash"].includes(tab)&&!detailPage} onClick={()=>{}}/>
             {rehabHover&&(
               <div className="absolute left-full top-0 ml-2 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
                 {[{id:"RehabPriority",ico:<IcoClipboard/>,l:"Rehab Priority"},{id:"Draws",ico:<IcoGrid/>,l:"Draw Tracker"},{id:"PropDash",ico:<IcoBar/>,l:"Dashboard"}].map(({id,ico,l})=>(
-                  <button key={id} onClick={()=>{setTab(id);setRehabHover(false);}}
-                    className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+                  <button key={id} onClick={()=>{setDetailPage(null);setTab(id);setRehabHover(false);}}
+                    className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id&&!detailPage?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
                     <span className="text-slate-400 dark:text-zinc-500 shrink-0">{ico}</span>{l}
                   </button>
                 ))}
@@ -4152,7 +4497,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           </div>
 
           {/* Records = Closed + History */}
-          <SideBtn icon={<IcoDocument/>} label="Records" active={["Closed","History"].includes(tab)} onClick={()=>setTab(["Closed","History"].includes(tab)?tab:"Closed")}/>
+          <SideBtn icon={<IcoDocument/>} label="Records" active={["Closed","History"].includes(tab)&&!detailPage} onClick={()=>{setDetailPage(null);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
         </nav>
 
         {/* Bottom — Settings */}
@@ -4250,27 +4595,32 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         </div>
 
         {/* Page content */}
-        <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
-          {/* Records sub-nav */}
-          {["Closed","History"].includes(tab)&&(
-            <div className="flex mb-4 bg-white dark:bg-[#1C1C1E] rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-zinc-800 self-start w-fit">
-              {[["Closed","Closed Deals"],["History","History"]].map(([id,l])=>(
-                <button key={id} onClick={()=>setTab(id)}
-                  className={`px-4 py-2 text-sm font-semibold transition-all ${tab===id?"bg-blue-600 text-white":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"}`}>
-                  {l}
-                </button>
-              ))}
-            </div>
-          )}
-          {tab==="Properties"    &&<PropertiesPage data={data} update={update} pendingAction={fabPending} onClearPendingAction={()=>setFabPending(null)}/>}
-          {tab==="LenderDash"   &&<LenderDashboard data={data}/>}
-          {tab==="PropDash"     &&<PropertyDashboard data={data}/>}
-          {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
-          {tab==="Closed"       &&<ClosedDealsPage data={data} update={update}/>}
-          {tab==="History"      &&<HistoryPage data={data}/>}
-          {tab==="Draws"        &&<DrawsPage data={data}/>}
-          {tab==="LenderAccts"  &&<ManageLendersPage data={data}/>}
-        </div>
+        {detailPage ? (
+          <EntityDetailView entity={detailPage} data={data} update={update} onBack={()=>setDetailPage(null)} navigate={navigate}/>
+        ) : (
+          <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
+            {/* Records sub-nav */}
+            {["Closed","History"].includes(tab)&&(
+              <div className="flex mb-4 bg-white dark:bg-[#1C1C1E] rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-zinc-800 self-start w-fit">
+                {[["Closed","Closed Deals"],["History","History"]].map(([id,l])=>(
+                  <button key={id} onClick={()=>setTab(id)}
+                    className={`px-4 py-2 text-sm font-semibold transition-all ${tab===id?"bg-blue-600 text-white":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
+            {tab==="Properties"    &&<PropertiesPage data={data} update={update} pendingAction={fabPending} onClearPendingAction={()=>setFabPending(null)}/>}
+            {tab==="LenderDash"   &&<LenderDashboard data={data}/>}
+            {tab==="AllLoans"     &&<AllLoansPage data={data}/>}
+            {tab==="PropDash"     &&<PropertyDashboard data={data}/>}
+            {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
+            {tab==="Closed"       &&<ClosedDealsPage data={data} update={update}/>}
+            {tab==="History"      &&<HistoryPage data={data}/>}
+            {tab==="Draws"        &&<DrawsPage data={data}/>}
+            {tab==="LenderAccts"  &&<ManageLendersPage data={data}/>}
+          </div>
+        )}
       </div>
     </div>
     </PanelContext.Provider>
