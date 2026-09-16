@@ -81,6 +81,9 @@ const fmtRate = (l) => {
 // ─── Privacy context ──────────────────────────────────────────────────────────
 const PrivacyContext = createContext(false);
 const usePrivacy = () => useContext(PrivacyContext);
+// ─── Panel context (entity detail slide-in) ───────────────────────────────────
+const PanelContext = createContext(null);
+const usePanel = () => useContext(PanelContext);
 // Replace digits with ∙ (integer) or · (decimal), strip commas, keep K/M suffix
 const maskMoney = s => s.replace(/[\d,]+(\.\d+)?([KM])?/g, (m, dec, sfx) => {
   const intPart = m.slice(0, m.length - (dec||'').length - (sfx||'').length);
@@ -1458,6 +1461,7 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
 // ─── Properties Page ──────────────────────────────────────────────────────────
 function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const prv=usePrivacy();
+  const openPanel=usePanel();
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hn=n=>n??"";
@@ -1856,7 +1860,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 min-w-0 mr-3">
                     {propSortMode==="rehabPriority"&&<span className={`text-[11px] font-bold w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${visIdx===0?"text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20":visIdx===1?"text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20":visIdx===2?"text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20":"text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800"}`}>#{visIdx+1}</span>}
-                    <span className="font-semibold text-slate-900 dark:text-zinc-100 truncate">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</span>
+                    <button onClick={e=>{e.stopPropagation();openPanel?.({type:'property',id:prop.id});}} className="font-semibold text-slate-900 dark:text-zinc-100 truncate hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</button>
                   </div>
                   <div className="shrink-0 flex items-center gap-1.5">
                     {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 text-xs font-semibold">Sold</span>}
@@ -1931,7 +1935,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                           <div className="flex items-start gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                                <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px]">{hn(loan.lenderName)}</span>
+                                <button onClick={()=>openPanel?.({type:'lender',name:loan.lenderName})} className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px] hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors">{hn(loan.lenderName)}</button>
                                 <TypeBadge type={loan.loanType} sm/>
                                 {loan.endDate&&<Chip color="gray">Closed {loan.endDate}</Chip>}
                               </div>
@@ -1986,6 +1990,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                               )}
                             </div>
                             <div className="flex gap-1 shrink-0 items-center">
+                              <button onClick={()=>openPanel?.({type:'loan',loanId:loan.id,propId:prop.id})} className="px-2 py-1 text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-200 dark:hover:border-blue-800 rounded-lg transition-all" title="View Loan">View →</button>
                               <button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-violet-500 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-all text-base" title="Move">⇄</button>
                               <button onClick={()=>setModal({type:"editLoan",propId:prop.id,loan})} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit">✏️</button>
                               {!loan.endDate&&<button onClick={()=>setModal({type:"closeLoan",propId:prop.id,loan})} className="px-2 py-1 text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-orange-600 dark:hover:text-orange-400 bg-slate-50 dark:bg-zinc-800 hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-slate-200 dark:border-zinc-700 hover:border-orange-200 dark:hover:border-orange-800 rounded-lg transition-all" title="Close Loan">Close Loan</button>}
@@ -2035,6 +2040,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 // ─── Lender Dashboard ─────────────────────────────────────────────────────────
 function LenderDashboard({ data }) {
   const prv=usePrivacy();
+  const openPanel=usePanel();
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hn=n=>n??"";
@@ -2053,9 +2059,9 @@ function LenderDashboard({ data }) {
   const toggleSort = col => setSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const allActive=[
     ...data.properties.flatMap(prop=>
-      prop.loans.filter(l=>!l.endDate).map(l=>({...l,propAddress:prop.address,bal:calcBalance(l),intEarned:calcIntEarned(l)}))
+      prop.loans.filter(l=>!l.endDate).map(l=>({...l,propAddress:prop.address,propId:prop.id,bal:calcBalance(l),intEarned:calcIntEarned(l)}))
     ),
-    ...data.unassigned.map(u=>{const p=u.principal||u.amount||0;const l={...u,principal:p};return{...l,propAddress:"Unassigned",bal:calcBalance(l),intEarned:calcIntEarned(l)};}),
+    ...data.unassigned.map(u=>{const p=u.principal||u.amount||0;const l={...u,principal:p};return{...l,propAddress:"Unassigned",propId:null,bal:calcBalance(l),intEarned:calcIntEarned(l)};}),
   ].sort((a,b)=>a.lenderName.localeCompare(b.lenderName));
 
   const byLender={};
@@ -2161,9 +2167,9 @@ function LenderDashboard({ data }) {
                 <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
                   {sortedLoans.map(l=>(
                     <tr key={l.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
-                      <td className="py-3 px-3 font-bold text-slate-900 dark:text-zinc-100 whitespace-nowrap">{hn(l.lenderName)}</td>
+                      <td className="py-3 px-3 font-bold text-slate-900 dark:text-zinc-100 whitespace-nowrap"><button onClick={()=>openPanel?.({type:'lender',name:l.lenderName})} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(l.lenderName)}</button></td>
                       <td className="py-3 px-3"><TypeBadge type={l.loanType} sm/></td>
-                      <td className="py-3 px-3 text-slate-500 dark:text-zinc-400 max-w-[130px] truncate">{l.propAddress}</td>
+                      <td className="py-3 px-3 text-slate-500 dark:text-zinc-400 max-w-[130px] truncate">{l.propId?<button onClick={()=>openPanel?.({type:'property',id:l.propId})} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left truncate max-w-full block">{l.propAddress}</button>:<span>{l.propAddress}</span>}</td>
                       <td className="py-3 px-3 text-right text-slate-700 dark:text-zinc-200 tabular-nums">{h$(l.principal)}</td>
                       <td className="py-3 px-3 text-right text-slate-500 dark:text-zinc-400 whitespace-nowrap">{hr(l)}</td>
                       <td className="py-3 px-3 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{h$(l.bal)}</td>
@@ -2211,7 +2217,7 @@ function LenderDashboard({ data }) {
             <div key={ld.name} className="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] dark:hover:shadow-none transition-shadow">
               <div className="px-5 py-4 flex justify-between items-start">
                 <div>
-                  <div className="font-bold text-slate-900 dark:text-zinc-100 text-[15px]">{hn(ld.name)}</div>
+                  <button onClick={()=>openPanel?.({type:'lender',name:ld.name})} className="font-bold text-slate-900 dark:text-zinc-100 text-[15px] hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(ld.name)}</button>
                   <div className="flex gap-1.5 mt-1.5 flex-wrap">{ld.types.map(t=><TypeBadge key={t} type={t} sm/>)}</div>
                   <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">{ld.loans.length} loan{ld.loans.length!==1?"s":""} · {ld.props.join(" / ")}</div>
                 </div>
@@ -2777,6 +2783,7 @@ function ClosedDealsPage({ data, update }) {
 // ─── History ──────────────────────────────────────────────────────────────────
 function HistoryPage({ data }) {
   const prv=usePrivacy();
+  const openPanel=usePanel();
   const h$=v=>prv?maskMoney($$(v)):$$(v);
   const hs=v=>prv?maskMoney($$s(v)):$$s(v);
   const hn=n=>n??"";
@@ -2788,7 +2795,7 @@ function HistoryPage({ data }) {
   const raw=[];
   data.properties.forEach(prop=>{
     prop.loans.forEach(loan=>{
-      raw.push({date:loan.startDate,sx:"b",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype:"start",amount:loan.principal||0,principal:loan.principal||0,property:prop.address,rate:loan.interestRate||0,loanId:loan.id});
+      raw.push({date:loan.startDate,sx:"b",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype:"start",amount:loan.principal||0,principal:loan.principal||0,property:prop.address,propId:prop.id,rate:loan.interestRate||0,loanId:loan.id});
       const end=loan.endDate||prop.dateSold;
       if(end){
         const finBal=calcBalance(loan,end);
@@ -2798,7 +2805,7 @@ function HistoryPage({ data }) {
         const etype=isRoll?"rolled":(prop.dateSold&&!loan.endDate?"sold":"closed");
         // waiveInterest: interest forgiven, principal unchanged — show principal only as amount
         const dispAmt=disp?.type==="waiveInterest"?loan.principal:finBal;
-        raw.push({date:end,sx:"a",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype,disposition:disp?.type||null,amount:dispAmt,principal:loan.principal||0,interest:finBal-(loan.principal||0),property:prop.address,rate:loan.interestRate||0,loanId:loan.id});
+        raw.push({date:end,sx:"a",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype,disposition:disp?.type||null,amount:dispAmt,principal:loan.principal||0,interest:finBal-(loan.principal||0),property:prop.address,propId:prop.id,rate:loan.interestRate||0,loanId:loan.id});
       }
     });
     if(prop.dateSold&&prop.closingData){
@@ -2860,7 +2867,7 @@ function HistoryPage({ data }) {
       const isRoll=disp&&rollingTypes.includes(disp.type);
       const finBal=calcBalance(loan,endDate);
       closedLoans.push({
-        id:loan.id,lenderName:loan.lenderName,property:prop.address,loanType:loan.loanType,
+        id:loan.id,lenderName:loan.lenderName,property:prop.address,propId:prop.id,loanType:loan.loanType,
         principal:loan.principal||0,rate:loan.interestRate||0,interestType:loan.interestType||"percentage",
         startDate:loan.startDate||"",endDate,
         days:daysBetween(loan.startDate,endDate),
@@ -2947,12 +2954,12 @@ function HistoryPage({ data }) {
                     <div key={l.id} className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto] gap-x-3 px-5 py-3.5 items-center hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-semibold text-slate-900 dark:text-zinc-100 text-sm">{hn(l.lenderName)}</span>
+                          <button onClick={()=>openPanel?.({type:'lender',name:l.lenderName})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(l.lenderName)}</button>
                           <TypeBadge type={l.loanType} sm/>
                         </div>
                         <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{rateLabel}</div>
                       </div>
-                      <div className="text-sm text-slate-600 dark:text-zinc-300 truncate">{l.property}</div>
+                      <div className="text-sm text-slate-600 dark:text-zinc-300 truncate"><button onClick={()=>openPanel?.({type:'property',id:l.propId})} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left truncate max-w-full block">{l.property}</button></div>
                       <div className="text-right">
                         <div className="text-xs font-mono text-slate-500 dark:text-zinc-400">{l.startDate}</div>
                         <div className="text-[10px] text-slate-300 dark:text-zinc-600">↓</div>
@@ -3002,7 +3009,7 @@ function HistoryPage({ data }) {
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-lg">🏡</span>
                   <div>
-                    <div className="font-bold text-blue-900 dark:text-blue-100">Sale Closed — {ev.property}</div>
+                    <div className="font-bold text-blue-900 dark:text-blue-100">Sale Closed — <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="hover:underline text-left">{ev.property}</button></div>
                     <div className="text-xs text-blue-500 dark:text-blue-400">{ev.date} · For Bookkeepers</div>
                   </div>
                   <div className="ml-auto text-right">
@@ -3067,8 +3074,8 @@ function HistoryPage({ data }) {
                       <TypeBadge type={ev.loanType} sm/>
                       {roll&&<span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 rounded-full px-2 py-0.5">Rollover</span>}
                     </div>
-                    <div className="font-bold text-slate-900 dark:text-zinc-100">{hn(ev.lender)}</div>
-                    <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{ev.property} · {rateLabel}</div>
+                    <button onClick={()=>ev.lender&&openPanel?.({type:'lender',name:ev.lender})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(ev.lender)}</button>
+                    <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5"><button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className={`${ev.propId?"hover:text-blue-600 dark:hover:text-blue-400 transition-colors":""} text-left`}>{ev.property}</button> · {rateLabel}</div>
                     {ev.etype!=="start"&&(ev.interest||0)>0.01&&(
                       ev.disposition==="waiveInterest"?(
                         <div className="text-xs text-amber-500 dark:text-amber-400 mt-0.5 tabular-nums">{h$(ev.interest)} interest waived</div>
@@ -3674,6 +3681,214 @@ function DrawsPage({ data }) {
 }
 
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
+// ─── Detail Panel ─────────────────────────────────────────────────────────────
+function DetailPanel({panel,data,onClose,onOpen}){
+  const prv=usePrivacy();
+  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const hn=n=>n??"";
+  const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
+  if(!panel)return null;
+
+  const CloseBtn=()=>(
+    <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors shrink-0">✕</button>
+  );
+  const StatBox=({label,val,color=""})=>(
+    <div className="bg-slate-50 dark:bg-zinc-800/80 rounded-xl p-3">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">{label}</div>
+      <div className={`font-bold text-sm mt-0.5 ${color||"text-slate-900 dark:text-zinc-100"}`}>{val}</div>
+    </div>
+  );
+
+  let content=null;
+
+  if(panel.type==="lender"){
+    const name=panel.name;
+    const allLoans=[
+      ...data.properties.flatMap(p=>p.loans.map(l=>({...l,prop:p}))),
+      ...data.unassigned.map(l=>({...l,prop:null}))
+    ].filter(l=>l.lenderName===name);
+    const active=allLoans.filter(l=>!l.endDate);
+    const hist=allLoans.filter(l=>l.endDate).sort((a,b)=>(b.endDate||"").localeCompare(a.endDate||""));
+    const totPrincipal=active.reduce((s,l)=>s+(l.principal||0),0);
+    const totInterest=active.reduce((s,l)=>s+calcIntEarned(l),0);
+    const totBalance=active.reduce((s,l)=>s+calcBalance(l),0);
+    content=(
+      <div className="flex flex-col h-full">
+        <div className="px-5 pt-5 pb-4 border-b border-slate-100 dark:border-zinc-800 shrink-0">
+          <div className="flex items-start justify-between mb-4"><div><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Lender</div><div className="font-bold text-[18px] text-slate-900 dark:text-zinc-100">{hn(name)}</div></div><CloseBtn/></div>
+          <div className="grid grid-cols-3 gap-2">
+            <StatBox label="Principal" val={h$(totPrincipal)}/>
+            <StatBox label="Interest" val={h$(totInterest)} color="text-emerald-600 dark:text-emerald-400"/>
+            <StatBox label="Balance" val={h$(totBalance)} color="text-blue-600 dark:text-blue-400"/>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {active.length>0&&<div className="px-5 py-4">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">Active Loans ({active.length})</div>
+            <div className="space-y-2">
+              {active.map(l=>(
+                <div key={l.id} className="bg-white dark:bg-zinc-800 rounded-xl p-3.5 border border-slate-100 dark:border-zinc-700">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <button onClick={()=>l.prop&&onOpen({type:'property',id:l.prop.id})} className={`font-semibold text-sm text-left ${l.prop?"text-blue-600 dark:text-blue-400 hover:underline":"text-slate-500 dark:text-zinc-400"}`}>{l.prop?.address||"Unassigned"}</button>
+                    <button onClick={()=>onOpen({type:'loan',loanId:l.id,propId:l.prop?.id||null})} className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap">View →</button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    <div><span className="text-slate-400 dark:text-zinc-500">Principal </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</span></div>
+                    <div><span className="text-slate-400 dark:text-zinc-500">Balance </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{h$(calcBalance(l))}</span></div>
+                    <div><span className="text-slate-400 dark:text-zinc-500">Rate </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{hr(l)}</span></div>
+                    <div><span className="text-slate-400 dark:text-zinc-500">Days </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{daysBetween(l.startDate,TODAY)}</span></div>
+                    <div><span className="text-slate-400 dark:text-zinc-500">Interest </span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{h$(calcIntEarned(l))}</span></div>
+                    <div><span className="text-slate-400 dark:text-zinc-500">Since </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{l.startDate}</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>}
+          {hist.length>0&&<div className="px-5 py-4 border-t border-slate-100 dark:border-zinc-800">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">History ({hist.length})</div>
+            <div className="space-y-0">
+              {hist.map(l=>(
+                <div key={l.id} className="flex items-center justify-between py-2.5 border-b border-slate-50 dark:border-zinc-800 last:border-0 gap-3">
+                  <div className="min-w-0">
+                    <button onClick={()=>l.prop&&onOpen({type:'property',id:l.prop.id})} className={`text-sm font-medium text-left truncate block max-w-full ${l.prop?"text-blue-600 dark:text-blue-400 hover:underline":"text-slate-500 dark:text-zinc-400"}`}>{l.prop?.address||"Unassigned"}</button>
+                    <div className="text-xs text-slate-400 dark:text-zinc-500">{l.startDate} → {l.endDate}</div>
+                  </div>
+                  <div className="text-right shrink-0"><div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</div><div className="text-xs text-slate-400 dark:text-zinc-500">{h$(calcIntEarned(l))} int</div></div>
+                </div>
+              ))}
+            </div>
+          </div>}
+          {active.length===0&&hist.length===0&&<div className="px-5 py-10 text-center text-slate-400 dark:text-zinc-500 text-sm">No loans found</div>}
+        </div>
+      </div>
+    );
+  }
+
+  else if(panel.type==="property"){
+    const prop=data.properties.find(p=>p.id===panel.id)||(panel.address?data.properties.find(p=>p.address===panel.address):null);
+    if(!prop){content=<div className="flex items-center justify-center h-full gap-3 flex-col"><div className="text-slate-400 dark:text-zinc-500">Property not found</div><CloseBtn/></div>;}
+    else{
+      const active=prop.loans.filter(l=>!l.endDate);
+      const hist=prop.loans.filter(l=>l.endDate).sort((a,b)=>(b.endDate||"").localeCompare(a.endDate||""));
+      const needed=propNeeded(prop,active);
+      const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+      const shortage=Math.max(0,needed-funded);
+      const cd=prop.closingData;
+      content=(
+        <div className="flex flex-col h-full">
+          <div className="px-5 pt-5 pb-4 border-b border-slate-100 dark:border-zinc-800 shrink-0">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{prop.dateSold?"Sold Property":"Active Property"}</div><div className="font-bold text-[16px] text-slate-900 dark:text-zinc-100 leading-snug">{prop.address||"Unnamed"}</div>{prop.purchaseDate&&<div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Acquired {prop.purchaseDate}</div>}</div>
+              <CloseBtn/>
+            </div>
+            {!prop.dateSold?<div className="grid grid-cols-2 gap-2">
+              <StatBox label="Needed" val={h$(needed)}/>
+              <StatBox label="Funded" val={h$(funded)}/>
+              <StatBox label="Shortage" val={h$(shortage)} color={shortage>0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}/>
+              <StatBox label="Purchase" val={h$(prop.purchasePrice||0)}/>
+            </div>:cd?<div className="grid grid-cols-2 gap-2">
+              <StatBox label="Sold" val={prop.dateSold}/>
+              <StatBox label="Profit" val={h$(cd.profit||0)} color={(cd.profit||0)>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}/>
+              <StatBox label="Cash to Close" val={h$(cd.cashToClose||0)}/>
+              <StatBox label="Rehab" val={h$(cd.rehab||0)}/>
+            </div>:null}
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {active.length>0&&<div className="px-5 py-4">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">Active Loans ({active.length})</div>
+              <div className="space-y-2">
+                {active.map(l=>(
+                  <div key={l.id} className="bg-white dark:bg-zinc-800 rounded-xl p-3.5 border border-slate-100 dark:border-zinc-700">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <button onClick={()=>onOpen({type:'lender',name:l.lenderName})} className="font-semibold text-sm text-blue-600 dark:text-blue-400 hover:underline text-left">{hn(l.lenderName)||"Unknown"}</button>
+                      <button onClick={()=>onOpen({type:'loan',loanId:l.id,propId:prop.id})} className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap">View →</button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                      <div><span className="text-slate-400 dark:text-zinc-500">Principal </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</span></div>
+                      <div><span className="text-slate-400 dark:text-zinc-500">Balance </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{h$(calcBalance(l))}</span></div>
+                      <div><span className="text-slate-400 dark:text-zinc-500">Rate </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{hr(l)}</span></div>
+                      <div><span className="text-slate-400 dark:text-zinc-500">Since </span><span className="font-semibold text-slate-700 dark:text-zinc-200">{l.startDate}</span></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>}
+            {hist.length>0&&<div className="px-5 py-4 border-t border-slate-100 dark:border-zinc-800">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">Loan History</div>
+              {hist.map(l=>(
+                <div key={l.id} className="flex justify-between items-start py-2.5 border-b border-slate-50 dark:border-zinc-800 last:border-0 gap-3">
+                  <div><button onClick={()=>onOpen({type:'lender',name:l.lenderName})} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline text-left">{hn(l.lenderName)||"Unknown"}</button><div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{l.startDate} → {l.endDate}</div></div>
+                  <div className="text-right shrink-0"><div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</div></div>
+                </div>
+              ))}
+            </div>}
+          </div>
+        </div>
+      );
+    }
+  }
+
+  else if(panel.type==="loan"){
+    let loan=null,prop=null;
+    if(panel.propId){prop=data.properties.find(p=>p.id===panel.propId);loan=prop?.loans.find(l=>l.id===panel.loanId);}
+    if(!loan){loan=data.unassigned.find(l=>l.id===panel.loanId);if(loan)prop=null;}
+    if(!loan){data.properties.forEach(p=>{const l=p.loans.find(l=>l.id===panel.loanId);if(l){loan=l;prop=p;}});}
+    if(!loan){content=<div className="flex items-center justify-center h-full flex-col gap-3"><div className="text-slate-400 dark:text-zinc-500">Loan not found</div><CloseBtn/></div>;}
+    else{
+      const bal=calcBalance(loan);
+      const earned=calcIntEarned(loan);
+      const draws=loan.drawFacility?.draws||[];
+      const drawn=draws.reduce((s,d)=>s+(d.amount||0),0);
+      const rows=[["Type",loan.loanType==="hard"?"Hard Money":"Private Money"],["Payment",fmtRate(loan)],["Started",loan.startDate||"—"],["Status",loan.endDate?`Closed ${loan.endDate}`:"Active"],...(loan.drawFacility?[["Draw Committed",h$(loan.drawFacility?.committed||0)],["Drawn",h$(drawn)],["Remaining",h$(Math.max(0,(loan.drawFacility?.committed||0)-drawn))]]:[]),(loan.specialTerms?[["Terms",loan.specialTerms]]:[]).flat()];
+      content=(
+        <div className="flex flex-col h-full">
+          <div className="px-5 pt-5 pb-4 border-b border-slate-100 dark:border-zinc-800 shrink-0">
+            <div className="flex items-start justify-between gap-3 mb-4"><div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Loan</div><div className="font-bold text-[18px] text-slate-900 dark:text-zinc-100">{hn(loan.lenderName)||"Unknown"}</div>{prop&&<div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{prop.address}</div>}</div><CloseBtn/></div>
+            <div className="grid grid-cols-2 gap-2">
+              <StatBox label="Principal" val={h$(loan.principal)}/>
+              <StatBox label="Balance" val={h$(bal)} color="text-blue-600 dark:text-blue-400"/>
+              <StatBox label="Interest" val={h$(earned)} color="text-emerald-600 dark:text-emerald-400"/>
+              <StatBox label="Rate" val={hr(loan)}/>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            <div className="bg-white dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700 divide-y divide-slate-50 dark:divide-zinc-700 overflow-hidden">
+              {rows.map(([label,val],i)=>(
+                <div key={label} className={`flex items-center justify-between px-4 py-2.5 ${i%2===0?"bg-slate-50/30 dark:bg-zinc-900/20":""}`}>
+                  <span className="text-xs text-slate-500 dark:text-zinc-400 shrink-0 mr-3">{label}</span>
+                  <span className="text-sm font-semibold text-slate-800 dark:text-zinc-200 text-right">{val}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              {loan.lenderName&&<button onClick={()=>onOpen({type:'lender',name:loan.lenderName})} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">👥 Lender</button>}
+              {prop&&<button onClick={()=>onOpen({type:'property',id:prop.id})} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">🏠 Property</button>}
+            </div>
+            {draws.length>0&&<div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Draw History</div>
+              {[...draws].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(d=>(
+                <div key={d.id} className="flex justify-between py-2 border-b border-slate-100 dark:border-zinc-800 last:border-0 text-sm">
+                  <span className="text-slate-500 dark:text-zinc-400">{d.date}</span>
+                  <span className="font-semibold text-slate-800 dark:text-zinc-200">{h$(d.amount)}</span>
+                </div>
+              ))}
+            </div>}
+          </div>
+        </div>
+      );
+    }
+  }
+
+  return(
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-[2px]" onClick={onClose}/>
+      <div className="relative h-full w-full max-w-sm bg-white dark:bg-[#1C1C1E] shadow-2xl overflow-hidden flex flex-col" onClick={e=>e.stopPropagation()}>
+        {content}
+      </div>
+    </div>
+  );
+}
+
 const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab"},{id:"Closed",label:"🏁",full:"Closed"},{id:"History",label:"📋",full:"History"},{id:"Draws",label:"🏗️",full:"Draws"},{id:"LenderAccts",label:"🔑",full:"Accounts"}];
 
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
@@ -3685,6 +3900,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [fabPending,setFabPending]=useState(null);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [globalSearch,setGlobalSearch]=useState('');
+  const [panel,setPanel]=useState(null);
   const [rehabHover,setRehabHover]=useState(false);
   const fabRef=useRef(null);
   const settingsRef=useRef(null);
@@ -3785,6 +4001,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
   return (
     <PrivacyContext.Provider value={privacyMode}>
+    <PanelContext.Provider value={setPanel}>
+    {panel&&<DetailPanel panel={panel} data={data} onClose={()=>setPanel(null)} onOpen={setPanel}/>}
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex transition-colors duration-300">
 
       {/* ── Left Sidebar ── */}
@@ -3936,6 +4154,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         </div>
       </div>
     </div>
+    </PanelContext.Provider>
     </PrivacyContext.Provider>
   );
 }
