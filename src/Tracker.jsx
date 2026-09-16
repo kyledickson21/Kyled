@@ -4565,14 +4565,14 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       <div className="ml-14 flex-1 flex flex-col min-h-screen">
         {/* Top bar */}
         <div className="sticky top-0 z-30 bg-[#F2F2F7]/90 dark:bg-black/80 backdrop-blur-xl border-b border-black/[0.04] dark:border-white/[0.04]">
-          <div className="px-5 py-2 flex items-center gap-2.5 w-full">
+          <div className="px-4 py-1.5 flex items-center gap-2.5 w-full">
             {/* Global search */}
-            <div ref={globalSearchRef} className="relative flex-1">
+            <div ref={globalSearchRef} className="relative flex-1 max-w-sm">
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 text-sm pointer-events-none">🔍</span>
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-zinc-500 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"/></svg>
                 <input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)}
                   placeholder="Search properties, lenders…"
-                  className="w-full pl-8 pr-3 py-2 rounded-xl text-sm bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 border-0"/>
+                  className="w-full pl-8 pr-3 py-1.5 rounded-full text-sm bg-black/[0.06] dark:bg-white/[0.08] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 border-0"/>
               </div>
               {globalSearch.length>1&&(
                 <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
@@ -4611,8 +4611,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             {/* Actions button */}
             <div ref={fabRef} className="relative shrink-0">
               <button onClick={()=>setFabOpen(o=>!o)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm shadow-blue-500/20 ${fabOpen?"bg-blue-700 text-white":"bg-blue-600 hover:bg-blue-700 text-white"}`}>
-                <span className={`text-base font-light leading-none transition-transform duration-150 inline-block ${fabOpen?"rotate-45":""}`}>+</span>
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-slate-300 dark:border-zinc-600 text-slate-600 dark:text-zinc-300 hover:border-blue-500 hover:text-blue-600 dark:hover:border-blue-400 dark:hover:text-blue-400"}`}>
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
                 <span>Actions</span>
               </button>
               {fabOpen&&(
