@@ -1471,6 +1471,13 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const [propSortMode,setPropSortMode]=usePersistedState("nx-propSortMode","shortage");
   const [propSortDir,setPropSortDir]=usePersistedState("nx-propSortDir","asc");
   const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt}
+  const [sortOpen,setSortOpen]=useState(false);
+  const sortRef=useRef(null);
+  useEffect(()=>{
+    const h=e=>{if(sortRef.current&&!sortRef.current.contains(e.target))setSortOpen(false);};
+    document.addEventListener('mousedown',h);
+    return()=>document.removeEventListener('mousedown',h);
+  },[]);
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const unassignedTotal = data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
@@ -1688,17 +1695,25 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           placeholder="Search by address or lender…"
           className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
-          <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
-            {[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]].map(([v,l])=>(
-              <button key={v} onClick={()=>setPropSortMode(v)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${propSortMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
-                {l}
-              </button>
-            ))}
+          <div ref={sortRef} className="relative">
+            <button onClick={()=>setSortOpen(o=>!o)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all border border-slate-200 dark:border-zinc-700">
+              <span>Sort: {[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]].find(([v])=>v===propSortMode)?.[1]??propSortMode}</span>
+              <span className="text-slate-400 dark:text-zinc-500">{sortOpen?"▲":"▼"}</span>
+            </button>
+            {sortOpen&&(
+              <div className="absolute left-0 top-9 w-44 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-30">
+                {[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["dateSold","Date Sold"],["address","A–Z"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>{setPropSortMode(v);setSortOpen(false);}}
+                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${propSortMode===v?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-semibold":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <button onClick={()=>setPropSortDir(d=>d==="asc"?"desc":"asc")}
-            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-zinc-700 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-600 transition-all shrink-0">
+            className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
             {propSortDir==="asc"?"↑ Asc":"↓ Desc"}
           </button>
         </div>
@@ -2028,6 +2043,13 @@ function LenderDashboard({ data }) {
   const [sort,setSort]=usePersistedState("nx-lenderSort",{col:null,dir:"asc"});
   const [lenderSort,setLenderSort]=usePersistedState("nx-lenderSortBy","name");
   const [search,setSearch]=useState("");
+  const [lenderSortOpen,setLenderSortOpen]=useState(false);
+  const lenderSortRef=useRef(null);
+  useEffect(()=>{
+    const h=e=>{if(lenderSortRef.current&&!lenderSortRef.current.contains(e.target))setLenderSortOpen(false);};
+    document.addEventListener('mousedown',h);
+    return()=>document.removeEventListener('mousedown',h);
+  },[]);
   const toggleSort = col => setSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const allActive=[
     ...data.properties.flatMap(prop=>
@@ -2160,14 +2182,22 @@ function LenderDashboard({ data }) {
         <div>
           {lenders.length>0&&searchedLenders.length>0&&(
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
-              <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
-                {[["name","A–Z"],["high","High → Low"],["low","Low → High"]].map(([v,l])=>(
-                  <button key={v} onClick={()=>setLenderSort(v)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${lenderSort===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
-                    {l}
-                  </button>
-                ))}
+              <div ref={lenderSortRef} className="relative">
+                <button onClick={()=>setLenderSortOpen(o=>!o)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all border border-slate-200 dark:border-zinc-700">
+                  <span>Sort: {[["name","A–Z"],["high","High → Low"],["low","Low → High"]].find(([v])=>v===lenderSort)?.[1]??lenderSort}</span>
+                  <span className="text-slate-400 dark:text-zinc-500">{lenderSortOpen?"▲":"▼"}</span>
+                </button>
+                {lenderSortOpen&&(
+                  <div className="absolute left-0 top-9 w-40 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-30">
+                    {[["name","A–Z"],["high","High → Low"],["low","Low → High"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>{setLenderSort(v);setLenderSortOpen(false);}}
+                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${lenderSort===v?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-semibold":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2454,6 +2484,13 @@ function ClosedDealsPage({ data, update }) {
   const [rentalSortDir,setRentalSortDir]=usePersistedState("nx-rentalSortDir","desc");
   const [editModal,setEditModal]=useState(null);
   const [closeModal,setCloseModal]=useState(null);
+  const [closedSortOpen,setClosedSortOpen]=useState(false);
+  const closedSortRef=useRef(null);
+  useEffect(()=>{
+    const h=e=>{if(closedSortRef.current&&!closedSortRef.current.contains(e.target))setClosedSortOpen(false);};
+    document.addEventListener('mousedown',h);
+    return()=>document.removeEventListener('mousedown',h);
+  },[]);
   const [showClosePicker,setShowClosePicker]=useState(false);
 
   const toggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
@@ -2698,18 +2735,26 @@ function ClosedDealsPage({ data, update }) {
           <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
             placeholder="Search by address or lender…"
             className="w-full rounded-xl px-4 py-2.5 text-sm bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border-0"/>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest shrink-0">Sort</span>
-            <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-0.5 gap-0.5">
-              {[["dateSold","Date Sold"],["dateAcquired","Acquired"],["profit","Profit"],["address","A–Z"]].map(([v,l])=>(
-                <button key={v} onClick={()=>setSortMode(v)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${sortMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
-                  {l}
-                </button>
-              ))}
+          <div className="flex items-center gap-2">
+            <div ref={closedSortRef} className="relative">
+              <button onClick={()=>setClosedSortOpen(o=>!o)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all border border-slate-200 dark:border-zinc-700">
+                <span>Sort: {[["dateSold","Date Sold"],["dateAcquired","Acquired"],["profit","Profit"],["address","A–Z"]].find(([v])=>v===sortMode)?.[1]??sortMode}</span>
+                <span className="text-slate-400 dark:text-zinc-500">{closedSortOpen?"▲":"▼"}</span>
+              </button>
+              {closedSortOpen&&(
+                <div className="absolute left-0 top-9 w-40 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-30">
+                  {[["dateSold","Date Sold"],["dateAcquired","Acquired"],["profit","Profit"],["address","A–Z"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>{setSortMode(v);setClosedSortOpen(false);}}
+                      className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${sortMode===v?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-semibold":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <button onClick={()=>setCurrentDir(d=>d==="asc"?"desc":"asc")}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-zinc-700 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-600 transition-all shrink-0">
+              className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
               {currentDir==="asc"?"↑ Asc":"↓ Desc"}
             </button>
           </div>
@@ -3638,10 +3683,15 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [privacyMode,setPrivacyMode]=useState(false);
   const [fabOpen,setFabOpen]=useState(false);
   const [fabPending,setFabPending]=useState(null);
+  const [settingsOpen,setSettingsOpen]=useState(false);
   const fabRef=useRef(null);
+  const settingsRef=useRef(null);
 
   useEffect(()=>{
-    const handler=e=>{if(fabRef.current&&!fabRef.current.contains(e.target))setFabOpen(false);};
+    const handler=e=>{
+      if(fabRef.current&&!fabRef.current.contains(e.target))setFabOpen(false);
+      if(settingsRef.current&&!settingsRef.current.contains(e.target))setSettingsOpen(false);
+    };
     document.addEventListener('mousedown',handler);
     return ()=>document.removeEventListener('mousedown',handler);
   },[]);
@@ -3700,31 +3750,39 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       <div className="bg-white/85 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.07] sticky top-0 z-40">
         <div className="px-5 pt-3.5 pb-0 max-w-2xl mx-auto">
           <div className="flex items-center gap-3 mb-3">
-            {/* Logo mark */}
-            <div className="w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/30">
+            {/* Logo mark — tap to go home */}
+            <button onClick={onHome} className="w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/30 active:scale-95 transition-transform" title="Home">
               <span className="text-white font-black text-sm tracking-tight">N</span>
-            </div>
+            </button>
             <div>
               <div className="font-semibold text-[15px] text-slate-900 dark:text-white leading-none tracking-[-0.3px]">Nexus Homes</div>
               <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5 font-medium">Private Money Tracker</div>
             </div>
             <div className="ml-auto flex items-center gap-2.5">
-              <button onClick={onHome}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/15 transition-all"
-                title="Home">
-                <span className="text-[15px] leading-none">🏠</span>
-              </button>
-              <button onClick={()=>setPrivacyMode(p=>!p)}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition-all ${privacyMode?"bg-blue-600 text-white shadow-sm":"bg-black/5 dark:bg-white/10 text-slate-500 dark:text-zinc-400 hover:bg-black/10 dark:hover:bg-white/15"}`}
-                title={privacyMode?"Show values":"Hide values (demo mode)"}>
-                <span className="text-[13px] leading-none">{privacyMode?"🙈":"👁"}</span>
-                <span>Demo</span>
-              </button>
-              <button onClick={onToggleDark}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/15 transition-all"
-                title={dark?"Switch to light":"Switch to dark"}>
-                <span className="text-[15px] leading-none">{dark?"☀️":"🌙"}</span>
-              </button>
+              {/* Settings dropdown */}
+              <div ref={settingsRef} className="relative">
+                <button onClick={()=>setSettingsOpen(o=>!o)}
+                  className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${settingsOpen?"bg-blue-600 text-white":"bg-black/5 dark:bg-white/10 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/15"}`}
+                  title="Settings">
+                  <span className="text-[15px] leading-none">⚙️</span>
+                </button>
+                {settingsOpen&&(
+                  <div className="absolute right-0 top-10 w-44 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
+                    <button onClick={()=>setPrivacyMode(p=>!p)}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
+                      <span className="text-base leading-none">{privacyMode?"🙈":"👁"}</span>
+                      <span>{privacyMode?"Show Values":"Demo Mode"}</span>
+                      {privacyMode&&<span className="ml-auto text-[10px] font-bold text-blue-600 dark:text-blue-400">ON</span>}
+                    </button>
+                    <div className="h-px bg-slate-100 dark:bg-zinc-700"/>
+                    <button onClick={onToggleDark}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
+                      <span className="text-base leading-none">{dark?"☀️":"🌙"}</span>
+                      <span>{dark?"Light Mode":"Dark Mode"}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
               <button onClick={onSignOut} className="text-[12px] font-semibold text-blue-600 dark:text-blue-400 hover:opacity-75 transition-opacity">Sign out</button>
             </div>
           </div>
