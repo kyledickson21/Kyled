@@ -947,7 +947,12 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
   const setRow=(i,field,val)=>setSplits(s=>s.map((r,j)=>j===i?{...r,[field]:val}:r));
   const totalSplit=splits.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
   const remaining=loanAmt-totalSplit;
-  const splitValid=splits.every(r=>r.propId&&parseFloat(r.amount)>0)&&Math.abs(remaining)<0.01;
+  const rowConflict=r=>{
+    if(!r.propId||r.propId==="unassigned") return null;
+    const p=activeProps.find(x=>x.id===r.propId);
+    return p?propConflict(loan.startDate,parseFloat(r.amount)||0,p):null;
+  };
+  const splitValid=splits.every(r=>r.propId&&parseFloat(r.amount)>0&&!rowConflict(r))&&Math.abs(remaining)<0.01;
 
   if(!hasViableDest&&!showUnassigned) return (
     <Modal title={`${currentPropId?"Move":"Place"} — ${loan.lenderName}`} onClose={onClose}>
@@ -1110,7 +1115,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
             <span>Unallocated</span>
             <span className="tabular-nums">{$$(remaining)} {Math.abs(remaining)<0.01?"✓":remaining<0?"(over!)":""}</span>
           </div>
-          {!splitValid&&<p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">All rows need a destination and amount, and must sum to {$$(loanAmt)}.</p>}
+          {!splitValid&&<p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">{splits.some(r=>rowConflict(r))?"A destination has a conflict — reduce that amount or pick another property.":`All rows need a destination and amount, and must sum to ${$$(loanAmt)}.`}</p>}
           <div className="flex gap-2 pt-1">
             <Btn onClick={()=>onConfirm({type:"split",splits:splits.map(r=>({propId:r.propId,amount:parseFloat(r.amount)}))})} color={splitValid?"blue":"ghost"} full disabled={!splitValid}>Split Funds →</Btn>
             <Btn onClick={onClose} color="ghost">Cancel</Btn>
