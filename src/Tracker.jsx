@@ -5561,7 +5561,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           <div className="px-5 py-1.5 flex items-center w-full">
             {/* Left spacer */}
             <div className="flex-1 flex items-center">
-              <span className="text-[10px] font-black px-2 py-1 rounded-md bg-red-600 text-white tracking-wider">BUILD CHECK v4 · Sep 17</span>
+              <span className="text-[10px] font-black px-2 py-1 rounded-md bg-red-600 text-white tracking-wider">BUILD CHECK v5</span>
             </div>
             {/* Global search — centered */}
             <div ref={globalSearchRef} className="relative w-72 shrink-0">
