@@ -340,6 +340,18 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
     if (!lenderName) { alert("Please select or enter a lender."); return; }
     if (!(parseFloat(f.principal) > 0)) { alert("Please enter an amount greater than zero."); return; }
     if (!f.startDate) { alert("Please enter a start date."); return; }
+    const destProp = f.destination && f.destination!=="unassigned"
+      ? activeProps.find(x=>x.id===f.destination) : null;
+    if (destProp) {
+      const c = propConflict(f.startDate, parseFloat(f.principal)||0, destProp);
+      if (c) {
+        setBlockMsg(c==='date'
+          ? "Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period."
+          : "Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need.");
+        sf(p=>({...p,destination:"unassigned"}));
+        return;
+      }
+    }
     const loanType = currentLoanType;
     const newLender = (lenderSel === "_new_" && lenderName)
       ? {id: uid(), name: lenderName, loanType: newType}
@@ -359,6 +371,17 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
       else blockedDate.push(p);
     }
   }
+
+  // Changing amount/date can invalidate an already-picked property — drop it.
+  const setAndRevalidate = k => v => sf(p=>{
+    const next = {...p,[k]:v};
+    const amt = parseFloat(next.principal)||0;
+    if (next.destination && next.destination!=="unassigned" && amt>0 && next.startDate) {
+      const dp = activeProps.find(x=>x.id===next.destination);
+      if (dp && propConflict(next.startDate, amt, dp)) next.destination = "unassigned";
+    }
+    return next;
+  });
 
   const handleDestClick = pid => {
     if (!canShowConflicts) { s("destination")(pid); return; }
@@ -408,8 +431,8 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
 
       {/* Amount + Dates */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1">
-        <Inp label="Amount ($) *" type="number" value={f.principal} onChange={v=>{s("principal")(v);setBlockMsg("");}} placeholder="100000"/>
-        <DateInp label="Start Date *" value={f.startDate} onChange={v=>{s("startDate")(v);setBlockMsg("");}}/>
+        <Inp label="Amount ($) *" type="number" value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
+        <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
         <DateInp label="End / Payoff Date" value={f.endDate} onChange={s("endDate")} helpText="Leave blank while the loan is active"/>
       </div>
 
@@ -447,8 +470,8 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
                 <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400 mb-1.5">No Funding Gap — Consider Splitting</div>
                 <div className="space-y-1.5">
                   {blockedSize.map(p=>(
-                    <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
-                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                    <button key={p.id} type="button" disabled
+                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed pointer-events-none">
                       <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
                     </button>
                   ))}
@@ -460,8 +483,8 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
                 <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Timing Conflict — Cannot Place</div>
                 <div className="space-y-1.5">
                   {blockedDate.map(p=>(
-                    <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
-                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                    <button key={p.id} type="button" disabled
+                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed pointer-events-none">
                       <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
                     </button>
                   ))}
