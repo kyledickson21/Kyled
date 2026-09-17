@@ -315,7 +315,7 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
 
   const [f, sf] = useState(()=>({
     principal:"",
-    startDate:TODAY, interestType:"percentage", interestRate:"", specialTerms:"", endDate:"",
+    startDate:TODAY, interestType:"percentage", interestRate:"", specialTerms:"", endDate:"", dueDate:"",
     destination:"unassigned",
     paymentType:"closing", monthlyPayment:"", drawFacility:null,
     ...(init??{}),
@@ -434,6 +434,7 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
         <Inp label="Amount ($) *" type="number" value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
         <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
         <DateInp label="End / Payoff Date" value={f.endDate} onChange={s("endDate")} helpText="Leave blank while the loan is active"/>
+        <DateInp label="Due Date (optional)" value={f.dueDate} onChange={s("dueDate")} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
       </div>
 
       {/* Where does this money go? */}
@@ -1978,6 +1979,7 @@ const loanFields = f => ({
   monthlyPayment:parseFloat(f.monthlyPayment)||0,
   drawFacility:f.drawFacility?{committed:parseFloat(f.drawFacility.committed)||0,draws:f.drawFacility.draws||[]}:null,
   specialTerms:f.specialTerms||"", endDate:f.endDate||null,
+  dueDate:f.dueDate||null,
 });
 const upsertLender = (d, newLender) => {
   if (!newLender) return d;
@@ -2061,7 +2063,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   };
 
   const placeOnProperty = (fund,propId) => {
-    const loan={id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",paymentType:fund.paymentType||"closing",monthlyPayment:fund.monthlyPayment||0,drawFacility:fund.drawFacility||null,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null};
+    const loan={id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",paymentType:fund.paymentType||"closing",monthlyPayment:fund.monthlyPayment||0,drawFacility:fund.drawFacility||null,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null,dueDate:fund.dueDate||null};
     update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==fund.id),properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:[...p.loans,loan]})}));
     setExpanded(e=>({...e,[propId]:true}));
     setModal(null);
@@ -2513,7 +2515,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]}
           init={{...modal.fund,destination:"unassigned",principal:String(modal.fund.principal||modal.fund.amount||""),interestRate:String(modal.fund.interestRate||""),interestType:modal.fund.interestType||"percentage"}}
           onSave={f=>{
-            const updated={...modal.fund,lenderName:f.lenderName,loanType:f.loanType,principal:parseFloat(f.principal)||0,startDate:f.startDate,interestRate:parseFloat(f.interestRate)||0,interestType:f.interestType||"percentage",specialTerms:f.specialTerms||"",endDate:f.endDate||null};
+            const updated={...modal.fund,lenderName:f.lenderName,loanType:f.loanType,principal:parseFloat(f.principal)||0,startDate:f.startDate,interestRate:parseFloat(f.interestRate)||0,interestType:f.interestType||"percentage",specialTerms:f.specialTerms||"",endDate:f.endDate||null,dueDate:f.dueDate||null};
             const doUpdate = d => f.newLender
               ? {...d,lenders:[...(d.lenders||[]).filter(x=>x.name!==f.newLender.name),f.newLender]}
               : d;
@@ -4815,6 +4817,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       principal: String(loan.principal||""),
       startDate: loan.startDate||"",
       endDate: loan.endDate||"",
+      dueDate: loan.dueDate||"",
       interestType: loan.interestType||"percentage",
       interestRate: String(loan.interestRate||""),
       paymentType: loan.paymentType||"closing",
@@ -4832,6 +4835,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       principal: ef.principal!==""?parseFloat(ef.principal)||loan.principal:loan.principal,
       startDate: ef.startDate||loan.startDate,
       endDate: ef.endDate||null,
+      dueDate: ef.dueDate||null,
       interestType: ef.interestType,
       interestRate: ef.interestRate!==""?parseFloat(ef.interestRate)||loan.interestRate:loan.interestRate,
       paymentType: ef.paymentType,
@@ -4916,6 +4920,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             <Inp label="Principal ($)" value={ef.principal} onChange={v=>setEf(f=>({...f,principal:v}))} type="number"/>
             <DateInp label="Start Date" value={ef.startDate} onChange={v=>setEf(f=>({...f,startDate:v}))}/>
             <DateInp label="End Date (leave blank if active)" value={ef.endDate} onChange={v=>setEf(f=>({...f,endDate:v}))}/>
+            <DateInp label="Due Date (optional)" value={ef.dueDate} onChange={v=>setEf(f=>({...f,dueDate:v}))} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
             <Sel label="Interest Type" value={ef.interestType} onChange={v=>setEf(f=>({...f,interestType:v}))} options={[["percentage","% Per Year"],["fixed","Fixed $ Amount"]]}/>
             <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} type="number"/>
             <Sel label="Payment Type" value={ef.paymentType} onChange={v=>setEf(f=>({...f,paymentType:v}))} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"]]}/>
@@ -5029,11 +5034,19 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const [modal, setModal] = useState(null);
   const [fundsOpen, setFundsOpen] = usePersistedState("nx-dashFundsOpen", true);
   const [menuOpen, setMenuOpen] = useState(null);
+  const [dueOpen, setDueOpen] = useState(false);
 
   const activePropsData = data.properties.filter(p => !p.dateSold);
   const unassignedFunds = (data.unassigned || []).filter(l => !l.endDate);
   const allActiveLoans = activePropsData.flatMap(p => p.loans.filter(l => !l.endDate));
   const allActivePlusUnassigned = [...allActiveLoans, ...unassignedFunds];
+
+  // Loans with a fixed maturity date (not just "due whenever the property sells")
+  const loansDueSoon = [
+    ...activePropsData.flatMap(p => p.loans.filter(l => !l.endDate && l.dueDate).map(l => ({ loan: l, propAddress: p.address, propId: p.id }))),
+    ...unassignedFunds.filter(l => l.dueDate).map(l => ({ loan: l, propAddress: null, propId: null })),
+  ].map(x => ({ ...x, days: Math.floor((new Date(x.loan.dueDate) - new Date(TODAY)) / 864e5) }))
+   .sort((a, b) => a.days - b.days);
 
   const unassignedTotal = unassignedFunds.reduce((s, l) => s + (l.principal || 0), 0);
   const activeLendersCount = [...new Set(allActivePlusUnassigned.map(l => l.lenderName).filter(Boolean))].length;
@@ -5083,6 +5096,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
       interestRate: fund.interestRate || 0, interestType: fund.interestType || "percentage",
       paymentType: fund.paymentType || "closing", monthlyPayment: fund.monthlyPayment || 0,
       drawFacility: fund.drawFacility || null, specialTerms: fund.specialTerms || "", endDate: null,
+      dueDate: fund.dueDate || null,
     };
     update(d => ({
       ...d,
@@ -5127,9 +5141,52 @@ function DashboardPage({ data, update, onNavigateTab }) {
       {menuOpen && <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)}/>}
 
       {/* Header */}
-      <div className="mb-6">
-        <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-1">Nexus Homes</div>
-        <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">Funding Center</h1>
+      <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-1">Nexus Homes</div>
+          <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">Funding Center</h1>
+        </div>
+        {loansDueSoon.length > 0 && (
+          <div className="relative">
+            <button onClick={() => setDueOpen(o => !o)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all ${
+                loansDueSoon[0].days <= 14 ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
+                : loansDueSoon[0].days <= 30 ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                : "bg-white dark:bg-[#1C1C1E] border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300"
+              }`}>
+              <span className="text-base">⏰</span>
+              <div className="text-left leading-none">
+                <div className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-0.5">Loans Due</div>
+                <div className="text-sm font-bold">{loansDueSoon.length} coming due</div>
+              </div>
+            </button>
+            {dueOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setDueOpen(false)}/>
+                <div className="absolute right-0 top-full mt-2 w-80 max-w-[90vw] bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-40">
+                  <div className="px-4 pt-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 border-b border-slate-100 dark:border-zinc-700">Loans Coming Due</div>
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-50 dark:divide-zinc-700/40">
+                    {loansDueSoon.map(({ loan, propAddress, propId, days }) => (
+                      <button key={loan.id} onClick={() => { setDueOpen(false); openPanel({ type: 'loan', loanId: loan.id, propId }); }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100 truncate">{loan.lenderName}</div>
+                          <div className="text-xs text-slate-400 dark:text-zinc-500 truncate">{propAddress || "Unassigned"} · {h$(loan.principal)}</div>
+                        </div>
+                        <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                          days < 0 ? "bg-red-600 text-white"
+                          : days <= 14 ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"
+                          : days <= 30 ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                          : "bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400"
+                        }`}>{days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "Due today" : `${days}d`}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── HERO: Unassigned Money ── */}
