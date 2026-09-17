@@ -6,13 +6,22 @@
   box-sizing: border-box;
 }
 
+html, body {
+  background-color: #F2F2F7;
+}
+html.dark, html.dark body {
+  background-color: #000000;
+}
+:root { color-scheme: light; }
+:root.dark { color-scheme: dark; }
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "kern" 1, "liga" 1;
-  color-scheme: light dark;
+  overscroll-behavior-y: none;
 }
 
 /* Remove number input spinners and prevent scroll-wheel changes */

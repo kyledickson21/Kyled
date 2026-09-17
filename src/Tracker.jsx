@@ -2794,6 +2794,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
         {filtered.length === 0 ? (
           <div className="py-12 text-center text-slate-400 dark:text-zinc-500 text-sm">No loans match this filter</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/20">
@@ -2858,6 +2859,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
@@ -3000,6 +3002,7 @@ function PropertyDashboard({ data }) {
               </div>
             </div>
             {loans.length>0&&(
+              <div className="overflow-x-auto">
               <table className="w-full text-xs bg-white dark:bg-[#1C1C1E]">
                 <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                   {loans.map(l=>(
@@ -3013,6 +3016,7 @@ function PropertyDashboard({ data }) {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         ))}
@@ -3236,7 +3240,8 @@ function ClosedDealsPage({ data, update }) {
             <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Lenders</div>
             {prop.loans.length===0
               ?<div className="text-xs text-slate-400 dark:text-zinc-500">No loans recorded</div>
-              :<table className="w-full text-xs">
+              :<div className="overflow-x-auto">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-black/[0.06] dark:border-white/[0.06]">
                     <th className="pb-1.5 text-left font-semibold">Lender</th>
@@ -3256,6 +3261,7 @@ function ClosedDealsPage({ data, update }) {
                   ))}
                 </tbody>
               </table>
+              </div>
             }
           </div>
         )}
@@ -4500,6 +4506,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
             <SectionHead title="Loan History" count={closed.length}/>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
@@ -4524,6 +4531,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -4533,6 +4541,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
             <SectionHead title="Payoffs at Close"/>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
@@ -4556,6 +4565,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -4734,6 +4744,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
               </div>
             </div>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
@@ -4761,6 +4772,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -4986,6 +4998,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Draw History ({draws.length})</div>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
@@ -5002,6 +5015,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
@@ -5311,6 +5325,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [fabPending,setFabPending]=useState(null);
   const [loanFilterPending,setLoanFilterPending]=useState(null);
   const [settingsOpen,setSettingsOpen]=useState(false);
+  const [mobileNavOpen,setMobileNavOpen]=useState(false);
   const [globalSearch,setGlobalSearch]=useState('');
   const [navStack,setNavStack]=useState([]);
   const [panelStack,setPanelStack]=useState([]);
@@ -5478,8 +5493,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     <PanelContext.Provider value={navigate}>
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex transition-colors duration-300">
 
-      {/* ── Left Sidebar ── */}
-      <div className="fixed left-0 top-0 bottom-0 w-14 bg-[#F2F2F7] dark:bg-black border-r border-black/[0.05] dark:border-white/[0.04] flex flex-col z-40">
+      {/* ── Left Sidebar (desktop only) ── */}
+      <div className="hidden sm:flex fixed left-0 top-0 bottom-0 w-14 bg-[#F2F2F7] dark:bg-black border-r border-black/[0.05] dark:border-white/[0.04] flex-col z-40">
         {/* Logo / Dashboard */}
         <button onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Dashboard");}} title="Command Center"
           className={`mx-auto mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] flex items-center justify-center active:scale-95 transition-all shrink-0 ${tab==="Dashboard"&&navStack.length===0?"bg-gradient-to-br from-blue-600 to-blue-700 shadow-lg shadow-blue-500/30 ring-2 ring-blue-400/40":"bg-gradient-to-br from-blue-500 to-blue-700 shadow-md shadow-blue-500/30"}`}>
@@ -5554,15 +5569,77 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         </div>
       </div>
 
+      {/* ── Mobile Nav Drawer ── */}
+      {mobileNavOpen && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] sm:hidden" onClick={()=>setMobileNavOpen(false)}/>
+          <div className="fixed left-0 top-0 bottom-0 z-50 w-72 max-w-[85vw] bg-white dark:bg-[#1C1C1E] shadow-2xl flex flex-col sm:hidden overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-4 border-b border-slate-100 dark:border-zinc-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-blue-500 to-blue-700 shadow-md shadow-blue-500/30 flex items-center justify-center shrink-0">
+                  <span className="text-white font-black text-sm leading-none">$</span>
+                </div>
+                <span className="font-bold text-slate-900 dark:text-zinc-100 text-sm">Nexus Homes</span>
+              </div>
+              <button onClick={()=>setMobileNavOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-500 dark:text-zinc-400 text-xl leading-none shrink-0">&times;</button>
+            </div>
+            <nav className="flex-1 py-2 px-2">
+              {[
+                {id:"Dashboard",icon:<IcoHome/>,label:"Dashboard",match:t=>t==="Dashboard"},
+                {id:"Properties",icon:<IcoHome/>,label:"Properties",match:t=>t==="Properties"},
+                {id:"LenderDash",icon:<IcoUsers/>,label:"Lenders",match:t=>t==="LenderDash"},
+                {id:"AllLoans",icon:<IcoList/>,label:"Loans",match:t=>t==="AllLoans"},
+                {id:"RehabPriority",icon:<IcoClipboard/>,label:"Rehab Priority",match:t=>t==="RehabPriority"},
+                {id:"Draws",icon:<IcoGrid/>,label:"Draw Tracker",match:t=>t==="Draws"},
+                {id:"PropDash",icon:<IcoBar/>,label:"Prop Dashboard",match:t=>t==="PropDash"},
+                {id:"Closed",icon:<IcoDocument/>,label:"Records",match:t=>["Closed","History"].includes(t)},
+              ].map(({id,icon,label,match})=>(
+                <button key={id}
+                  onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setMobileNavOpen(false);}}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-blue-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
+                  <span className={`shrink-0 ${match(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}>{icon}</span>
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <div className="border-t border-slate-100 dark:border-zinc-800 py-2 px-2 shrink-0">
+              <button onClick={()=>setPrivacyMode(p=>!p)}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
+                <span>Demo Mode</span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${privacyMode?"bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400":"bg-slate-100 dark:bg-zinc-700 text-slate-400 dark:text-zinc-500"}`}>{privacyMode?"ON":"OFF"}</span>
+              </button>
+              <button onClick={onToggleDark}
+                className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
+                {dark?"Light Mode":"Dark Mode"}
+              </button>
+              <button onClick={()=>{setMobileNavOpen(false);setNavStack([]);setPanelStack([]);setTab("LenderAccts");}}
+                className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
+                Lender Accounts
+              </button>
+              <button onClick={onSignOut}
+                className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── Main content ── */}
-      <div className="ml-14 flex-1 flex flex-col min-h-screen">
+      <div className="ml-0 sm:ml-14 flex-1 flex flex-col min-h-screen min-w-0">
         {/* Top bar */}
         <div className="sticky top-0 z-30 bg-[#F2F2F7]/90 dark:bg-black/80 backdrop-blur-xl border-b border-black/[0.04] dark:border-white/[0.04]">
-          <div className="px-5 py-1.5 flex items-center w-full">
-            {/* Left spacer */}
-            <div className="flex-1"/>
-            {/* Global search — centered */}
-            <div ref={globalSearchRef} className="relative w-72 shrink-0">
+          <div className="px-5 py-1.5 flex items-center w-full gap-2">
+            {/* Mobile hamburger (mobile only) */}
+            <button onClick={()=>setMobileNavOpen(true)}
+              className="sm:hidden w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-slate-600 dark:text-zinc-300 shrink-0">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd"/></svg>
+            </button>
+            {/* Left spacer — desktop only, keeps search centered */}
+            <div className="hidden sm:block flex-1"/>
+            {/* Global search */}
+            <div ref={globalSearchRef} className="relative flex-1 min-w-0 sm:flex-none sm:w-72">
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-zinc-500 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"/></svg>
                 <input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)}
@@ -5604,12 +5681,12 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             </div>
 
             {/* Right side — Actions button, adjacent to search */}
-            <div className="flex-1 flex justify-start pl-3">
+            <div className="flex-1 flex justify-end sm:justify-start pl-0 sm:pl-3">
             <div ref={fabRef} className="relative shrink-0">
               <button onClick={()=>setFabOpen(o=>!o)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:border-blue-600 hover:text-white dark:hover:text-white"}`}>
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:border-blue-600 hover:text-white dark:hover:text-white"}`}>
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
-                <span>Actions</span>
+                <span className="hidden sm:inline">Actions</span>
               </button>
               {fabOpen&&(
                 <div className="absolute right-0 top-10 w-52 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50 py-1">
