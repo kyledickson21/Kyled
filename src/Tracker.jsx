@@ -4793,6 +4793,8 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
   const [ef, setEf] = useState(null);
   const [closeModal, setCloseModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [drawDate, setDrawDate] = useState(TODAY);
+  const [drawAmt, setDrawAmt] = useState("");
 
   let loan = null, prop = null;
   if (propId) { prop = data.properties.find(p => p.id === propId); loan = prop?.loans.find(l => l.id === loanId); }
@@ -4823,11 +4825,19 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       paymentType: loan.paymentType||"closing",
       monthlyPayment: String(loan.monthlyPayment||""),
       specialTerms: loan.specialTerms||"",
+      drawFacility: loan.drawFacility||null,
     });
     setEditing(true);
   };
 
   useEffect(() => { if (startEditing && loan) openEdit(); }, []);
+
+  const addDraw = () => {
+    const amount = parseFloat(drawAmt);
+    if (!amount || !drawDate) return;
+    setEf(f=>({...f,drawFacility:{...f.drawFacility,draws:[...(f.drawFacility?.draws||[]),{id:uid(),date:drawDate,amount}]}}));
+    setDrawAmt("");
+  };
 
   const saveEdit = () => {
     if(!ef) return;
@@ -4841,6 +4851,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       paymentType: ef.paymentType,
       monthlyPayment: ef.monthlyPayment!==""?parseFloat(ef.monthlyPayment)||0:loan.monthlyPayment,
       specialTerms: ef.specialTerms,
+      drawFacility: ef.drawFacility?{committed:parseFloat(ef.drawFacility.committed)||0,draws:ef.drawFacility.draws||[]}:null,
     };
     const applyPatch = l => l.id===loanId?{...l,...patch}:l;
     update(d=>({
@@ -4927,6 +4938,43 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             {ef.paymentType==="monthly_fixed"&&<Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={v=>setEf(f=>({...f,monthlyPayment:v}))} type="number"/>}
             <div className="sm:col-span-2"><Inp label="Special Terms" value={ef.specialTerms} onChange={v=>setEf(f=>({...f,specialTerms:v}))}/></div>
           </div>
+          {loan.loanType==="hard"&&(
+            <div className="mt-3 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
+              <label className="flex items-center gap-3 cursor-pointer mb-1">
+                <input type="checkbox" checked={!!ef.drawFacility}
+                  onChange={e=>setEf(f=>({...f,drawFacility:e.target.checked?{committed:"",draws:[]}:null}))}
+                  className="w-4 h-4 rounded border-slate-300 dark:border-zinc-600 accent-blue-600 cursor-pointer"/>
+                <div>
+                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Rehab Draw Facility</div>
+                  <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Lender committed rehab funding, drawn in stages</div>
+                </div>
+              </label>
+              {ef.drawFacility&&(
+                <div className="mt-3 space-y-3">
+                  <Inp label="Total Committed ($)" type="number" value={String(ef.drawFacility.committed||"")}
+                    onChange={v=>setEf(f=>({...f,drawFacility:{...f.drawFacility,committed:v}}))} placeholder="100000"/>
+                  {(ef.drawFacility.draws||[]).length>0&&(
+                    <div>
+                      <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Draws Taken</div>
+                      {ef.drawFacility.draws.map(d=>(
+                        <div key={d.id} className="flex items-center justify-between text-sm py-1.5 border-b border-slate-200 dark:border-zinc-700 last:border-0">
+                          <span className="text-slate-600 dark:text-zinc-300 tabular-nums">{d.date} · {$$(d.amount)}</span>
+                          <button type="button" onClick={()=>setEf(f=>({...f,drawFacility:{...f.drawFacility,draws:f.drawFacility.draws.filter(x=>x.id!==d.id)}}))}
+                            className="text-red-400 hover:text-red-600 text-xs p-1 transition-colors">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="pt-1 border-t border-slate-200 dark:border-zinc-700">
+                    <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Add Draw</div>
+                    <DateInp label="Draw Date" value={drawDate} onChange={setDrawDate}/>
+                    <Inp label="Amount ($)" type="number" value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
+                    <Btn onClick={addDraw} sm color="navy" full>+ Record Draw</Btn>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex gap-2 mt-4">
             <Btn color="blue" onClick={saveEdit}>Save Changes</Btn>
             <Btn color="ghost" onClick={()=>{setEditing(false);setDeleteConfirm(false);}}>Cancel</Btn>
