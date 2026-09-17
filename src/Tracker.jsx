@@ -1060,7 +1060,16 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                   <div className="flex gap-2 items-center">
                     <div className="w-32 shrink-0">
                       <input type="number" placeholder="$ Amount" value={row.amount}
-                        onChange={e=>setRow(i,"amount",e.target.value)}
+                        onChange={e=>{
+                          const val=e.target.value;
+                          const newAmt=parseFloat(val)||0;
+                          let newPropId=row.propId;
+                          if(row.propId&&row.propId!=="unassigned"){
+                            const p=activeProps.find(x=>x.id===row.propId);
+                            if(p&&propConflict(loan.startDate,newAmt,p)!==null) newPropId="";
+                          }
+                          setSplits(s=>s.map((r,j)=>j===i?{...r,amount:val,propId:newPropId}:r));
+                        }}
                         className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
                     </div>
                     <div className="flex-1 relative">
@@ -1082,7 +1091,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                             return(
                               <button key={prop.id} type="button" disabled={disabled}
                                 onClick={()=>{setRow(i,"propId",prop.id);setOpenPicker(null);}}
-                                className={`w-full text-left px-3 py-2.5 text-xs font-medium transition-colors ${disabled?"opacity-40 cursor-not-allowed text-slate-500 dark:text-zinc-500":"text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+                                className={`w-full text-left px-3 py-2.5 text-xs font-medium transition-colors ${disabled?"opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500":"text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
                                 {emoji} {prop.address}{suffix}
                               </button>
                             );
