@@ -4236,6 +4236,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
   const hs = v => prv ? maskMoney($$s(v)) : $$s(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
+  const [editing, setEditing] = useState(false);
 
   const prop = data.properties.find(p => p.id === propId);
   if (!prop) return (
@@ -4277,8 +4278,29 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
             <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{prop.address || "Unnamed Property"}</h1>
             {prop.purchaseDate && <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Acquired {prop.purchaseDate}</p>}
           </div>
+          <button onClick={()=>setEditing(e=>!e)}
+            className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
+            {editing?"✕ Cancel":"✏️ Edit"}
+          </button>
         </div>
       </div>
+      {editing&&(
+        <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-4">Edit Property Details</div>
+          <PropertyForm init={prop} onSave={f=>{
+            update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{
+              ...p,
+              address:f.address||p.address,
+              purchaseDate:f.purchaseDate,
+              purchasePrice:f.purchasePrice!==""?parseFloat(f.purchasePrice)||0:p.purchasePrice,
+              rehabBudget:f.rehabBudget!==""?parseFloat(f.rehabBudget)||0:p.rehabBudget,
+              monthlyHolding:f.monthlyHolding!==""?parseFloat(f.monthlyHolding)||500:p.monthlyHolding,
+              projectMonths:f.projectMonths!==""?parseFloat(f.projectMonths)||null:p.projectMonths,
+            })}));
+            setEditing(false);
+          }} onClose={()=>setEditing(false)}/>
+        </div>
+      )}
 
       {/* Stats */}
       {!prop.dateSold ? (
@@ -4449,10 +4471,19 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   );
 }
 
-function LenderDetailPage({ name, data, onBack, navigate }) {
+function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(name);
+  const [editType, setEditType] = useState(() => {
+    const loans = [
+      ...data.properties.flatMap(p => p.loans),
+      ...(data.unassigned||[]),
+    ].filter(l => l.lenderName === name);
+    return loans[0]?.loanType || "private";
+  });
 
   const allLoans = [
     ...data.properties.flatMap(p => p.loans.map(l => ({...l, prop:p}))),
@@ -4481,12 +4512,46 @@ function LenderDetailPage({ name, data, onBack, navigate }) {
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
           Back
         </button>
-        <div className="text-[11px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 mb-1">Lender</div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{name || "Unknown"}</h1>
-        <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">
-          {active.length} active loan{active.length!==1?"s":""} · {hist.length} closed
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 mb-1">Lender</div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{name || "Unknown"}</h1>
+            <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">
+              {active.length} active loan{active.length!==1?"s":""} · {hist.length} closed
+            </p>
+          </div>
+          <button onClick={()=>{setEditName(name);setEditing(e=>!e);}} className="shrink-0 mt-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
+            {editing?"✕ Cancel":"✏️ Edit"}
+          </button>
+        </div>
       </div>
+
+      {editing&&(
+        <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 mb-4">Edit Lender</div>
+          <div className="flex flex-col gap-3">
+            <Inp label="Lender Name" value={editName} onChange={e=>setEditName(e.target.value)}/>
+            <Sel label="Loan Type" value={editType} onChange={e=>setEditType(e.target.value)} options={[{value:"private",label:"Private Money"},{value:"hard",label:"Hard Money"}]}/>
+            <div className="flex gap-2 pt-1">
+              <Btn color="blue" onClick={()=>{
+                if(!editName.trim()) return;
+                const newName=editName.trim();
+                update(d=>({
+                  ...d,
+                  properties: d.properties.map(p=>({
+                    ...p,
+                    loans: p.loans.map(l=>l.lenderName===name?{...l,lenderName:newName,loanType:editType}:l),
+                  })),
+                  unassigned: (d.unassigned||[]).map(l=>l.lenderName===name?{...l,lenderName:newName,loanType:editType}:l),
+                }));
+                setEditing(false);
+                if(newName!==name) navigate({type:'lender',name:newName});
+              }}>Save</Btn>
+              <Btn color="ghost" onClick={()=>setEditing(false)}>Cancel</Btn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -4611,10 +4676,12 @@ function LenderDetailPage({ name, data, onBack, navigate }) {
   );
 }
 
-function LoanDetailPage({ loanId, propId, data, onBack, navigate }) {
+function LoanDetailPage({ loanId, propId, data, update, onBack, navigate }) {
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
+  const [editing, setEditing] = useState(false);
+  const [ef, setEf] = useState(null);
 
   let loan = null, prop = null;
   if (propId) { prop = data.properties.find(p => p.id === propId); loan = prop?.loans.find(l => l.id === loanId); }
@@ -4634,6 +4701,41 @@ function LoanDetailPage({ loanId, propId, data, onBack, navigate }) {
   const drawn = draws.reduce((s,d) => s + (d.amount||0), 0);
   const available = Math.max(0, (loan.drawFacility?.committed||0) - drawn);
 
+  const openEdit = () => {
+    setEf({
+      principal: String(loan.principal||""),
+      startDate: loan.startDate||"",
+      endDate: loan.endDate||"",
+      interestType: loan.interestType||"percentage",
+      interestRate: String(loan.interestRate||""),
+      paymentType: loan.paymentType||"closing",
+      monthlyPayment: String(loan.monthlyPayment||""),
+      specialTerms: loan.specialTerms||"",
+    });
+    setEditing(true);
+  };
+
+  const saveEdit = () => {
+    if(!ef) return;
+    const patch = {
+      principal: ef.principal!==""?parseFloat(ef.principal)||loan.principal:loan.principal,
+      startDate: ef.startDate||loan.startDate,
+      endDate: ef.endDate||null,
+      interestType: ef.interestType,
+      interestRate: ef.interestRate!==""?parseFloat(ef.interestRate)||loan.interestRate:loan.interestRate,
+      paymentType: ef.paymentType,
+      monthlyPayment: ef.monthlyPayment!==""?parseFloat(ef.monthlyPayment)||0:loan.monthlyPayment,
+      specialTerms: ef.specialTerms,
+    };
+    const applyPatch = l => l.id===loanId?{...l,...patch}:l;
+    update(d=>({
+      ...d,
+      properties: d.properties.map(p=>({...p,loans:p.loans.map(applyPatch)})),
+      unassigned: (d.unassigned||[]).map(applyPatch),
+    }));
+    setEditing(false);
+  };
+
   return (
     <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
       <div className="mb-5">
@@ -4641,28 +4743,55 @@ function LoanDetailPage({ loanId, propId, data, onBack, navigate }) {
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
           Back
         </button>
-        <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-2">Loan</div>
-        <button onClick={() => navigate({type:'lender', name:loan.lenderName})}
-          className="text-2xl font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left leading-tight">
-          {loan.lenderName || "Unknown Lender"}
-        </button>
-        {prop ? (
-          <div className="flex items-center gap-1.5 mt-1.5">
-            <span className="text-[13px] text-slate-400 dark:text-zinc-500">at</span>
-            <button onClick={() => navigate({type:'property', id:prop.id})} className="text-[15px] font-semibold text-slate-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors text-left">
-              {prop.address}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-2">Loan</div>
+            <button onClick={() => navigate({type:'lender', name:loan.lenderName})}
+              className="text-2xl font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left leading-tight">
+              {loan.lenderName || "Unknown Lender"}
             </button>
+            {prop ? (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <span className="text-[13px] text-slate-400 dark:text-zinc-500">at</span>
+                <button onClick={() => navigate({type:'property', id:prop.id})} className="text-[15px] font-semibold text-slate-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors text-left">
+                  {prop.address}
+                </button>
+              </div>
+            ) : (
+              <div className="text-sm text-slate-400 dark:text-zinc-500 mt-1.5 italic">Unassigned</div>
+            )}
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${loan.endDate ? "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400" : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"}`}>
+                {loan.endDate ? `Closed ${loan.endDate}` : "Active"}
+              </span>
+              <TypeLabel type={loan.loanType}/>
+            </div>
           </div>
-        ) : (
-          <div className="text-sm text-slate-400 dark:text-zinc-500 mt-1.5 italic">Unassigned</div>
-        )}
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${loan.endDate ? "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400" : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"}`}>
-            {loan.endDate ? `Closed ${loan.endDate}` : "Active"}
-          </span>
-          <TypeLabel type={loan.loanType}/>
+          {update && <button onClick={openEdit} className="shrink-0 mt-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
+            {editing?"✕ Cancel":"✏️ Edit"}
+          </button>}
         </div>
       </div>
+
+      {editing&&ef&&(
+        <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-4">Edit Loan Terms</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Inp label="Principal ($)" value={ef.principal} onChange={e=>setEf(f=>({...f,principal:e.target.value}))} type="number"/>
+            <DateInp label="Start Date" value={ef.startDate} onChange={v=>setEf(f=>({...f,startDate:v}))}/>
+            <DateInp label="End Date (leave blank if active)" value={ef.endDate} onChange={v=>setEf(f=>({...f,endDate:v}))}/>
+            <Sel label="Interest Type" value={ef.interestType} onChange={e=>setEf(f=>({...f,interestType:e.target.value}))} options={[{value:"percentage",label:"% Per Year"},{value:"fixed",label:"Fixed $ Amount"}]}/>
+            <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={e=>setEf(f=>({...f,interestRate:e.target.value}))} type="number"/>
+            <Sel label="Payment Type" value={ef.paymentType} onChange={e=>setEf(f=>({...f,paymentType:e.target.value}))} options={[{value:"closing",label:"Due at Closing"},{value:"monthly_rate",label:"Monthly (rate-based)"},{value:"monthly_fixed",label:"Monthly (fixed $)"}]}/>
+            {ef.paymentType==="monthly_fixed"&&<Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={e=>setEf(f=>({...f,monthlyPayment:e.target.value}))} type="number"/>}
+            <div className="sm:col-span-2"><Inp label="Special Terms" value={ef.specialTerms} onChange={e=>setEf(f=>({...f,specialTerms:e.target.value}))}/></div>
+          </div>
+          <div className="flex gap-2 mt-4">
+            <Btn color="blue" onClick={saveEdit}>Save Changes</Btn>
+            <Btn color="ghost" onClick={()=>setEditing(false)}>Cancel</Btn>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -4748,8 +4877,8 @@ function LoanDetailPage({ loanId, propId, data, onBack, navigate }) {
 
 function EntityDetailView({ entity, data, update, onBack, navigate }) {
   if (entity.type === 'property') return <PropertyDetailPage propId={entity.id} data={data} update={update} onBack={onBack} navigate={navigate}/>;
-  if (entity.type === 'lender') return <LenderDetailPage name={entity.name} data={data} onBack={onBack} navigate={navigate}/>;
-  if (entity.type === 'loan') return <LoanDetailPage loanId={entity.loanId} propId={entity.propId} data={data} onBack={onBack} navigate={navigate}/>;
+  if (entity.type === 'lender') return <LenderDetailPage name={entity.name} data={data} update={update} onBack={onBack} navigate={navigate}/>;
+  if (entity.type === 'loan') return <LoanDetailPage loanId={entity.loanId} propId={entity.propId} data={data} update={update} onBack={onBack} navigate={navigate}/>;
   return null;
 }
 
