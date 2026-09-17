@@ -5064,6 +5064,31 @@ function DashboardPage({ data, update, onNavigateTab }) {
 
   const hardMonthly = allActiveLoans.filter(l => l.loanType === "hard").reduce((s, l) => s + monthlyLoanPayment(l), 0);
   const hardMonthlyLoans = allActiveLoans.filter(l => l.loanType === "hard" && monthlyLoanPayment(l) > 0);
+
+  // Next 1st-of-the-month hard money payment date (recurring, always recomputed from today)
+  const [nfY, nfM, nfD] = TODAY.split("-").map(Number);
+  const nextFirstDate = nfD <= 1 ? new Date(nfY, nfM - 1, 1) : new Date(nfY, nfM, 1);
+  const daysToNextFirst = Math.floor((nextFirstDate - new Date(TODAY)) / 864e5);
+  const nextFirstLabel = nextFirstDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  // Unified upcoming-due schedule: fixed-maturity loans + recurring hard money interest
+  const dueSchedule = [
+    ...(hardMonthly > 0 ? [{
+      id: "hard-monthly", label: "Hard Money Interest",
+      sub: `${hardMonthlyLoans.length} loan${hardMonthlyLoans.length !== 1 ? "s" : ""} · due 1st of month`,
+      amount: hardMonthly, days: daysToNextFirst, dateLabel: nextFirstLabel,
+      onClick: () => onNavigateTab("AllLoans:hard"),
+    }] : []),
+    ...loansDueSoon.map(({ loan, propAddress, propId, days }) => {
+      const [dy, dm, dd] = loan.dueDate.split("-").map(Number);
+      return {
+        id: loan.id, label: loan.lenderName, sub: propAddress || "Unassigned",
+        amount: loan.principal, days,
+        dateLabel: new Date(dy, dm - 1, dd).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        onClick: () => { setDueOpen(false); openPanel({ type: "loan", loanId: loan.id, propId }); },
+      };
+    }),
+  ].sort((a, b) => a.days - b.days);
   const totalFundingGap = activePropsData.reduce((s, prop) => {
     const active = prop.loans.filter(l => !l.endDate);
     const funded = active.reduce((acc, l) => acc + (l.principal || 0) + (l.drawFacility?.committed || 0), 0);
@@ -5146,39 +5171,42 @@ function DashboardPage({ data, update, onNavigateTab }) {
           <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-1">Nexus Homes</div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">Funding Center</h1>
         </div>
-        {loansDueSoon.length > 0 && (
+        {dueSchedule.length > 0 && (
           <div className="relative">
             <button onClick={() => setDueOpen(o => !o)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all ${
-                loansDueSoon[0].days <= 14 ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
-                : loansDueSoon[0].days <= 30 ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                dueSchedule[0].days <= 14 ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
+                : dueSchedule[0].days <= 30 ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
                 : "bg-white dark:bg-[#1C1C1E] border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300"
               }`}>
               <span className="text-base">⏰</span>
               <div className="text-left leading-none">
-                <div className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-0.5">Loans Due</div>
-                <div className="text-sm font-bold">{loansDueSoon.length} coming due</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-0.5">Upcoming Due</div>
+                <div className="text-sm font-bold">{h$(dueSchedule[0].amount)} in {dueSchedule[0].days <= 0 ? "0d" : `${dueSchedule[0].days}d`}</div>
               </div>
             </button>
             {dueOpen && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setDueOpen(false)}/>
                 <div className="absolute right-0 top-full mt-2 w-80 max-w-[90vw] bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-40">
-                  <div className="px-4 pt-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 border-b border-slate-100 dark:border-zinc-700">Loans Coming Due</div>
+                  <div className="px-4 pt-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 border-b border-slate-100 dark:border-zinc-700">Upcoming Due Schedule</div>
                   <div className="max-h-80 overflow-y-auto divide-y divide-slate-50 dark:divide-zinc-700/40">
-                    {loansDueSoon.map(({ loan, propAddress, propId, days }) => (
-                      <button key={loan.id} onClick={() => { setDueOpen(false); openPanel({ type: 'loan', loanId: loan.id, propId }); }}
+                    {dueSchedule.map(item => (
+                      <button key={item.id} onClick={item.onClick}
                         className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100 truncate">{loan.lenderName}</div>
-                          <div className="text-xs text-slate-400 dark:text-zinc-500 truncate">{propAddress || "Unassigned"} · {h$(loan.principal)}</div>
+                          <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100 truncate">{item.label}</div>
+                          <div className="text-xs text-slate-400 dark:text-zinc-500 truncate">{item.sub} · {h$(item.amount)}</div>
                         </div>
-                        <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
-                          days < 0 ? "bg-red-600 text-white"
-                          : days <= 14 ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"
-                          : days <= 30 ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
-                          : "bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400"
-                        }`}>{days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "Due today" : `${days}d`}</span>
+                        <div className="shrink-0 text-right">
+                          <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                            item.days < 0 ? "bg-red-600 text-white"
+                            : item.days <= 14 ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"
+                            : item.days <= 30 ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                            : "bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400"
+                          }`}>{item.days < 0 ? `${Math.abs(item.days)}d overdue` : item.days === 0 ? "Due today" : `${item.days}d`}</span>
+                          <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">{item.dateLabel}</div>
+                        </div>
                       </button>
                     ))}
                   </div>
