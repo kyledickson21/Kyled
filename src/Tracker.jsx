@@ -4975,16 +4975,25 @@ function DashboardPage({ data, update, onNavigateTab }) {
     const funded = active.reduce((acc, l) => acc + (l.principal || 0) + (l.drawFacility?.committed || 0), 0);
     return s + Math.max(0, propNeeded(prop, active) - funded);
   }, 0);
-  const totalPayoff = allActiveLoans.reduce((s, l) => s + calcBalance(l), 0);
+  const totalPayoff = allActivePlusUnassigned.reduce((s, l) => s + calcBalance(l), 0);
 
-  // Top 3 most expensive active properties
+  // All active properties ranked by monthly burn — same logic as RehabPriority
+  const rollingLoans = data.rollingLoans || [];
+  const dashMonthlyBurn = loan => {
+    if (loan.endDate) return 0;
+    if (loan.interestType === "fixed") return 0;
+    if (loan.loanType === "private" && rollingLoans.includes(loan.id)) return 0;
+    const pt = loan.paymentType || "closing";
+    if (pt === "monthly_fixed") return Math.round(loan.monthlyPayment || 0);
+    return Math.round((loan.principal || 0) * (loan.interestRate || 0) / 100 / 12);
+  };
   const topBurning = [...activePropsData].map(prop => {
     const active = prop.loans.filter(l => !l.endDate);
-    const monthly = active.reduce((s, l) => s + monthlyLoanPayment(l), 0) + (prop.monthlyHolding ?? 500);
+    const monthly = active.reduce((s, l) => s + dashMonthlyBurn(l), 0);
     const daysOwned = daysBetween(prop.purchaseDate, TODAY);
     const totalInterest = prop.loans.reduce((s, l) => s + calcIntEarned(l), 0);
     return { prop, monthly, daysOwned, totalInterest };
-  }).sort((a, b) => b.monthly - a.monthly).slice(0, 3);
+  }).sort((a, b) => b.monthly - a.monthly);
 
   const placeOnProperty = (fund, propId) => {
     const loan = {
@@ -5150,7 +5159,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
         </button>
       )}
 
-      {/* ── Top 3 Burning Properties ── */}
+      {/* ── All Burning Properties ── */}
       {topBurning.length > 0 && (
         <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden mb-4">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-start justify-between gap-3">
@@ -5159,7 +5168,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
                 🔥 Monthly Holding
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/></svg>
               </div>
-              <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Most Expensive to Hold — Top 3 · tap for Rehab Priority</div>
+              <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">All active properties by monthly cost · tap for Rehab Priority</div>
             </button>
             <div className="shrink-0 text-right">
               <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold tracking-widest mb-0.5">Total/mo</div>
