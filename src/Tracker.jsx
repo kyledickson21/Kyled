@@ -627,8 +627,8 @@ function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">No Funding Gap — Consider Splitting</div>
             <div className="space-y-1.5">
               {blockedSize.map(p=>(
-                <button key={p.id} onClick={()=>handleClick(p)}
-                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                <button key={p.id} disabled
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed">
                   <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
                 </button>
               ))}
@@ -640,8 +640,8 @@ function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Timing Conflict — Cannot Place</div>
             <div className="space-y-1.5">
               {blockedDate.map(p=>(
-                <button key={p.id} onClick={()=>handleClick(p)}
-                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                <button key={p.id} disabled
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed">
                   <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
                 </button>
               ))}
@@ -665,17 +665,15 @@ function MoveModal({ item, properties, onMove, onClose }) {
 
   const candidateProps = activeProps.filter(p=>item.type!=="loan"||p.id!==item.propId);
 
-  const available=[], blockedSize=[];
+  const available=[], blockedDate=[], blockedSize=[];
   for (const p of candidateProps) {
     const c=propConflict(loanStartDate,amount,p);
     if (!c) available.push(p);
-    else if (c==='size') blockedSize.push(p);
-    // date-conflict properties are silently excluded — nowhere useful to move them
+    else if (c==='date') blockedDate.push(p);
+    else blockedSize.push(p);
   }
 
-  // Only show Unassigned if there's at least one non-timing-conflict destination;
-  // otherwise moving to unassigned just strands the loan with no valid re-home.
-  const hasViableDestination = available.length > 0 || blockedSize.length > 0;
+  const hasViableDestination = available.length > 0 || blockedSize.length > 0 || blockedDate.length > 0;
   const showUnassigned = item.type==="loan" && hasViableDestination;
 
   if (!hasViableDestination && !showUnassigned) return (
@@ -732,9 +730,22 @@ function MoveModal({ item, properties, onMove, onClose }) {
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">No Funding Gap — Consider Splitting</div>
             <div className="space-y-1.5">
               {blockedSize.map(p=>(
-                <button key={p.id} onClick={()=>handleClick(p.id)}
-                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                <button key={p.id} disabled
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed">
                   <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {blockedDate.length>0&&(
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Timing Conflict — Cannot Move</div>
+            <div className="space-y-1.5">
+              {blockedDate.map(p=>(
+                <button key={p.id} disabled
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed">
+                  <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
                 </button>
               ))}
             </div>
@@ -915,15 +926,17 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
   const loanAmt = loan.principal||loan.amount||0;
   const [mode, setMode] = useState("place");
   const [blockMsg, setBlockMsg] = useState("");
+  const [openPicker, setOpenPicker] = useState(null);
 
-  const available=[], blockedSize=[];
+  const available=[], blockedDate=[], blockedSize=[];
   for (const p of candidateProps) {
     const c=propConflict(loan.startDate,loanAmt,p);
     if(!c) available.push(p);
-    else if(c==='size') blockedSize.push(p);
+    else if(c==='date') blockedDate.push(p);
+    else blockedSize.push(p);
   }
-  const hasViableDest = available.length>0||blockedSize.length>0;
-  const showUnassigned = currentPropId!==null && hasViableDest;
+  const hasViableDest = available.length>0||blockedSize.length>0||blockedDate.length>0;
+  const showUnassigned = currentPropId!==null && (available.length>0||blockedSize.length>0);
 
   const [splits,setSplits] = useState([
     {propId:"",amount:""},
@@ -934,12 +947,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
   const setRow=(i,field,val)=>setSplits(s=>s.map((r,j)=>j===i?{...r,[field]:val}:r));
   const totalSplit=splits.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
   const remaining=loanAmt-totalSplit;
-  const splitValid=splits.every(r=>{
-    if(!r.propId||!(parseFloat(r.amount)>0)) return false;
-    if(r.propId==="unassigned") return true;
-    const p=activeProps.find(x=>x.id===r.propId);
-    return !p||propConflict(loan.startDate,parseFloat(r.amount),p)===null;
-  })&&Math.abs(remaining)<0.01;
+  const splitValid=splits.every(r=>r.propId&&parseFloat(r.amount)>0)&&Math.abs(remaining)<0.01;
 
   if(!hasViableDest&&!showUnassigned) return (
     <Modal title={`${currentPropId?"Move":"Place"} — ${loan.lenderName}`} onClose={onClose}>
@@ -1009,9 +1017,22 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400 mb-1.5">No Funding Gap — Consider Splitting</div>
               <div className="space-y-1.5">
                 {blockedSize.map(p=>(
-                  <button key={p.id} type="button" onClick={()=>handlePlace(p.id)}
-                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                  <button key={p.id} type="button" disabled
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed">
                     <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {blockedDate.length>0&&(
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Timing Conflict — Cannot Place</div>
+              <div className="space-y-1.5">
+                {blockedDate.map(p=>(
+                  <button key={p.id} type="button" disabled
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed">
+                    <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
                   </button>
                 ))}
               </div>
@@ -1025,17 +1046,15 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm">
             <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total to split</span><span className="tabular-nums font-semibold text-slate-900 dark:text-zinc-100">{$$(loanAmt)}</span></div>
           </div>
+          {openPicker!==null&&<div className="fixed inset-0 z-40" onClick={()=>setOpenPicker(null)}/>}
           <div className="space-y-3">
             <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Split Into</div>
             {splits.map((row,i)=>{
               const rowAmt=parseFloat(row.amount)||0;
               const hasAmt=row.amount!==""&&rowAmt>0;
               const destProp=row.propId&&row.propId!=="unassigned"?activeProps.find(p=>p.id===row.propId):null;
-              const destPropConflict=destProp?propConflict(loan.startDate,rowAmt,destProp):null;
-              const propOptions=candidateProps.map(p=>{
-                const c=propConflict(loan.startDate,rowAmt,p);
-                return{prop:p,c};
-              });
+              const propOptions=candidateProps.map(p=>({prop:p,c:propConflict(loan.startDate,rowAmt,p)}));
+              const pickerLabel=row.propId===""?(hasAmt?"— pick destination —":"Enter amount first"):row.propId==="unassigned"?"💼 Leave unassigned":(()=>{const p=activeProps.find(x=>x.id===row.propId);const c=propConflict(loan.startDate,rowAmt,p);return`${c==="date"?"🕐":c==="size"?"📐":"🏠"} ${p?.address||"?"}`;})();
               return(
                 <div key={i} className="space-y-1.5">
                   <div className="flex gap-2 items-center">
@@ -1044,23 +1063,35 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                         onChange={e=>setRow(i,"amount",e.target.value)}
                         className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
                     </div>
-                    <div className="flex-1">
-                      <select value={row.propId} onChange={e=>setRow(i,"propId",e.target.value)}
-                        disabled={!hasAmt}
-                        className={`w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 ${!hasAmt?"opacity-40 cursor-not-allowed":""}`}>
-                        <option value="">{hasAmt?"— pick destination —":"Enter amount first"}</option>
-                        <option value="unassigned">💼 Leave unassigned</option>
-                        {propOptions.map(({prop,c})=>{
-                          const lbl=c==="date"?`🕐 ${prop.address} — timing conflict`:c==="size"?`📐 ${prop.address} — over gap`:`🏠 ${prop.address}`;
-                          return <option key={prop.id} value={prop.id} disabled={c!==null}>{lbl}</option>;
-                        })}
-                      </select>
+                    <div className="flex-1 relative">
+                      <button type="button" disabled={!hasAmt} onClick={()=>setOpenPicker(openPicker===i?null:i)}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs flex items-center justify-between gap-1 ${!hasAmt?"opacity-40 cursor-not-allowed text-slate-400 dark:text-zinc-500":"text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"}`}>
+                        <span className="truncate">{pickerLabel}</span>
+                        <span className="shrink-0 text-slate-400 dark:text-zinc-500">▾</span>
+                      </button>
+                      {openPicker===i&&(
+                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-800 rounded-xl shadow-xl border border-slate-200 dark:border-zinc-700 overflow-hidden max-h-52 overflow-y-auto">
+                          <button type="button" onClick={()=>{setRow(i,"propId","unassigned");setOpenPicker(null);}}
+                            className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 border-b border-slate-100 dark:border-zinc-700 transition-colors">
+                            💼 Leave unassigned
+                          </button>
+                          {propOptions.map(({prop,c})=>{
+                            const disabled=c!==null;
+                            const emoji=c==="date"?"🕐":c==="size"?"📐":"🏠";
+                            const suffix=c==="date"?" — timing conflict":c==="size"?" — over gap":"";
+                            return(
+                              <button key={prop.id} type="button" disabled={disabled}
+                                onClick={()=>{setRow(i,"propId",prop.id);setOpenPicker(null);}}
+                                className={`w-full text-left px-3 py-2.5 text-xs font-medium transition-colors ${disabled?"opacity-40 cursor-not-allowed text-slate-500 dark:text-zinc-500":"text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+                                {emoji} {prop.address}{suffix}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     {splits.length>1&&<button type="button" onClick={()=>removeRow(i)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-base transition-colors shrink-0">✕</button>}
                   </div>
-                  {hasAmt&&destProp&&destPropConflict==="size"&&(
-                    <div className="ml-[136px] text-[10px] text-amber-600 dark:text-amber-400">📐 Over gap — reduce amount or pick another property</div>
-                  )}
                 </div>
               );
             })}
