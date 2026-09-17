@@ -1021,45 +1021,58 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm">
             <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total to split</span><span className="tabular-nums font-semibold text-slate-900 dark:text-zinc-100">{$$(loanAmt)}</span></div>
           </div>
+          {candidateProps.length - splitAvailProps.length > 0 && (
+            <div className="text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 border border-amber-100 dark:border-amber-800">
+              {candidateProps.length - splitAvailProps.length} propert{candidateProps.length - splitAvailProps.length===1?"y":"ies"} hidden — timing conflict with this loan's start date
+            </div>
+          )}
           <div className="space-y-3">
             <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Split Into</div>
             {splits.map((row,i)=>{
               const rowAmt=parseFloat(row.amount)||0;
+              const hasAmt=row.amount!==""&&rowAmt>0;
               const destProp=row.propId&&row.propId!=="unassigned"?activeProps.find(p=>p.id===row.propId):null;
-              let gapInfo=null;
-              if(destProp){
+              const propGaps=splitAvailProps.map(p=>{
+                const al=p.loans.filter(l=>!l.endDate);
+                const gap=Math.max(0,propNeeded(p,al)-al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0));
+                return{prop:p,gap};
+              }).filter(x=>!hasAmt||x.gap>0);
+              const selGap=destProp?(()=>{
                 const al=destProp.loans.filter(l=>!l.endDate);
-                const needed=propNeeded(destProp,al);
-                const funded=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
-                const shortage=Math.max(0,needed-funded);
-                const afterSplit=Math.max(0,shortage-rowAmt);
-                if(needed>0) gapInfo={shortage,afterSplit};
-              }
+                return Math.max(0,propNeeded(destProp,al)-al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0));
+              })():null;
               return(
                 <div key={i} className="space-y-1.5">
                   <div className="flex gap-2 items-center">
                     <div className="w-32 shrink-0">
-                      <input type="number" placeholder="Amount $" value={row.amount} onChange={e=>setRow(i,"amount",e.target.value)}
+                      <input type="number" placeholder="$ Amount" value={row.amount}
+                        onChange={e=>{
+                          let val=e.target.value;
+                          if(selGap!==null&&parseFloat(val)>selGap) val=String(selGap);
+                          setRow(i,"amount",val);
+                        }}
                         className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
                     </div>
                     <div className="flex-1">
                       <select value={row.propId} onChange={e=>setRow(i,"propId",e.target.value)}
-                        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                        <option value="">— pick destination —</option>
+                        disabled={!hasAmt}
+                        className={`w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 ${!hasAmt?"opacity-40 cursor-not-allowed":""}`}>
+                        <option value="">{hasAmt?"— pick destination —":"Enter amount first"}</option>
                         <option value="unassigned">💼 Leave unassigned</option>
-                        {splitAvailProps.map(p=><option key={p.id} value={p.id}>🏠 {p.address}</option>)}
+                        {propGaps.map(({prop,gap})=>(
+                          <option key={prop.id} value={prop.id}>🏠 {prop.address} — {gap>0?$$(gap)+" avail":"fully funded"}</option>
+                        ))}
                       </select>
                     </div>
                     {splits.length>1&&<button type="button" onClick={()=>removeRow(i)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-base transition-colors shrink-0">✕</button>}
                   </div>
-                  {gapInfo&&(
-                    <div className="ml-[136px] flex items-center gap-2 text-[10px]">
-                      <span className="text-slate-400 dark:text-zinc-500">Equity gap: <span className="font-semibold text-amber-600 dark:text-amber-400">{$$(gapInfo.shortage)}</span></span>
-                      {rowAmt>0&&<span className="text-slate-300 dark:text-zinc-600">→</span>}
-                      {rowAmt>0&&<span className={gapInfo.afterSplit<=0?"text-emerald-600 dark:text-emerald-400 font-semibold":"text-slate-500 dark:text-zinc-400"}>
-                        {gapInfo.afterSplit<=0?"Fully covered":$$(gapInfo.afterSplit)+" remaining"}
-                      </span>}
+                  {hasAmt&&destProp&&selGap!==null&&(
+                    <div className="ml-[136px] text-[10px] text-slate-400 dark:text-zinc-500">
+                      {selGap<=0?"⚠️ Property fully funded":rowAmt<=selGap?`${$$(selGap-rowAmt)} still needed after this`:`⚠️ Exceeds gap by ${$$(rowAmt-selGap)}`}
                     </div>
+                  )}
+                  {!hasAmt&&i===0&&splitAvailProps.length===0&&(
+                    <div className="ml-[136px] text-[10px] text-amber-600 dark:text-amber-400">No properties available for splitting</div>
                   )}
                 </div>
               );
@@ -2641,15 +2654,19 @@ function LenderDashboard({ data }) {
 }
 
 // ─── All Loans Page ────────────────────────────────────────────────────────────
-function AllLoansPage({ data, update }) {
+function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilter }) {
   const prv = usePrivacy();
   const navigate = usePanel();
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [filter, setFilter] = usePersistedState("nx-loansFilter", "active");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = usePersistedState("nx-loansSortBy", "date");
   const [sortDir, setSortDir] = usePersistedState("nx-loansSortDir", "desc");
+  useEffect(() => {
+    if (pendingTypeFilter) { setTypeFilter(pendingTypeFilter); onClearPendingTypeFilter?.(); }
+  }, [pendingTypeFilter]);
 
   const allLoans = [
     ...data.properties.flatMap(p => p.loans.map(l => ({...l, prop:p, propAddress:p.address, propId:p.id}))),
@@ -2668,9 +2685,10 @@ function AllLoansPage({ data, update }) {
 
   const filtered = allLoans.filter(l => {
     const matchFilter = filter === "all" || (filter === "active" ? !l.endDate : !!l.endDate);
+    const matchType = typeFilter === "all" || l.loanType === typeFilter;
     const q = search.toLowerCase();
     const matchSearch = !search || l.lenderName?.toLowerCase().includes(q) || l.propAddress?.toLowerCase().includes(q);
-    return matchFilter && matchSearch;
+    return matchFilter && matchType && matchSearch;
   }).sort((a,b) => {
     const d = sortDir==="asc" ? 1 : -1;
     if(sortBy==="lender") return d*(a.lenderName||"").localeCompare(b.lenderName||"");
@@ -2715,6 +2733,13 @@ function AllLoansPage({ data, update }) {
           <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${filter===f?"bg-blue-600 text-white":"bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"}`}>
             {f.charAt(0).toUpperCase()+f.slice(1)}{filter===f?` (${filterCounts[f]})` : ""}
+          </button>
+        ))}
+        <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-0.5"/>
+        {[["all","All Types"],["hard","Hard Money"],["private","Private Money"]].map(([t,l]) => (
+          <button key={t} onClick={() => setTypeFilter(t)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${typeFilter===t?"bg-slate-800 dark:bg-zinc-100 text-white dark:text-zinc-900":"bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"}`}>
+            {l}
           </button>
         ))}
         <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
@@ -4876,6 +4901,8 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
   const openPanel = usePanel();
   const [modal, setModal] = useState(null);
+  const [fundsOpen, setFundsOpen] = usePersistedState("nx-dashFundsOpen", true);
+  const [menuOpen, setMenuOpen] = useState(null);
 
   const activePropsData = data.properties.filter(p => !p.dateSold);
   const unassignedFunds = (data.unassigned || []).filter(l => !l.endDate);
@@ -4885,7 +4912,16 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const unassignedTotal = unassignedFunds.reduce((s, l) => s + (l.principal || 0), 0);
   const activeLendersCount = [...new Set(allActivePlusUnassigned.map(l => l.lenderName).filter(Boolean))].length;
   const totalLoansCount = allActivePlusUnassigned.length;
-  const drawsAvailable = allActivePlusUnassigned.reduce((s, l) => s + drawRemaining(l), 0);
+
+  // Draws: only properties where last draw was 14+ days ago (or never drawn)
+  const drawsAvailable = allActiveLoans.filter(l => {
+    if (!l.drawFacility || drawRemaining(l) <= 0) return false;
+    const draws = l.drawFacility.draws || [];
+    if (!draws.length) return true;
+    const lastDate = draws.reduce((m, d) => !m || d.date > m ? d.date : m, null);
+    return !lastDate || daysBetween(lastDate, TODAY) >= 14;
+  }).reduce((s, l) => s + drawRemaining(l), 0);
+
   const hardMonthly = allActiveLoans.filter(l => l.loanType === "hard").reduce((s, l) => s + monthlyLoanPayment(l), 0);
   const totalFundingGap = activePropsData.reduce((s, prop) => {
     const active = prop.loans.filter(l => !l.endDate);
@@ -4893,6 +4929,15 @@ function DashboardPage({ data, update, onNavigateTab }) {
     return s + Math.max(0, propNeeded(prop, active) - funded);
   }, 0);
   const hardMonthlyLoans = allActiveLoans.filter(l => l.loanType === "hard" && monthlyLoanPayment(l) > 0);
+
+  // Top 3 most expensive active properties
+  const topBurning = [...activePropsData].map(prop => {
+    const active = prop.loans.filter(l => !l.endDate);
+    const monthly = active.reduce((s, l) => s + monthlyLoanPayment(l), 0) + (prop.monthlyHolding ?? 500);
+    const daysOwned = daysBetween(prop.purchaseDate, TODAY);
+    const totalInterest = prop.loans.reduce((s, l) => s + calcIntEarned(l), 0);
+    return { prop, monthly, daysOwned, totalInterest };
+  }).sort((a, b) => b.monthly - a.monthly).slice(0, 3);
 
   const placeOnProperty = (fund, propId) => {
     const loan = {
@@ -4933,16 +4978,17 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const sortedFunds = [...unassignedFunds].sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
 
   const NAV_COLORS = {
-    blue:   ["text-blue-600 dark:text-blue-400",   "bg-blue-50 dark:bg-blue-900/20"],
-    indigo: ["text-indigo-600 dark:text-indigo-400","bg-indigo-50 dark:bg-indigo-900/20"],
-    amber:  ["text-amber-600 dark:text-amber-400",  "bg-amber-50 dark:bg-amber-900/20"],
-    red:    ["text-red-600 dark:text-red-400",      "bg-red-50 dark:bg-red-900/20"],
-    slate:  ["text-slate-700 dark:text-zinc-200",   "bg-slate-50 dark:bg-zinc-800/60"],
-    orange: ["text-orange-600 dark:text-orange-400","bg-orange-50 dark:bg-orange-900/20"],
+    blue:   "text-blue-600 dark:text-blue-400",
+    indigo: "text-indigo-600 dark:text-indigo-400",
+    amber:  "text-amber-600 dark:text-amber-400",
+    slate:  "text-slate-700 dark:text-zinc-200",
+    orange: "text-orange-600 dark:text-orange-400",
   };
 
   return (
     <div className="px-5 pt-5 pb-8 w-full max-w-5xl mx-auto">
+      {menuOpen && <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)}/>}
+
       {/* Header */}
       <div className="mb-6">
         <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-1">Nexus Homes</div>
@@ -4953,42 +4999,60 @@ function DashboardPage({ data, update, onNavigateTab }) {
       {/* ── HERO: Unassigned Money ── */}
       {unassignedFunds.length > 0 ? (
         <div className="mb-6 rounded-2xl overflow-hidden bg-gradient-to-br from-violet-600 to-purple-700 shadow-[0_4px_24px_rgba(124,58,237,0.30)] dark:shadow-[0_4px_24px_rgba(124,58,237,0.20)]">
-          <div className="px-5 py-4 flex items-center justify-between">
+          {/* Collapsible header */}
+          <button onClick={() => setFundsOpen(o => !o)}
+            className="w-full px-5 py-4 flex items-center justify-between hover:bg-white/5 transition-colors">
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-widest text-violet-200/70 mb-1">💼 Money Ready to Place</div>
+              <div className="text-[11px] font-bold uppercase tracking-widest text-violet-200/70 mb-1 text-left">💼 Money Ready to Place</div>
               <div className="text-4xl font-black text-white tabular-nums tracking-tight">{h$(unassignedTotal)}</div>
-              <div className="text-sm text-violet-200/70 mt-1">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} sitting idle — place them on a property</div>
+              <div className="text-sm text-violet-200/70 mt-1 text-left">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} sitting idle</div>
             </div>
-          </div>
-          <div className="border-t border-white/15 divide-y divide-white/10">
-            {sortedFunds.map(u => {
-              const principal = u.principal || u.amount || 0;
-              const days = daysBetween(u.startDate, TODAY);
-              return (
-                <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 hover:bg-white/5 transition-colors">
-                  <div className="flex-1 min-w-0 flex items-center gap-2.5 flex-wrap">
-                    <button onClick={() => openPanel({ type: 'loan', loanId: u.id, propId: null })}
-                      className="font-semibold text-white text-sm hover:text-violet-200 transition-colors text-left">{u.lenderName}</button>
-                    <span className="font-bold text-white/90 text-sm tabular-nums">{h$(principal)}</span>
-                    {u.interestRate != null && <span className="text-xs text-violet-200/60">{fmtRate(u)}</span>}
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      days > 60 ? "bg-red-500/30 text-red-200" :
-                      days > 30 ? "bg-amber-400/25 text-amber-200" :
-                      "bg-white/10 text-white/60"
-                    }`}>{days}d idle</span>
+            <span className="text-white/40 text-xs font-bold ml-4 shrink-0">{fundsOpen ? "▲" : "▼"}</span>
+          </button>
+          {fundsOpen && (
+            <div className="border-t border-white/15 divide-y divide-white/10">
+              {sortedFunds.map(u => {
+                const principal = u.principal || u.amount || 0;
+                const days = daysBetween(u.startDate, TODAY);
+                return (
+                  <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 hover:bg-white/5 transition-colors">
+                    <div className="flex-1 min-w-0 flex items-center gap-2.5 flex-wrap">
+                      <button onClick={() => openPanel({ type: 'loan', loanId: u.id, propId: null })}
+                        className="font-semibold text-white text-sm hover:text-violet-200 transition-colors text-left">{u.lenderName}</button>
+                      <span className="font-bold text-white/90 text-sm tabular-nums">{h$(principal)}</span>
+                      {u.interestRate != null && <span className="text-xs text-violet-200/60">{fmtRate(u)}</span>}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        days > 60 ? "bg-red-500/30 text-red-200" :
+                        days > 30 ? "bg-amber-400/25 text-amber-200" :
+                        "bg-white/10 text-white/60"
+                      }`}>{days}d idle</span>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0 items-center">
+                      <button onClick={() => setModal({ type: "place", fund: u })}
+                        className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>
+                      {/* ⋯ menu */}
+                      <div className="relative z-20">
+                        <button onClick={() => setMenuOpen(o => o === u.id ? null : u.id)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white text-sm font-bold transition-colors">⋯</button>
+                        {menuOpen === u.id && (
+                          <div className="absolute right-0 top-8 w-36 bg-white dark:bg-zinc-800 rounded-xl shadow-xl border border-slate-100 dark:border-zinc-700 overflow-hidden z-20 py-1">
+                            <button onClick={() => { setMenuOpen(null); setModal({ type: "editUnassigned", fund: u }); }}
+                              className="w-full text-left px-3 py-2 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
+                              ✏️ Edit
+                            </button>
+                            <button onClick={() => { setMenuOpen(null); delUnassigned(u.id); }}
+                              className="w-full text-left px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                              🗑 Remove
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <button onClick={() => setModal({ type: "place", fund: u })}
-                      className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>
-                    <button onClick={() => setModal({ type: "editUnassigned", fund: u })}
-                      className="p-1.5 text-violet-200/60 hover:text-white text-sm transition-colors">✏️</button>
-                    <button onClick={() => delUnassigned(u.id)}
-                      className="p-1.5 text-violet-200/60 hover:text-red-300 text-sm transition-colors">🗑</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       ) : (
         <div className="mb-6 rounded-2xl border-2 border-dashed border-violet-300 dark:border-violet-800 p-6 text-center bg-violet-50/50 dark:bg-violet-900/10">
@@ -4998,13 +5062,12 @@ function DashboardPage({ data, update, onNavigateTab }) {
         </div>
       )}
 
-      {/* ── Stat Grid ── */}
+      {/* ── Stat Grid (5 tiles) ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         {[
           { label: "Active Properties", value: activePropsData.length, sub: "tap to view", color: "blue",   icon: "🏠", tab: "Properties" },
           { label: "Active Lenders",    value: activeLendersCount,    sub: "tap to view", color: "indigo", icon: "👥", tab: "LenderDash" },
-          { label: "Draws Available",   value: h$(drawsAvailable),   sub: "uncommitted",  color: "amber",  icon: "🏗️", tab: "Draws" },
-          { label: "Hard Money Monthly",value: h$(hardMonthly),      sub: "due 1st",      color: "red",    icon: "💸", tab: "AllLoans" },
+          { label: "Draws Available",   value: h$(drawsAvailable),   sub: "14d+ since last draw", color: "amber", icon: "🏗️", tab: "Draws" },
           { label: "Total Active Loans",value: totalLoansCount,      sub: "across all",   color: "slate",  icon: "📋", tab: "AllLoans" },
           { label: "Funding Gap",       value: h$(totalFundingGap),  sub: "short of 100%",color: "orange", icon: "📉", tab: "Properties" },
         ].map(({ label, value, sub, color, icon, tab }) => (
@@ -5014,7 +5077,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
               <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 leading-tight pr-1">{label}</div>
               <span className="text-base shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">{icon}</span>
             </div>
-            <div className={`text-xl font-black tabular-nums tracking-tight ${NAV_COLORS[color][0]}`}>{value}</div>
+            <div className={`text-xl font-black tabular-nums tracking-tight ${NAV_COLORS[color]}`}>{value}</div>
             <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 flex items-center gap-1">
               {sub}
               <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all">
@@ -5025,12 +5088,15 @@ function DashboardPage({ data, update, onNavigateTab }) {
         ))}
       </div>
 
-      {/* ── Hard Money Payment Breakdown ── */}
+      {/* ── Hard Money Monthly ── */}
       {hardMonthlyLoans.length > 0 && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden mb-4">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400">💸 Hard Money — Due 1st of Month</div>
-            <div className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums">{h$(hardMonthly)}/mo total</div>
+            <button onClick={() => onNavigateTab("AllLoans:hard")}
+              className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors text-left">
+              💸 Hard Money — Due 1st of Month →
+            </button>
+            <div className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums">{h$(hardMonthly)}/mo</div>
           </div>
           <div className="divide-y divide-slate-50 dark:divide-zinc-800">
             {hardMonthlyLoans.map(l => {
@@ -5055,6 +5121,36 @@ function DashboardPage({ data, update, onNavigateTab }) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Top 3 Burning Properties ── */}
+      {topBurning.length > 0 && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden mb-4">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-orange-500 dark:text-orange-400">🔥 Most Expensive to Hold — Top 3</div>
+            <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Monthly cost · days owned · interest spent so far</div>
+          </div>
+          <div className="divide-y divide-slate-50 dark:divide-zinc-800">
+            {topBurning.map(({ prop, monthly, daysOwned, totalInterest }, idx) => (
+              <div key={prop.id} className="px-5 py-4 flex items-center gap-4 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
+                <div className="w-6 h-6 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-[11px] font-black text-orange-600 dark:text-orange-400 shrink-0">
+                  {idx + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <button onClick={() => openPanel({ type: 'property', id: prop.id })}
+                    className="font-semibold text-sm text-slate-800 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left truncate block w-full">
+                    {prop.address}
+                  </button>
+                  <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    <span className="text-[11px] font-bold text-orange-600 dark:text-orange-400 tabular-nums">{h$(monthly)}/mo</span>
+                    {daysOwned > 0 && <span className="text-[11px] text-slate-400 dark:text-zinc-500 tabular-nums">{daysOwned}d owned</span>}
+                    {totalInterest > 0 && <span className="text-[11px] text-amber-600 dark:text-amber-400 tabular-nums">{h$(totalInterest)} interest so far</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -5103,6 +5199,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [privacyMode,setPrivacyMode]=useState(false);
   const [fabOpen,setFabOpen]=useState(false);
   const [fabPending,setFabPending]=useState(null);
+  const [loanFilterPending,setLoanFilterPending]=useState(null);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [globalSearch,setGlobalSearch]=useState('');
   const [navStack,setNavStack]=useState([]);
@@ -5446,10 +5543,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 ))}
               </div>
             )}
-            {tab==="Dashboard"     &&<DashboardPage data={data} update={update} onNavigateTab={t=>{setNavStack([]);setPanelStack([]);setTab(t);}}/>}
+            {tab==="Dashboard"     &&<DashboardPage data={data} update={update} onNavigateTab={t=>{setNavStack([]);setPanelStack([]);if(t==="AllLoans:hard"){setLoanFilterPending("hard");setTab("AllLoans");}else setTab(t);}}/>}
             {tab==="Properties"    &&<PropertiesPage data={data} update={update} pendingAction={fabPending} onClearPendingAction={()=>setFabPending(null)}/>}
             {tab==="LenderDash"   &&<LenderDashboard data={data}/>}
-            {tab==="AllLoans"     &&<AllLoansPage data={data} update={update}/>}
+            {tab==="AllLoans"     &&<AllLoansPage data={data} update={update} pendingTypeFilter={loanFilterPending} onClearPendingTypeFilter={()=>setLoanFilterPending(null)}/>}
             {tab==="PropDash"     &&<PropertyDashboard data={data}/>}
             {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
             {tab==="Closed"       &&<ClosedDealsPage data={data} update={update}/>}
