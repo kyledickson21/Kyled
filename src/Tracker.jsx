@@ -4097,7 +4097,7 @@ function DrawsPage({ data }) {
   const privacy = usePrivacy();
   const h$ = v => { const s=$$(v); return privacy?maskMoney(s):s; };
   const [drawSearch,setDrawSearch]=useState("");
-  const [drawSort,setDrawSort]=usePersistedState("nx-drawSort","overdue");
+  const [drawSort,setDrawSort]=usePersistedState("nx-drawSort","chance");
   const [drawSortDir,setDrawSortDir]=usePersistedState("nx-drawSortDir","desc");
 
   // Collect all active properties that have at least one draw-facility loan
@@ -4118,7 +4118,12 @@ function DrawsPage({ data }) {
       const lastDrawDate = drawDates.length ? drawDates[drawDates.length-1] : null;
       const daysSinceDraw = lastDrawDate ? daysBetween(lastDrawDate, TODAY) : null;
 
-      return { prop: p, drawLoans, totalCommitted, totalDrawn, totalAvailable, lastDrawDate, daysSinceDraw, allDraws };
+      // "Last event" = later of last draw or purchase date (both count for 14-day window)
+      const lastEventDate = [lastDrawDate, p.purchaseDate].filter(Boolean).sort().pop() ?? null;
+      const daysSinceEvent = lastEventDate ? daysBetween(lastEventDate, TODAY) : null;
+      const eligible = !lastEventDate || daysSinceEvent >= 14;
+
+      return { prop: p, drawLoans, totalCommitted, totalDrawn, totalAvailable, lastDrawDate, daysSinceDraw, lastEventDate, daysSinceEvent, eligible, allDraws };
     })
     .filter(Boolean)
     .sort((a, b) => {
@@ -4126,9 +4131,16 @@ function DrawsPage({ data }) {
       if(drawSort==="available") return d*(a.totalAvailable-b.totalAvailable);
       if(drawSort==="drawn") return d*(a.totalDrawn-b.totalDrawn);
       if(drawSort==="address") return d*(a.prop.address||"").localeCompare(b.prop.address||"");
-      const da = a.daysSinceDraw ?? 99999;
-      const db = b.daysSinceDraw ?? 99999;
-      return d*(da-db);
+      if(drawSort==="overdue") {
+        const da = a.daysSinceDraw ?? 99999;
+        const db = b.daysSinceDraw ?? 99999;
+        return d*(da-db);
+      }
+      // "chance" — longest since last event (draw or purchase), eligible first
+      const ea = a.daysSinceEvent ?? 99999;
+      const eb = b.daysSinceEvent ?? 99999;
+      if(a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+      return d*(ea-eb);
     });
 
   if (!rows.length) return (
@@ -4148,7 +4160,7 @@ function DrawsPage({ data }) {
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <SortDropdown value={drawSort} onChange={setDrawSort}
-          options={[["overdue","Most Overdue"],["available","By Available"],["drawn","By Drawn"],["address","A–Z"]]}/>
+          options={[["chance","Highest Chance"],["overdue","Most Overdue"],["available","By Available"],["drawn","By Drawn"],["address","A–Z"]]}/>
         <button onClick={()=>setDrawSortDir(d=>d==="asc"?"desc":"asc")}
           className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
           {drawSortDir==="asc"?"↑ Asc":"↓ Desc"}
@@ -4168,26 +4180,45 @@ function DrawsPage({ data }) {
         </div>
       </div>
 
-      {rows.map(({ prop, drawLoans, totalCommitted, totalDrawn, totalAvailable, lastDrawDate, daysSinceDraw }) => {
+      {rows.map(({ prop, drawLoans, totalCommitted, totalDrawn, totalAvailable, lastDrawDate, daysSinceDraw, lastEventDate, daysSinceEvent, eligible }) => {
         const pct_drawn = totalCommitted > 0 ? Math.min(100, Math.round(totalDrawn/totalCommitted*100)) : 0;
-        const urgency = daysSinceDraw === null ? "new" : daysSinceDraw >= 21 ? "high" : daysSinceDraw >= 10 ? "med" : "low";
-        const urgencyColor = urgency==="new" ? "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30"
+        // urgency based on time since last event (draw or purchase)
+        const urgency = !eligible ? "wait"
+          : daysSinceEvent === null ? "new"
+          : daysSinceEvent >= 21 ? "high"
+          : daysSinceEvent >= 14 ? "med"
+          : "low";
+        const urgencyColor = urgency==="wait" ? "text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800"
+          : urgency==="new" ? "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30"
           : urgency==="high" ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30"
           : urgency==="med" ? "text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/30"
           : "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30";
 
+        // Label for the badge: show days since the relevant event
+        const eventLabel = !eligible
+          ? `Wait ${14 - (daysSinceEvent??0)}d`
+          : daysSinceEvent === null ? "No prior event"
+          : `${daysSinceEvent}d ago`;
+
+        // Sub-label explaining what the event was
+        const eventSub = lastDrawDate && prop.purchaseDate
+          ? (lastDrawDate >= prop.purchaseDate ? `Last draw ${lastDrawDate}` : `Purchased ${prop.purchaseDate}`)
+          : lastDrawDate ? `Last draw ${lastDrawDate}`
+          : prop.purchaseDate ? `Purchased ${prop.purchaseDate}`
+          : null;
+
         return (
-          <div key={prop.id} className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden">
+          <div key={prop.id} className={`bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${!eligible?"opacity-60":""}`}>
             {/* Property header */}
             <div className="px-4 pt-4 pb-3 border-b border-slate-100 dark:border-zinc-800">
               <div className="flex items-start justify-between gap-2">
                 <div className="font-semibold text-[14px] text-slate-900 dark:text-zinc-100 leading-snug flex-1">{prop.address}</div>
                 <div className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${urgencyColor}`}>
-                  {daysSinceDraw === null ? "Never drawn" : `${daysSinceDraw}d ago`}
+                  {eventLabel}
                 </div>
               </div>
-              {lastDrawDate && (
-                <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Last draw {lastDrawDate}</div>
+              {eventSub && (
+                <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{eventSub}</div>
               )}
             </div>
 
@@ -4937,14 +4968,15 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const activeLendersCount = [...new Set(allActivePlusUnassigned.map(l => l.lenderName).filter(Boolean))].length;
   const totalLoansCount = allActivePlusUnassigned.length;
 
-  // Draws: only properties where last draw was 14+ days ago (or never drawn)
-  const drawsAvailable = allActiveLoans.filter(l => {
-    if (!l.drawFacility || drawRemaining(l) <= 0) return false;
+  // Draws: eligible if 14+ days since the LATER of (last draw date) or (property purchase date)
+  const drawsAvailable = activePropsData.flatMap(prop =>
+    prop.loans.filter(l => !l.endDate && l.drawFacility && drawRemaining(l) > 0).map(l => ({l, prop}))
+  ).filter(({l, prop}) => {
     const draws = l.drawFacility.draws || [];
-    if (!draws.length) return true;
-    const lastDate = draws.reduce((m, d) => !m || d.date > m ? d.date : m, null);
-    return !lastDate || daysBetween(lastDate, TODAY) >= 14;
-  }).reduce((s, l) => s + drawRemaining(l), 0);
+    const lastDraw = draws.reduce((m, d) => !m || d.date > m ? d.date : m, null);
+    const lastEvent = [lastDraw, prop.purchaseDate].filter(Boolean).sort().pop() ?? null;
+    return !lastEvent || daysBetween(lastEvent, TODAY) >= 14;
+  }).reduce((s, {l}) => s + drawRemaining(l), 0);
 
   const hardMonthly = allActiveLoans.filter(l => l.loanType === "hard").reduce((s, l) => s + monthlyLoanPayment(l), 0);
   const totalFundingGap = activePropsData.reduce((s, prop) => {
