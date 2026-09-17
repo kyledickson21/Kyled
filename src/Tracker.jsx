@@ -908,6 +908,179 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
   );
 }
 
+// ─── Place / Split Modal ──────────────────────────────────────────────────────
+function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onClose }) {
+  const activeProps = properties.filter(p=>!p.dateSold);
+  const candidateProps = currentPropId ? activeProps.filter(p=>p.id!==currentPropId) : activeProps;
+  const loanAmt = loan.principal||loan.amount||0;
+  const [mode, setMode] = useState("place");
+  const [blockMsg, setBlockMsg] = useState("");
+
+  const available=[], blockedSize=[];
+  for (const p of candidateProps) {
+    const c=propConflict(loan.startDate,loanAmt,p);
+    if(!c) available.push(p);
+    else if(c==='size') blockedSize.push(p);
+  }
+  const hasViableDest = available.length>0||blockedSize.length>0;
+  const showUnassigned = currentPropId!==null && hasViableDest;
+
+  const splitAvailProps = candidateProps.filter(p=>loanPropConflict(loan.startDate,p)===0);
+  const [splits,setSplits] = useState(()=>[
+    {propId:splitAvailProps[0]?.id??"",amount:""},
+    {propId:splitAvailProps[1]?.id??"",amount:""},
+  ]);
+  const addRow=()=>setSplits(s=>[...s,{propId:"",amount:""}]);
+  const removeRow=i=>setSplits(s=>s.filter((_,j)=>j!==i));
+  const setRow=(i,field,val)=>setSplits(s=>s.map((r,j)=>j===i?{...r,[field]:val}:r));
+  const totalSplit=splits.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+  const remaining=loanAmt-totalSplit;
+  const splitValid=splits.every(r=>r.propId&&parseFloat(r.amount)>0)&&Math.abs(remaining)<0.01;
+
+  if(!hasViableDest&&!showUnassigned) return (
+    <Modal title={`${currentPropId?"Move":"Place"} — ${loan.lenderName}`} onClose={onClose}>
+      <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
+        <div className="font-bold text-slate-900 dark:text-zinc-100">{loan.lenderName}</div>
+        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(loanAmt)} · {fmtRate(loan)}</div>
+      </div>
+      <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No valid destination — all other properties have a timing conflict with this loan's start date.</p>
+      <Btn onClick={onClose} color="ghost" full>Close</Btn>
+    </Modal>
+  );
+
+  const handlePlace=propId=>{
+    if(propId!=="unassigned"){
+      const p=activeProps.find(x=>x.id===propId);
+      const c=propConflict(loan.startDate,loanAmt,p);
+      if(c==='size'){setBlockMsg("Cannot place here — not enough funding gap. Switch to ⚡ Split to divide this loan across properties.");return;}
+    }
+    setBlockMsg("");
+    onConfirm({type:propId==="unassigned"?"unassigned":"place",propId});
+  };
+
+  const title=`${currentPropId?"Move":"Place"} — ${loan.lenderName}`;
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
+        <div className="font-bold text-slate-900 dark:text-zinc-100">{loan.lenderName}</div>
+        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(loanAmt)} · {fmtRate(loan)} · <TypeLabel type={loan.loanType}/></div>
+      </div>
+      <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-zinc-800 p-1 rounded-xl">
+        <button type="button" onClick={()=>{setMode("place");setBlockMsg("");}}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg transition-all ${mode==="place"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
+          🏠 Place All
+        </button>
+        <button type="button" onClick={()=>{setMode("split");setBlockMsg("");}}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg transition-all ${mode==="split"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300"}`}>
+          ⚡ Split
+        </button>
+      </div>
+      {mode==="place"&&(
+        <div className="space-y-3">
+          {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300">{blockMsg}</div>}
+          {showUnassigned&&(
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Remove from Property</div>
+              <button type="button" onClick={()=>handlePlace("unassigned")}
+                className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-violet-50 dark:hover:bg-violet-900/20 border border-slate-200 dark:border-zinc-700 hover:border-violet-300 dark:hover:border-violet-700 transition-all">
+                <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">💼 Move to Unassigned</span>
+              </button>
+            </div>
+          )}
+          {available.length>0&&(
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Available Properties</div>
+              <div className="space-y-1.5">
+                {available.map(p=>(
+                  <button key={p.id} type="button" onClick={()=>{setBlockMsg("");handlePlace(p.id);}}
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                    <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">🏠 {p.address}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {blockedSize.length>0&&(
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400 mb-1.5">No Funding Gap — Consider Splitting</div>
+              <div className="space-y-1.5">
+                {blockedSize.map(p=>(
+                  <button key={p.id} type="button" onClick={()=>handlePlace(p.id)}
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed">
+                    <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="pt-1"><Btn onClick={onClose} color="ghost" full>Cancel</Btn></div>
+        </div>
+      )}
+      {mode==="split"&&(
+        <div className="space-y-4">
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm">
+            <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total to split</span><span className="tabular-nums font-semibold text-slate-900 dark:text-zinc-100">{$$(loanAmt)}</span></div>
+          </div>
+          <div className="space-y-3">
+            <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Split Into</div>
+            {splits.map((row,i)=>{
+              const rowAmt=parseFloat(row.amount)||0;
+              const destProp=row.propId&&row.propId!=="unassigned"?activeProps.find(p=>p.id===row.propId):null;
+              let gapInfo=null;
+              if(destProp){
+                const al=destProp.loans.filter(l=>!l.endDate);
+                const needed=propNeeded(destProp,al);
+                const funded=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+                const shortage=Math.max(0,needed-funded);
+                const afterSplit=Math.max(0,shortage-rowAmt);
+                if(needed>0) gapInfo={shortage,afterSplit};
+              }
+              return(
+                <div key={i} className="space-y-1.5">
+                  <div className="flex gap-2 items-center">
+                    <div className="w-32 shrink-0">
+                      <input type="number" placeholder="Amount $" value={row.amount} onChange={e=>setRow(i,"amount",e.target.value)}
+                        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
+                    </div>
+                    <div className="flex-1">
+                      <select value={row.propId} onChange={e=>setRow(i,"propId",e.target.value)}
+                        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        <option value="">— pick destination —</option>
+                        <option value="unassigned">💼 Leave unassigned</option>
+                        {splitAvailProps.map(p=><option key={p.id} value={p.id}>🏠 {p.address}</option>)}
+                      </select>
+                    </div>
+                    {splits.length>1&&<button type="button" onClick={()=>removeRow(i)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-base transition-colors shrink-0">✕</button>}
+                  </div>
+                  {gapInfo&&(
+                    <div className="ml-[136px] flex items-center gap-2 text-[10px]">
+                      <span className="text-slate-400 dark:text-zinc-500">Equity gap: <span className="font-semibold text-amber-600 dark:text-amber-400">{$$(gapInfo.shortage)}</span></span>
+                      {rowAmt>0&&<span className="text-slate-300 dark:text-zinc-600">→</span>}
+                      {rowAmt>0&&<span className={gapInfo.afterSplit<=0?"text-emerald-600 dark:text-emerald-400 font-semibold":"text-slate-500 dark:text-zinc-400"}>
+                        {gapInfo.afterSplit<=0?"Fully covered":$$(gapInfo.afterSplit)+" remaining"}
+                      </span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <button type="button" onClick={addRow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold">+ Add destination</button>
+          </div>
+          <div className={`flex justify-between text-sm font-semibold border-t border-slate-200 dark:border-zinc-700 pt-3 ${Math.abs(remaining)<0.01?"text-emerald-600 dark:text-emerald-400":remaining<0?"text-red-500 dark:text-red-400":"text-amber-600 dark:text-amber-400"}`}>
+            <span>Unallocated</span>
+            <span className="tabular-nums">{$$(remaining)} {Math.abs(remaining)<0.01?"✓":remaining<0?"(over!)":""}</span>
+          </div>
+          {!splitValid&&<p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">All rows need a destination and amount, and must sum to {$$(loanAmt)}.</p>}
+          <div className="flex gap-2 pt-1">
+            <Btn onClick={()=>splitValid&&onConfirm({type:"split",splits:splits.map(r=>({propId:r.propId,amount:parseFloat(r.amount)}))})} color={splitValid?"blue":"ghost"} full>Split Funds →</Btn>
+            <Btn onClick={onClose} color="ghost">Cancel</Btn>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // ─── Close Loan Modal ─────────────────────────────────────────────────────────
 function CloseLoanModal({ loan, onConfirm, onClose }) {
   const [closeDate, setCloseDate] = useState(TODAY);
@@ -1677,7 +1850,7 @@ function SortDropdown({ value, onChange, options }) {
 }
 
 // ─── Collapsible Unassigned Funds ─────────────────────────────────────────────
-function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete, onSplit }) {
+function CollapsibleUnassigned({ funds, total, onPlace, onEdit, onDelete }) {
   const prv=usePrivacy();
   const openPanel=usePanel();
   const h$=v=>prv?maskMoney($$(v)):$$(v);
@@ -1717,8 +1890,6 @@ function CollapsibleUnassigned({ funds, total, onPlace, onMove, onEdit, onDelete
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={()=>onPlace(u)} className="text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1 transition-colors">Place →</button>
-                  {onSplit&&<button onClick={()=>onSplit(u)} className="text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg px-2.5 py-1 transition-colors">⚡ Split</button>}
-                  <button onClick={()=>onMove(u)}  className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-violet-500 dark:hover:text-violet-400 text-sm transition-colors">⇄</button>
                   <button onClick={()=>onEdit(u)}  className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-sm transition-colors">✏️</button>
                   <button onClick={()=>onDelete(u.id)} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-sm transition-colors">🗑</button>
                 </div>
@@ -1854,18 +2025,25 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     setModal(null);
   };
 
-  const handleSplitLoan = (fund, splits) => {
+  const handleSplitLoan = (fund, splits, srcPropId=null) => {
     const newUnassigned = splits
       .filter(s=>s.propId==="unassigned")
       .map(s=>({...fund, id:uid(), principal:s.amount, drawFacility:null}));
     update(d=>({
       ...d,
-      unassigned: [...d.unassigned.filter(u=>u.id!==fund.id), ...newUnassigned],
+      unassigned: srcPropId
+        ? [...(d.unassigned||[]), ...newUnassigned]
+        : [...(d.unassigned||[]).filter(u=>u.id!==fund.id), ...newUnassigned],
       properties: d.properties.map(p=>{
+        if(srcPropId && p.id===srcPropId){
+          const withoutLoan = p.loans.filter(l=>l.id!==fund.id);
+          const piece = splits.find(s=>s.propId===p.id);
+          const added = piece ? [{...fund,id:uid(),principal:piece.amount,drawFacility:null}] : [];
+          return {...p,loans:[...withoutLoan,...added]};
+        }
         const piece=splits.find(s=>s.propId===p.id);
         if(!piece) return p;
-        const newLoan={...fund, id:uid(), principal:piece.amount, drawFacility:null};
-        return{...p,loans:[...p.loans,newLoan]};
+        return{...p,loans:[...p.loans,{...fund,id:uid(),principal:piece.amount,drawFacility:null}]};
       }),
     }));
     splits.filter(s=>s.propId!=="unassigned").forEach(s=>setExpanded(e=>({...e,[s.propId]:true})));
@@ -1992,9 +2170,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 
       {data.unassigned.length>0&&(
         <CollapsibleUnassigned funds={data.unassigned} total={unassignedTotal}
-          onPlace={u=>setModal({type:"place",fund:u})} onMove={u=>setModal({type:"moveUnassigned",fund:u})}
-          onEdit={u=>setModal({type:"editUnassigned",fund:u})} onDelete={delUnassigned}
-          onSplit={u=>setModal({type:"splitLoan",fund:u})}/>
+          onPlace={u=>setModal({type:"place",fund:u})}
+          onEdit={u=>setModal({type:"editUnassigned",fund:u})} onDelete={delUnassigned}/>
       )}
 
       {visible.length===0&&(
@@ -2256,7 +2433,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                             </div>
                             <div className="flex gap-1 shrink-0 items-center">
                               <button onClick={()=>openPanel?.({type:'loan',loanId:loan.id,propId:prop.id})} className="px-2 py-1 text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-200 dark:hover:border-blue-800 rounded-lg transition-all" title="View Loan">View →</button>
-                              <button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-violet-500 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-all text-base" title="Move">⇄</button>
+                              <button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1 transition-colors" title="Move">Move →</button>
                               <button onClick={()=>setModal({type:"editLoan",propId:prop.id,loan})} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit">✏️</button>
                               {!loan.endDate&&<button onClick={()=>setModal({type:"closeLoan",propId:prop.id,loan})} className="px-2 py-1 text-[10px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-orange-600 dark:hover:text-orange-400 bg-slate-50 dark:bg-zinc-800 hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-slate-200 dark:border-zinc-700 hover:border-orange-200 dark:hover:border-orange-800 rounded-lg transition-all" title="Close Loan">Close Loan</button>}
                               <button onClick={()=>delLoan(prop.id,loan.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm" title="Delete">🗑</button>
@@ -2293,11 +2470,20 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             setModal(null);
           }} onClose={()=>setModal(null)}/>
       </Modal>}
-      {modal?.type==="place"&&<PlaceOnPropertyModal fund={modal.fund} properties={data.properties} onPlace={propId=>placeOnProperty(modal.fund,propId)} onClose={()=>setModal(null)}/>}
       {modal?.type==="closeLoan"&&<CloseLoanModal loan={modal.loan} onConfirm={date=>handleCloseLoan(modal.propId,modal.loan,date)} onClose={()=>setModal(null)}/>}
-      {modal?.type==="splitLoan"&&<SplitLoanModal fund={modal.fund} properties={data.properties} onConfirm={splits=>handleSplitLoan(modal.fund,splits)} onClose={()=>setModal(null)}/>}
-      {modal?.type==="moveLoan"&&<MoveModal item={{type:"loan",propId:modal.propId,loan:modal.loan}} properties={data.properties} onMove={dest=>handleMove({type:"loan",propId:modal.propId,loan:modal.loan},dest)} onClose={()=>setModal(null)}/>}
-      {modal?.type==="moveUnassigned"&&<MoveModal item={{type:"unassigned",fund:modal.fund}} properties={data.properties} onMove={dest=>{placeOnProperty(modal.fund,dest);setModal(null);}} onClose={()=>setModal(null)}/>}
+      {(modal?.type==="place"||modal?.type==="moveLoan")&&(()=>{
+        const fund=modal.fund||modal.loan;
+        const srcPropId=modal.type==="moveLoan"?modal.propId:null;
+        return <PlaceSplitModal
+          loan={fund} currentPropId={srcPropId} properties={data.properties}
+          onConfirm={result=>{
+            if(result.type==="split") handleSplitLoan(fund,result.splits,srcPropId);
+            else if(result.type==="unassigned") handleMove({type:"loan",propId:srcPropId,loan:fund},"unassigned");
+            else if(srcPropId) handleMove({type:"loan",propId:srcPropId,loan:fund},result.propId);
+            else placeOnProperty(fund,result.propId);
+          }}
+          onClose={()=>setModal(null)}/>;
+      })()}
       {modal?.type==="markSold"&&<MarkSoldModal prop={modal.prop} allProperties={data.properties} onConfirm={(d,disp,cd,ir)=>handleMarkSold(modal.prop,d,disp,cd,ir)} onClose={()=>setModal(null)}/>}
       {modal==="closeLender"&&<CloseLenderModal data={data} update={update} onClose={()=>setModal(null)}/>}
       {modal?.type==="closePropPicker"&&<ClosePropertyPickerModal properties={data.properties} onPick={prop=>setModal({type:"markSold",prop})} onClose={()=>setModal(null)}/>}
@@ -2312,6 +2498,7 @@ function LenderDashboard({ data }) {
   const navigate = usePanel();
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
   const [search, setSearch] = useState("");
+  const [lenderFilter, setLenderFilter] = usePersistedState("nx-lenderFilter", "active");
   const [sortBy, setSortBy] = usePersistedState("nx-lenderSortBy2", "name");
   const [sortDir, setSortDir] = usePersistedState("nx-lenderSortDir", "asc");
 
@@ -2350,6 +2537,15 @@ function LenderDashboard({ data }) {
     closedCount: closedByLender[ld.name] || 0,
   }));
 
+  const lenderCounts = {
+    active: lenders.filter(ld=>ld.activeLoans.length>0).length,
+    inactive: lenders.filter(ld=>ld.activeLoans.length===0).length,
+    all: lenders.length,
+  };
+
+  if (lenderFilter === "active") lenders = lenders.filter(ld=>ld.activeLoans.length>0);
+  else if (lenderFilter === "inactive") lenders = lenders.filter(ld=>ld.activeLoans.length===0);
+
   if (search) {
     const q = search.toLowerCase();
     lenders = lenders.filter(ld => ld.name?.toLowerCase().includes(q) || ld.props.some(p => p.toLowerCase().includes(q)));
@@ -2378,8 +2574,18 @@ function LenderDashboard({ data }) {
         <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Lenders</h2>
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      {/* Filter tabs */}
+      <div className="flex gap-1 mb-4">
+        {[["active","Active"],["inactive","Inactive"],["all","All"]].map(([val,label])=>(
+          <button key={val} onClick={()=>setLenderFilter(val)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${lenderFilter===val?"bg-blue-600 text-white shadow-sm":"bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-slate-700 dark:hover:text-zinc-200"}`}>
+            {label}{lenderFilter===val?` (${lenderCounts[val]})`:null}
+          </button>
+        ))}
+      </div>
+
+      {/* Summary — hidden for inactive-only view */}
+      {lenderFilter!=="inactive"&&<div className="grid grid-cols-3 gap-3 mb-5">
         {[
           ["Total Principal", h$(totalPrin), "text-slate-900 dark:text-zinc-100"],
           ["Total Balance", h$(totalBal), "text-blue-600 dark:text-blue-400"],
@@ -2390,7 +2596,7 @@ function LenderDashboard({ data }) {
             <div className={`text-xl font-bold tabular-nums ${color}`}>{val}</div>
           </div>
         ))}
-      </div>
+      </div>}
 
       {/* Sort + search */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
