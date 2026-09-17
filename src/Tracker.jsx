@@ -4979,12 +4979,13 @@ function DashboardPage({ data, update, onNavigateTab }) {
   }).reduce((s, {l}) => s + drawRemaining(l), 0);
 
   const hardMonthly = allActiveLoans.filter(l => l.loanType === "hard").reduce((s, l) => s + monthlyLoanPayment(l), 0);
+  const hardMonthlyLoans = allActiveLoans.filter(l => l.loanType === "hard" && monthlyLoanPayment(l) > 0);
   const totalFundingGap = activePropsData.reduce((s, prop) => {
     const active = prop.loans.filter(l => !l.endDate);
     const funded = active.reduce((acc, l) => acc + (l.principal || 0) + (l.drawFacility?.committed || 0), 0);
     return s + Math.max(0, propNeeded(prop, active) - funded);
   }, 0);
-  const hardMonthlyLoans = allActiveLoans.filter(l => l.loanType === "hard" && monthlyLoanPayment(l) > 0);
+  const totalPayoff = allActiveLoans.reduce((s, l) => s + calcBalance(l), 0);
 
   // Top 3 most expensive active properties
   const topBurning = [...activePropsData].map(prop => {
@@ -5117,14 +5118,15 @@ function DashboardPage({ data, update, onNavigateTab }) {
         </div>
       )}
 
-      {/* ── Stat Grid (5 tiles) ── */}
+      {/* ── Stat Grid (6 tiles) ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         {[
-          { label: "Active Properties", value: activePropsData.length, sub: "tap to view", color: "blue",   icon: "🏠", tab: "Properties" },
-          { label: "Active Lenders",    value: activeLendersCount,    sub: "tap to view", color: "indigo", icon: "👥", tab: "LenderDash" },
-          { label: "Draws Available",   value: h$(drawsAvailable),   sub: "14d+ since last draw", color: "amber", icon: "🏗️", tab: "Draws" },
-          { label: "Total Active Loans",value: totalLoansCount,      sub: "across all",   color: "slate",  icon: "📋", tab: "AllLoans" },
-          { label: "Funding Gap",       value: h$(totalFundingGap),  sub: "short of 100%",color: "orange", icon: "📉", tab: "Properties" },
+          { label: "Active Properties", value: activePropsData.length, sub: "tap to view",        color: "blue",   icon: "🏠", tab: "Properties"  },
+          { label: "Active Lenders",    value: activeLendersCount,    sub: "tap to view",         color: "indigo", icon: "👥", tab: "LenderDash"  },
+          { label: "Draws Available",   value: h$(drawsAvailable),   sub: "14d+ since last event",color: "amber",  icon: "🏗️", tab: "Draws"       },
+          { label: "Total Active Loans",value: totalLoansCount,      sub: "across all",           color: "slate",  icon: "📋", tab: "AllLoans"    },
+          { label: "Funding Gap",       value: h$(totalFundingGap),  sub: "short of 100%",        color: "orange", icon: "📉", tab: "PropDash"    },
+          { label: "Total Payoff",      value: h$(totalPayoff),      sub: "all active balances",  color: "slate",  icon: "💰", tab: "LenderDash"  },
         ].map(({ label, value, sub, color, icon, tab }) => (
           <button key={label} onClick={() => onNavigateTab(tab)}
             className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
@@ -5143,49 +5145,36 @@ function DashboardPage({ data, update, onNavigateTab }) {
         ))}
       </div>
 
-      {/* ── Hard Money Monthly ── */}
-      {hardMonthlyLoans.length > 0 && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden mb-4">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between">
-            <button onClick={() => onNavigateTab("AllLoans:hard")}
-              className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors text-left">
-              💸 Hard Money — Due 1st of Month →
-            </button>
-            <div className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums">{h$(hardMonthly)}/mo</div>
+      {/* ── Hard Money Monthly Card ── */}
+      {hardMonthly > 0 && (
+        <button onClick={() => onNavigateTab("AllLoans:hard")}
+          className="w-full mb-4 bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 flex items-center justify-between hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-1">💸 Hard Money — Due 1st of Month</div>
+            <div className="text-xs text-slate-400 dark:text-zinc-500">{hardMonthlyLoans.length} loan{hardMonthlyLoans.length!==1?"s":""} · tap to view →</div>
           </div>
-          <div className="divide-y divide-slate-50 dark:divide-zinc-800">
-            {hardMonthlyLoans.map(l => {
-              const prop = activePropsData.find(p => p.loans.some(x => x.id === l.id));
-              return (
-                <div key={l.id} className="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
-                  <div className="flex-1 min-w-0">
-                    <button onClick={() => openPanel({ type: 'loan', loanId: l.id, propId: prop?.id || null })}
-                      className="font-semibold text-sm text-slate-800 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">
-                      {l.lenderName}
-                    </button>
-                    {prop && (
-                      <button onClick={() => openPanel({ type: 'property', id: prop.id })}
-                        className="block text-xs text-slate-400 dark:text-zinc-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors text-left truncate">
-                        {prop.address}
-                      </button>
-                    )}
-                  </div>
-                  <div className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums shrink-0">
-                    {h$(monthlyLoanPayment(l))}<span className="text-xs font-normal text-slate-400 dark:text-zinc-500">/mo</span>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="text-right shrink-0">
+            <div className="text-2xl font-black text-red-600 dark:text-red-400 tabular-nums">{h$(hardMonthly)}</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500">per month</div>
           </div>
-        </div>
+        </button>
       )}
 
       {/* ── Top 3 Burning Properties ── */}
       {topBurning.length > 0 && (
         <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden mb-4">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-orange-500 dark:text-orange-400">🔥 Most Expensive to Hold — Top 3</div>
-            <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Monthly cost · days owned · interest spent so far</div>
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-start justify-between gap-3">
+            <button onClick={() => onNavigateTab("RehabPriority")} className="text-left group">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-orange-500 dark:text-orange-400 flex items-center gap-1">
+                🔥 Monthly Holding
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/></svg>
+              </div>
+              <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Most Expensive to Hold — Top 3 · tap for Rehab Priority</div>
+            </button>
+            <div className="shrink-0 text-right">
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold tracking-widest mb-0.5">Total/mo</div>
+              <div className="text-lg font-black text-orange-600 dark:text-orange-400 tabular-nums">{h$(topBurning.reduce((s,{monthly})=>s+monthly,0))}</div>
+            </div>
           </div>
           <div className="divide-y divide-slate-50 dark:divide-zinc-800">
             {topBurning.map(({ prop, monthly, daysOwned, totalInterest }, idx) => (
