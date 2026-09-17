@@ -2168,11 +2168,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           placeholder="Search address or lender…" className={SEARCH_CLS}/>
       </div>
 
-      {data.unassigned.length>0&&(
-        <CollapsibleUnassigned funds={data.unassigned} total={unassignedTotal}
-          onPlace={u=>setModal({type:"place",fund:u})}
-          onEdit={u=>setModal({type:"editUnassigned",fund:u})} onDelete={delUnassigned}/>
-      )}
+      {/* Unassigned funds moved to Dashboard */}
 
       {visible.length===0&&(
         <div className="text-center py-12 text-slate-400 dark:text-zinc-500 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl">
@@ -4875,6 +4871,222 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate }) {
   );
 }
 
+function DashboardPage({ data, update, onNavigateTab }) {
+  const prv = usePrivacy();
+  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const openPanel = usePanel();
+  const [modal, setModal] = useState(null);
+
+  const activePropsData = data.properties.filter(p => !p.dateSold);
+  const unassignedFunds = (data.unassigned || []).filter(l => !l.endDate);
+  const allActiveLoans = activePropsData.flatMap(p => p.loans.filter(l => !l.endDate));
+  const allActivePlusUnassigned = [...allActiveLoans, ...unassignedFunds];
+
+  const unassignedTotal = unassignedFunds.reduce((s, l) => s + (l.principal || 0), 0);
+  const activeLendersCount = [...new Set(allActivePlusUnassigned.map(l => l.lenderName).filter(Boolean))].length;
+  const totalLoansCount = allActivePlusUnassigned.length;
+  const drawsAvailable = allActivePlusUnassigned.reduce((s, l) => s + drawRemaining(l), 0);
+  const hardMonthly = allActiveLoans.filter(l => l.loanType === "hard").reduce((s, l) => s + monthlyLoanPayment(l), 0);
+  const totalFundingGap = activePropsData.reduce((s, prop) => {
+    const active = prop.loans.filter(l => !l.endDate);
+    const funded = active.reduce((acc, l) => acc + (l.principal || 0) + (l.drawFacility?.committed || 0), 0);
+    return s + Math.max(0, propNeeded(prop, active) - funded);
+  }, 0);
+  const hardMonthlyLoans = allActiveLoans.filter(l => l.loanType === "hard" && monthlyLoanPayment(l) > 0);
+
+  const placeOnProperty = (fund, propId) => {
+    const loan = {
+      id: uid(), lenderName: fund.lenderName, loanType: fund.loanType,
+      principal: fund.principal || fund.amount || 0, startDate: fund.startDate || TODAY,
+      interestRate: fund.interestRate || 0, interestType: fund.interestType || "percentage",
+      paymentType: fund.paymentType || "closing", monthlyPayment: fund.monthlyPayment || 0,
+      drawFacility: fund.drawFacility || null, specialTerms: fund.specialTerms || "", endDate: null,
+    };
+    update(d => ({
+      ...d,
+      unassigned: d.unassigned.filter(u => u.id !== fund.id),
+      properties: d.properties.map(p => p.id !== propId ? p : { ...p, loans: [...p.loans, loan] }),
+    }));
+    setModal(null);
+  };
+
+  const handleSplitLoan = (fund, splits) => {
+    const newUnassigned = splits.filter(s => s.propId === "unassigned")
+      .map(s => ({ ...fund, id: uid(), principal: s.amount, drawFacility: null }));
+    update(d => ({
+      ...d,
+      unassigned: [...d.unassigned.filter(u => u.id !== fund.id), ...newUnassigned],
+      properties: d.properties.map(p => {
+        const piece = splits.find(s => s.propId === p.id);
+        if (!piece) return p;
+        return { ...p, loans: [...p.loans, { ...fund, id: uid(), principal: piece.amount, drawFacility: null }] };
+      }),
+    }));
+    setModal(null);
+  };
+
+  const delUnassigned = id => {
+    if (!confirm("Remove this unassigned fund?")) return;
+    update(d => ({ ...d, unassigned: d.unassigned.filter(u => u.id !== id) }));
+  };
+
+  const sortedFunds = [...unassignedFunds].sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+
+  const NAV_COLORS = {
+    blue:   ["text-blue-600 dark:text-blue-400",   "bg-blue-50 dark:bg-blue-900/20"],
+    indigo: ["text-indigo-600 dark:text-indigo-400","bg-indigo-50 dark:bg-indigo-900/20"],
+    amber:  ["text-amber-600 dark:text-amber-400",  "bg-amber-50 dark:bg-amber-900/20"],
+    red:    ["text-red-600 dark:text-red-400",      "bg-red-50 dark:bg-red-900/20"],
+    slate:  ["text-slate-700 dark:text-zinc-200",   "bg-slate-50 dark:bg-zinc-800/60"],
+    orange: ["text-orange-600 dark:text-orange-400","bg-orange-50 dark:bg-orange-900/20"],
+  };
+
+  return (
+    <div className="px-5 pt-5 pb-8 w-full max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="mb-6">
+        <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-1">Nexus Homes</div>
+        <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">Command Center</h1>
+        <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">{TODAY}</p>
+      </div>
+
+      {/* ── HERO: Unassigned Money ── */}
+      {unassignedFunds.length > 0 ? (
+        <div className="mb-6 rounded-2xl overflow-hidden bg-gradient-to-br from-violet-600 to-purple-700 shadow-[0_4px_24px_rgba(124,58,237,0.30)] dark:shadow-[0_4px_24px_rgba(124,58,237,0.20)]">
+          <div className="px-5 py-4 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-widest text-violet-200/70 mb-1">💼 Money Ready to Place</div>
+              <div className="text-4xl font-black text-white tabular-nums tracking-tight">{h$(unassignedTotal)}</div>
+              <div className="text-sm text-violet-200/70 mt-1">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} sitting idle — place them on a property</div>
+            </div>
+          </div>
+          <div className="border-t border-white/15 divide-y divide-white/10">
+            {sortedFunds.map(u => {
+              const principal = u.principal || u.amount || 0;
+              const days = daysBetween(u.startDate, TODAY);
+              return (
+                <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 hover:bg-white/5 transition-colors">
+                  <div className="flex-1 min-w-0 flex items-center gap-2.5 flex-wrap">
+                    <button onClick={() => openPanel({ type: 'loan', loanId: u.id, propId: null })}
+                      className="font-semibold text-white text-sm hover:text-violet-200 transition-colors text-left">{u.lenderName}</button>
+                    <span className="font-bold text-white/90 text-sm tabular-nums">{h$(principal)}</span>
+                    {u.interestRate != null && <span className="text-xs text-violet-200/60">{fmtRate(u)}</span>}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      days > 60 ? "bg-red-500/30 text-red-200" :
+                      days > 30 ? "bg-amber-400/25 text-amber-200" :
+                      "bg-white/10 text-white/60"
+                    }`}>{days}d idle</span>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => setModal({ type: "place", fund: u })}
+                      className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>
+                    <button onClick={() => setModal({ type: "editUnassigned", fund: u })}
+                      className="p-1.5 text-violet-200/60 hover:text-white text-sm transition-colors">✏️</button>
+                    <button onClick={() => delUnassigned(u.id)}
+                      className="p-1.5 text-violet-200/60 hover:text-red-300 text-sm transition-colors">🗑</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6 rounded-2xl border-2 border-dashed border-violet-300 dark:border-violet-800 p-6 text-center bg-violet-50/50 dark:bg-violet-900/10">
+          <div className="text-2xl mb-2">✅</div>
+          <div className="text-sm font-semibold text-violet-700 dark:text-violet-400">All Money Placed</div>
+          <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">No unassigned funds sitting idle</div>
+        </div>
+      )}
+
+      {/* ── Stat Grid ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+        {[
+          { label: "Active Properties", value: activePropsData.length, sub: "tap to view", color: "blue",   icon: "🏠", tab: "Properties" },
+          { label: "Active Lenders",    value: activeLendersCount,    sub: "tap to view", color: "indigo", icon: "👥", tab: "LenderDash" },
+          { label: "Draws Available",   value: h$(drawsAvailable),   sub: "uncommitted",  color: "amber",  icon: "🏗️", tab: "Draws" },
+          { label: "Hard Money Monthly",value: h$(hardMonthly),      sub: "due 1st",      color: "red",    icon: "💸", tab: "AllLoans" },
+          { label: "Total Active Loans",value: totalLoansCount,      sub: "across all",   color: "slate",  icon: "📋", tab: "AllLoans" },
+          { label: "Funding Gap",       value: h$(totalFundingGap),  sub: "short of 100%",color: "orange", icon: "📉", tab: "Properties" },
+        ].map(({ label, value, sub, color, icon, tab }) => (
+          <button key={label} onClick={() => onNavigateTab(tab)}
+            className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
+            <div className="flex items-start justify-between mb-2">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 leading-tight pr-1">{label}</div>
+              <span className="text-base shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">{icon}</span>
+            </div>
+            <div className={`text-xl font-black tabular-nums tracking-tight ${NAV_COLORS[color][0]}`}>{value}</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 flex items-center gap-1">
+              {sub}
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/>
+              </svg>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Hard Money Payment Breakdown ── */}
+      {hardMonthlyLoans.length > 0 && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400">💸 Hard Money — Due 1st of Month</div>
+            <div className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums">{h$(hardMonthly)}/mo total</div>
+          </div>
+          <div className="divide-y divide-slate-50 dark:divide-zinc-800">
+            {hardMonthlyLoans.map(l => {
+              const prop = activePropsData.find(p => p.loans.some(x => x.id === l.id));
+              return (
+                <div key={l.id} className="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <button onClick={() => openPanel({ type: 'loan', loanId: l.id, propId: prop?.id || null })}
+                      className="font-semibold text-sm text-slate-800 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">
+                      {l.lenderName}
+                    </button>
+                    {prop && (
+                      <button onClick={() => openPanel({ type: 'property', id: prop.id })}
+                        className="block text-xs text-slate-400 dark:text-zinc-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors text-left truncate">
+                        {prop.address}
+                      </button>
+                    )}
+                  </div>
+                  <div className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums shrink-0">
+                    {h$(monthlyLoanPayment(l))}<span className="text-xs font-normal text-slate-400 dark:text-zinc-500">/mo</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modals ── */}
+      {modal?.type === "editUnassigned" && (
+        <Modal title="Edit Fund" onClose={() => setModal(null)}>
+          <LenderMoneyForm init={modal.fund} onSave={f => {
+            update(d => ({
+              ...d,
+              unassigned: d.unassigned.map(u => u.id !== modal.fund.id ? u : { ...u, ...loanFields(f), id: u.id }),
+            }));
+            setModal(null);
+          }} onClose={() => setModal(null)}/>
+        </Modal>
+      )}
+      {modal?.type === "place" && (
+        <PlaceSplitModal
+          loan={modal.fund}
+          currentPropId={null}
+          properties={data.properties}
+          onConfirm={result => {
+            if (result.type === "split") handleSplitLoan(modal.fund, result.splits);
+            else placeOnProperty(modal.fund, result.propId);
+          }}
+          onClose={() => setModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 function EntityDetailView({ entity, data, update, onBack, navigate }) {
   if (entity.type === 'property') return <PropertyDetailPage propId={entity.id} data={data} update={update} onBack={onBack} navigate={navigate}/>;
   if (entity.type === 'lender') return <LenderDetailPage name={entity.name} data={data} update={update} onBack={onBack} navigate={navigate}/>;
@@ -5061,9 +5273,9 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
       {/* ── Left Sidebar ── */}
       <div className="fixed left-0 top-0 bottom-0 w-14 bg-[#F2F2F7] dark:bg-black border-r border-black/[0.05] dark:border-white/[0.04] flex flex-col z-40">
-        {/* Logo / Home */}
-        <button onClick={onHome} title="Home"
-          className="mx-auto mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-500/30 active:scale-95 transition-transform shrink-0">
+        {/* Logo / Dashboard */}
+        <button onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Dashboard");}} title="Command Center"
+          className={`mx-auto mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] flex items-center justify-center active:scale-95 transition-all shrink-0 ${tab==="Dashboard"&&navStack.length===0?"bg-gradient-to-br from-violet-500 to-purple-700 shadow-lg shadow-purple-500/30 ring-2 ring-purple-400/40":"bg-gradient-to-br from-blue-500 to-blue-700 shadow-md shadow-blue-500/30"}`}>
           <span className="text-white font-black text-lg leading-none tracking-tight">$</span>
         </button>
         <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] mx-2 mb-1.5"/>
@@ -5234,6 +5446,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 ))}
               </div>
             )}
+            {tab==="Dashboard"     &&<DashboardPage data={data} update={update} onNavigateTab={t=>{setNavStack([]);setPanelStack([]);setTab(t);}}/>}
             {tab==="Properties"    &&<PropertiesPage data={data} update={update} pendingAction={fabPending} onClearPendingAction={()=>setFabPending(null)}/>}
             {tab==="LenderDash"   &&<LenderDashboard data={data}/>}
             {tab==="AllLoans"     &&<AllLoansPage data={data} update={update}/>}
