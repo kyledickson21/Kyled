@@ -925,7 +925,6 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
   const hasViableDest = available.length>0||blockedSize.length>0;
   const showUnassigned = currentPropId!==null && hasViableDest;
 
-  const splitAvailProps = candidateProps.filter(p=>loanPropConflict(loan.startDate,p)===0);
   const [splits,setSplits] = useState([
     {propId:"",amount:""},
     {propId:"",amount:""},
@@ -1021,22 +1020,18 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm">
             <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total to split</span><span className="tabular-nums font-semibold text-slate-900 dark:text-zinc-100">{$$(loanAmt)}</span></div>
           </div>
-          {candidateProps.length - splitAvailProps.length > 0 && (
-            <div className="text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 border border-amber-100 dark:border-amber-800">
-              {candidateProps.length - splitAvailProps.length} propert{candidateProps.length - splitAvailProps.length===1?"y":"ies"} hidden — timing conflict with this loan's start date
-            </div>
-          )}
           <div className="space-y-3">
             <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Split Into</div>
             {splits.map((row,i)=>{
               const rowAmt=parseFloat(row.amount)||0;
               const hasAmt=row.amount!==""&&rowAmt>0;
               const destProp=row.propId&&row.propId!=="unassigned"?activeProps.find(p=>p.id===row.propId):null;
-              const propGaps=splitAvailProps.map(p=>{
+              const propOptions=candidateProps.map(p=>{
+                const conflict=loanPropConflict(loan.startDate,p)>0;
                 const al=p.loans.filter(l=>!l.endDate);
                 const gap=Math.max(0,propNeeded(p,al)-al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0));
-                return{prop:p,gap};
-              }).filter(x=>!hasAmt||x.gap>0);
+                return{prop:p,conflict,gap};
+              });
               const selGap=destProp?(()=>{
                 const al=destProp.loans.filter(l=>!l.endDate);
                 return Math.max(0,propNeeded(destProp,al)-al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0));
@@ -1046,11 +1041,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                   <div className="flex gap-2 items-center">
                     <div className="w-32 shrink-0">
                       <input type="number" placeholder="$ Amount" value={row.amount}
-                        onChange={e=>{
-                          let val=e.target.value;
-                          if(selGap!==null&&parseFloat(val)>selGap) val=String(selGap);
-                          setRow(i,"amount",val);
-                        }}
+                        onChange={e=>setRow(i,"amount",e.target.value)}
                         className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
                     </div>
                     <div className="flex-1">
@@ -1059,9 +1050,11 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                         className={`w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 ${!hasAmt?"opacity-40 cursor-not-allowed":""}`}>
                         <option value="">{hasAmt?"— pick destination —":"Enter amount first"}</option>
                         <option value="unassigned">💼 Leave unassigned</option>
-                        {propGaps.map(({prop,gap})=>(
-                          <option key={prop.id} value={prop.id}>🏠 {prop.address} — {gap>0?$$(gap)+" avail":"fully funded"}</option>
-                        ))}
+                        {propOptions.map(({prop,conflict,gap})=>{
+                          const isDisabled=conflict||gap<=0;
+                          const lbl=conflict?`⏱ ${prop.address} — timing conflict`:gap<=0?`✓ ${prop.address} — fully funded`:hasAmt&&rowAmt>gap?`⚠ ${prop.address} — only ${$$(gap)} avail`:`🏠 ${prop.address} — ${$$(gap)} avail`;
+                          return <option key={prop.id} value={prop.id} disabled={isDisabled}>{lbl}</option>;
+                        })}
                       </select>
                     </div>
                     {splits.length>1&&<button type="button" onClick={()=>removeRow(i)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-base transition-colors shrink-0">✕</button>}
@@ -1070,9 +1063,6 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                     <div className="ml-[136px] text-[10px] text-slate-400 dark:text-zinc-500">
                       {selGap<=0?"⚠️ Property fully funded":rowAmt<=selGap?`${$$(selGap-rowAmt)} still needed after this`:`⚠️ Exceeds gap by ${$$(rowAmt-selGap)}`}
                     </div>
-                  )}
-                  {!hasAmt&&i===0&&splitAvailProps.length===0&&(
-                    <div className="ml-[136px] text-[10px] text-amber-600 dark:text-amber-400">No properties available for splitting</div>
                   )}
                 </div>
               );
@@ -1085,7 +1075,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
           </div>
           {!splitValid&&<p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">All rows need a destination and amount, and must sum to {$$(loanAmt)}.</p>}
           <div className="flex gap-2 pt-1">
-            <Btn onClick={()=>splitValid&&onConfirm({type:"split",splits:splits.map(r=>({propId:r.propId,amount:parseFloat(r.amount)}))})} color={splitValid?"blue":"ghost"} full>Split Funds →</Btn>
+            <Btn onClick={()=>onConfirm({type:"split",splits:splits.map(r=>({propId:r.propId,amount:parseFloat(r.amount)}))})} color={splitValid?"blue":"ghost"} full disabled={!splitValid}>Split Funds →</Btn>
             <Btn onClick={onClose} color="ghost">Cancel</Btn>
           </div>
         </div>
@@ -5059,7 +5049,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
           <button onClick={() => setFundsOpen(o => !o)}
             className="w-full px-5 py-4 flex items-center justify-between hover:bg-white/5 transition-colors">
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-widest text-violet-200/70 mb-1 text-left">💼 Money Ready to Place</div>
+              <div className="text-[11px] font-bold uppercase tracking-widest text-violet-200/70 mb-1 text-left">⚠️ Money Ready to Place</div>
               <div className="text-4xl font-black text-white tabular-nums tracking-tight">{h$(unassignedTotal)}</div>
               <div className="text-sm text-violet-200/70 mt-1 text-left">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} sitting idle</div>
             </div>
@@ -5416,7 +5406,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       <div className="fixed left-0 top-0 bottom-0 w-14 bg-[#F2F2F7] dark:bg-black border-r border-black/[0.05] dark:border-white/[0.04] flex flex-col z-40">
         {/* Logo / Dashboard */}
         <button onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Dashboard");}} title="Command Center"
-          className={`mx-auto mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] flex items-center justify-center active:scale-95 transition-all shrink-0 ${tab==="Dashboard"&&navStack.length===0?"bg-gradient-to-br from-violet-500 to-purple-700 shadow-lg shadow-purple-500/30 ring-2 ring-purple-400/40":"bg-gradient-to-br from-blue-500 to-blue-700 shadow-md shadow-blue-500/30"}`}>
+          className={`mx-auto mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] flex items-center justify-center active:scale-95 transition-all shrink-0 ${tab==="Dashboard"&&navStack.length===0?"bg-gradient-to-br from-blue-600 to-blue-700 shadow-lg shadow-blue-500/30 ring-2 ring-blue-400/40":"bg-gradient-to-br from-blue-500 to-blue-700 shadow-md shadow-blue-500/30"}`}>
           <span className="text-white font-black text-lg leading-none tracking-tight">$</span>
         </button>
         <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] mx-2 mb-1.5"/>
