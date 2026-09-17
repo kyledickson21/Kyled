@@ -295,7 +295,7 @@ function LenderAutocomplete({ value, onChange, properties }) {
 }
 
 // ─── Lender Money Form ────────────────────────────────────────────────────────
-function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
+function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSave, onMerge, onClose }) {
   const activeProps = properties.filter(p=>!p.dateSold);
 
   const initName = init?.lenderName || "";
@@ -357,6 +357,31 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
       ? {id: uid(), name: lenderName, loanType: newType}
       : null;
     onSave({...f, lenderName, loanType, newLender});
+  };
+
+  // Duplicate unassigned funds from the same lender, same start date, same rate/terms —
+  // only offered while editing an existing unassigned fund.
+  const mergeCandidates = (onMerge && init?.id && f.destination === "unassigned")
+    ? unassigned.filter(u =>
+        u.id !== init.id && !u.endDate &&
+        u.lenderName === (activeLender ? activeLender.name : (lenderSel === "_new_" ? newName.trim() : "")) &&
+        u.loanType === currentLoanType &&
+        u.startDate === f.startDate &&
+        (u.interestType || "percentage") === (f.interestType || "percentage") &&
+        String(u.interestRate || "") === String(f.interestRate || "") &&
+        (u.paymentType || "closing") === (f.paymentType || "closing")
+      )
+    : [];
+
+  const handleMerge = candidate => {
+    const lenderName = activeLender ? activeLender.name : (lenderSel === "_new_" ? newName.trim() : "");
+    if (!lenderName) { alert("Please select or enter a lender."); return; }
+    if (!window.confirm(`Merge this ${$$(parseFloat(f.principal)||0)} fund with the ${$$(candidate.principal)} fund started ${candidate.startDate}? This can't be undone.`)) return;
+    const loanType = currentLoanType;
+    const newLender = (lenderSel === "_new_" && lenderName)
+      ? {id: uid(), name: lenderName, loanType: newType}
+      : null;
+    onMerge({...f, lenderName, loanType, newLender}, candidate.id);
   };
 
   // Property picker: categorise based on entered amount + startDate
@@ -436,6 +461,22 @@ function LenderMoneyForm({ properties, lenders = [], init, onSave, onClose }) {
         <DateInp label="End / Payoff Date" value={f.endDate} onChange={s("endDate")} helpText="Leave blank while the loan is active"/>
         <DateInp label="Due Date (optional)" value={f.dueDate} onChange={s("dueDate")} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
       </div>
+
+      {mergeCandidates.length>0&&(
+        <div className="mb-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <div className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">🔗 Possible Duplicate{mergeCandidates.length>1?"s":""} Found</div>
+          <div className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mb-2">Same lender, start date, and rate — sitting unassigned. Merge into one loan?</div>
+          <div className="space-y-1.5">
+            {mergeCandidates.map(c=>(
+              <div key={c.id} className="flex items-center justify-between gap-2 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2">
+                <span className="text-xs text-slate-700 dark:text-zinc-200 tabular-nums">{$$(c.principal)} · started {c.startDate}</span>
+                <button type="button" onClick={()=>handleMerge(c)}
+                  className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline shrink-0">Merge →</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Where does this money go? */}
       <div className="mt-3 mb-1">
@@ -2512,7 +2553,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           onSave={f=>saveEditedLoan(modal.propId,f,modal.loan)} onClose={()=>setModal(null)}/>
       </Modal>}
       {modal?.type==="editUnassigned"&&<Modal title="Edit Unassigned Fund" onClose={()=>setModal(null)}>
-        <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]}
+        <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} unassigned={data.unassigned}
           init={{...modal.fund,destination:"unassigned",principal:String(modal.fund.principal||modal.fund.amount||""),interestRate:String(modal.fund.interestRate||""),interestType:modal.fund.interestType||"percentage"}}
           onSave={f=>{
             const updated={...modal.fund,lenderName:f.lenderName,loanType:f.loanType,principal:parseFloat(f.principal)||0,startDate:f.startDate,interestRate:parseFloat(f.interestRate)||0,interestType:f.interestType||"percentage",specialTerms:f.specialTerms||"",endDate:f.endDate||null,dueDate:f.dueDate||null};
@@ -2522,7 +2563,16 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             if(f.destination!=="unassigned"){update(d=>doUpdate({...d,unassigned:d.unassigned.filter(u=>u.id!==modal.fund.id),properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...p.loans,{id:uid(),...updated}]})}));}
             else{update(d=>doUpdate({...d,unassigned:d.unassigned.map(u=>u.id===modal.fund.id?updated:u)}));}
             setModal(null);
-          }} onClose={()=>setModal(null)}/>
+          }}
+          onMerge={(f,mergeId)=>{
+            const merged={...modal.fund,lenderName:f.lenderName,loanType:f.loanType,principal:(parseFloat(f.principal)||0)+(data.unassigned.find(u=>u.id===mergeId)?.principal||0),startDate:f.startDate,interestRate:parseFloat(f.interestRate)||0,interestType:f.interestType||"percentage",specialTerms:f.specialTerms||"",endDate:f.endDate||null,dueDate:f.dueDate||null};
+            const doUpdate = d => f.newLender
+              ? {...d,lenders:[...(d.lenders||[]).filter(x=>x.name!==f.newLender.name),f.newLender]}
+              : d;
+            update(d=>doUpdate({...d,unassigned:d.unassigned.filter(u=>u.id!==mergeId).map(u=>u.id===modal.fund.id?merged:u)}));
+            setModal(null);
+          }}
+          onClose={()=>setModal(null)}/>
       </Modal>}
       {modal?.type==="closeLoan"&&<CloseLoanModal loan={modal.loan} onConfirm={date=>handleCloseLoan(modal.propId,modal.loan,date)} onClose={()=>setModal(null)}/>}
       {(modal?.type==="place"||modal?.type==="moveLoan")&&(()=>{
@@ -5408,13 +5458,23 @@ function DashboardPage({ data, update, onNavigateTab }) {
       {/* ── Modals ── */}
       {modal?.type === "editUnassigned" && (
         <Modal title="Edit Fund" onClose={() => setModal(null)}>
-          <LenderMoneyForm init={modal.fund} onSave={f => {
-            update(d => ({
-              ...d,
-              unassigned: d.unassigned.map(u => u.id !== modal.fund.id ? u : { ...u, ...loanFields(f), id: u.id }),
-            }));
-            setModal(null);
-          }} onClose={() => setModal(null)}/>
+          <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} unassigned={data.unassigned} init={modal.fund}
+            onSave={f => {
+              update(d => ({
+                ...d,
+                unassigned: d.unassigned.map(u => u.id !== modal.fund.id ? u : { ...u, ...loanFields(f), id: u.id }),
+              }));
+              setModal(null);
+            }}
+            onMerge={(f, mergeId) => {
+              update(d => {
+                const mergeAmt = d.unassigned.find(u => u.id === mergeId)?.principal || 0;
+                const merged = { ...modal.fund, ...loanFields(f), id: modal.fund.id, principal: (parseFloat(f.principal) || 0) + mergeAmt };
+                return { ...d, unassigned: d.unassigned.filter(u => u.id !== mergeId).map(u => u.id === modal.fund.id ? merged : u) };
+              });
+              setModal(null);
+            }}
+            onClose={() => setModal(null)}/>
         </Modal>
       )}
       {modal?.type === "place" && (
