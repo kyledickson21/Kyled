@@ -926,9 +926,9 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
   const showUnassigned = currentPropId!==null && hasViableDest;
 
   const splitAvailProps = candidateProps.filter(p=>loanPropConflict(loan.startDate,p)===0);
-  const [splits,setSplits] = useState(()=>[
-    {propId:splitAvailProps[0]?.id??"",amount:""},
-    {propId:splitAvailProps[1]?.id??"",amount:""},
+  const [splits,setSplits] = useState([
+    {propId:"",amount:""},
+    {propId:"",amount:""},
   ]);
   const addRow=()=>setSplits(s=>[...s,{propId:"",amount:""}]);
   const removeRow=i=>setSplits(s=>s.filter((_,j)=>j!==i));
@@ -2434,7 +2434,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                               )}
                             </div>
                             <div className="flex gap-1 shrink-0 items-center">
-                              <button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1 transition-colors" title="Move">Move →</button>
+                              {loan.loanType!=="hard"&&<button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1 transition-colors" title="Move">Move →</button>}
                               <button onClick={()=>openPanel?.({type:'loan',loanId:loan.id,propId:prop.id,startEditing:true})} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit Loan">✏️</button>
                             </div>
                           </div>
@@ -5051,8 +5051,8 @@ function DashboardPage({ data, update, onNavigateTab }) {
                       }`}>{days}d idle</span>
                     </div>
                     <div className="flex gap-1.5 shrink-0 items-center">
-                      <button onClick={() => setModal({ type: "place", fund: u })}
-                        className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>
+                      {u.loanType!=="hard"&&<button onClick={() => setModal({ type: "place", fund: u })}
+                        className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>}
                       {/* ⋯ menu */}
                       <div className="relative z-20">
                         <button onClick={() => setMenuOpen(o => o === u.id ? null : u.id)}
