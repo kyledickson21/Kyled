@@ -934,7 +934,12 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
   const setRow=(i,field,val)=>setSplits(s=>s.map((r,j)=>j===i?{...r,[field]:val}:r));
   const totalSplit=splits.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
   const remaining=loanAmt-totalSplit;
-  const splitValid=splits.every(r=>r.propId&&parseFloat(r.amount)>0)&&Math.abs(remaining)<0.01;
+  const splitValid=splits.every(r=>{
+    if(!r.propId||!(parseFloat(r.amount)>0)) return false;
+    if(r.propId==="unassigned") return true;
+    const p=activeProps.find(x=>x.id===r.propId);
+    return !p||propConflict(loan.startDate,parseFloat(r.amount),p)===null;
+  })&&Math.abs(remaining)<0.01;
 
   if(!hasViableDest&&!showUnassigned) return (
     <Modal title={`${currentPropId?"Move":"Place"} — ${loan.lenderName}`} onClose={onClose}>
@@ -1026,16 +1031,11 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               const rowAmt=parseFloat(row.amount)||0;
               const hasAmt=row.amount!==""&&rowAmt>0;
               const destProp=row.propId&&row.propId!=="unassigned"?activeProps.find(p=>p.id===row.propId):null;
+              const destPropConflict=destProp?propConflict(loan.startDate,rowAmt,destProp):null;
               const propOptions=candidateProps.map(p=>{
-                const conflict=loanPropConflict(loan.startDate,p)>0;
-                const al=p.loans.filter(l=>!l.endDate);
-                const gap=Math.max(0,propNeeded(p,al)-al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0));
-                return{prop:p,conflict,gap};
+                const c=propConflict(loan.startDate,rowAmt,p);
+                return{prop:p,c};
               });
-              const selGap=destProp?(()=>{
-                const al=destProp.loans.filter(l=>!l.endDate);
-                return Math.max(0,propNeeded(destProp,al)-al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0));
-              })():null;
               return(
                 <div key={i} className="space-y-1.5">
                   <div className="flex gap-2 items-center">
@@ -1050,19 +1050,16 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                         className={`w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 ${!hasAmt?"opacity-40 cursor-not-allowed":""}`}>
                         <option value="">{hasAmt?"— pick destination —":"Enter amount first"}</option>
                         <option value="unassigned">💼 Leave unassigned</option>
-                        {propOptions.map(({prop,conflict,gap})=>{
-                          const isDisabled=conflict||gap<=0;
-                          const lbl=conflict?`⏱ ${prop.address} — timing conflict`:gap<=0?`✓ ${prop.address} — fully funded`:hasAmt&&rowAmt>gap?`⚠ ${prop.address} — only ${$$(gap)} avail`:`🏠 ${prop.address} — ${$$(gap)} avail`;
-                          return <option key={prop.id} value={prop.id} disabled={isDisabled}>{lbl}</option>;
+                        {propOptions.map(({prop,c})=>{
+                          const lbl=c==="date"?`🕐 ${prop.address} — timing conflict`:c==="size"?`📐 ${prop.address} — over gap`:`🏠 ${prop.address}`;
+                          return <option key={prop.id} value={prop.id} disabled={c!==null}>{lbl}</option>;
                         })}
                       </select>
                     </div>
                     {splits.length>1&&<button type="button" onClick={()=>removeRow(i)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-base transition-colors shrink-0">✕</button>}
                   </div>
-                  {hasAmt&&destProp&&selGap!==null&&(
-                    <div className="ml-[136px] text-[10px] text-slate-400 dark:text-zinc-500">
-                      {selGap<=0?"⚠️ Property fully funded":rowAmt<=selGap?`${$$(selGap-rowAmt)} still needed after this`:`⚠️ Exceeds gap by ${$$(rowAmt-selGap)}`}
-                    </div>
+                  {hasAmt&&destProp&&destPropConflict==="size"&&(
+                    <div className="ml-[136px] text-[10px] text-amber-600 dark:text-amber-400">📐 Over gap — reduce amount or pick another property</div>
                   )}
                 </div>
               );
