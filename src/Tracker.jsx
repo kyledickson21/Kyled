@@ -565,7 +565,7 @@ const propSizeConflict = (loanAmount, prop) => {
   if (needed <= 0) return false;
   const funded = active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
   const shortage = Math.max(0, needed - funded);
-  return loanAmount > shortage * 1.10; // allow 10% over the gap
+  return loanAmount > shortage + needed * 0.10; // allow 10% of total needed over the gap
 };
 // Returns 'date' | 'size' | null — date takes priority if both apply
 const propConflict = (loanStartDate, loanAmount, prop) => {
