@@ -2382,9 +2382,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                     </div>
                   )}
                   {/* Loans header */}
-                  <div className="px-4 py-2.5 flex justify-between items-center bg-[#F9F9FB] dark:bg-black/20">
+                  <div className="px-4 py-2.5 bg-[#F9F9FB] dark:bg-black/20">
                     <span className="text-[11px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Loans · {prop.loans.length}</span>
-                    <Btn onClick={()=>setModal({type:"addMoney",propId:prop.id})} color="green" sm>+ Add Money</Btn>
                   </div>
                   {prop.loans.length===0&&<div className="text-center py-8 text-slate-400 dark:text-zinc-500 text-sm bg-[#F9F9FB] dark:bg-black/20">No loans on this property yet</div>}
                   <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
@@ -2453,7 +2452,6 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                             </div>
                             <div className="flex gap-1 shrink-0 items-center">
                               {loan.loanType!=="hard"&&<button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1 transition-colors" title="Move">Move →</button>}
-                              <button onClick={()=>openPanel?.({type:'loan',loanId:loan.id,propId:prop.id,startEditing:true})} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit Loan">✏️</button>
                             </div>
                           </div>
                         </div>
@@ -4851,15 +4849,10 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             </div>
           </div>
           {update && (
-            <div className="shrink-0 mt-1 flex flex-col gap-1 items-end">
-              <button onClick={editing?()=>setEditing(false):openEdit} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
+            <div className="shrink-0 mt-1">
+              <button onClick={editing?()=>{setEditing(false);setDeleteConfirm(false);}:openEdit} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
                 {editing?"✕ Cancel":"✏️ Edit"}
               </button>
-              {!loan.endDate&&<button onClick={()=>setCloseModal(true)} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-orange-500 dark:text-orange-400 border border-orange-200 dark:border-orange-800/50 hover:bg-orange-50 dark:hover:bg-orange-900/20 shadow-sm transition-all">Close Loan</button>}
-              {!deleteConfirm
-                ? <button onClick={()=>setDeleteConfirm(true)} className="px-3 py-1.5 rounded-xl text-xs font-semibold text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-400 transition-all">Delete</button>
-                : <div className="flex gap-1"><button onClick={deleteLoan} className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-red-600 text-white hover:bg-red-700 shadow-sm transition-all">Confirm Delete</button><button onClick={()=>setDeleteConfirm(false)} className="px-2 py-1.5 rounded-xl text-xs text-slate-400 hover:text-slate-600 transition-all">No</button></div>
-              }
             </div>
           )}
         </div>
@@ -4882,8 +4875,17 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
           </div>
           <div className="flex gap-2 mt-4">
             <Btn color="blue" onClick={saveEdit}>Save Changes</Btn>
-            <Btn color="ghost" onClick={()=>setEditing(false)}>Cancel</Btn>
+            <Btn color="ghost" onClick={()=>{setEditing(false);setDeleteConfirm(false);}}>Cancel</Btn>
           </div>
+          {update&&(
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-2">
+              {!loan.endDate&&<Btn color="ghost" onClick={()=>setCloseModal(true)}>Close Loan</Btn>}
+              {!deleteConfirm
+                ?<Btn color="ghost" onClick={()=>setDeleteConfirm(true)}>🗑 Delete</Btn>
+                :<><Btn color="red" onClick={deleteLoan}>Confirm Delete</Btn><Btn color="ghost" onClick={()=>setDeleteConfirm(false)}>No</Btn></>
+              }
+            </div>
+          )}
         </div>
       )}
 
