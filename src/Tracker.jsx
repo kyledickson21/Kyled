@@ -4661,15 +4661,14 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   // Monthly-paid interest (rate or fixed) is prorated across every calendar year it was active in.
   const yearStats = {};
   const bumpYear = (y, field, amt) => {
-    if (!yearStats[y]) yearStats[y] = { interest: 0, principalStarted: 0, loanCount: 0 };
+    if (!yearStats[y]) yearStats[y] = { interest: 0, loanCount: 0 };
     yearStats[y][field] += amt;
   };
   let pendingInterest = 0, pendingCount = 0;
   let waivedInterest = 0, waivedCount = 0;
   allLoans.forEach(l => {
-    if (l.startDate) {
-      bumpYear(l.startDate.slice(0,4), "principalStarted", l.principal||0);
-      bumpYear(l.startDate.slice(0,4), "loanCount", 1);
+    if (l.endDate) {
+      bumpYear(l.endDate.slice(0,4), "loanCount", 1);
     }
     const pt = l.paymentType||"closing";
     if (pt==="closing") {
@@ -4800,8 +4799,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
                 <th className="px-5 pb-2 pt-3 text-left font-semibold">Year</th>
-                <th className="px-3 pb-2 pt-3 text-right font-semibold">Loans Started</th>
-                <th className="px-3 pb-2 pt-3 text-right font-semibold">Principal Placed</th>
+                <th className="px-3 pb-2 pt-3 text-right font-semibold">Loans Paid Out</th>
                 <th className="px-5 pb-2 pt-3 text-right font-semibold">Interest Paid</th>
               </tr>
             </thead>
@@ -4812,7 +4810,6 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
                   <tr key={y} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
                     <td className="px-5 py-3 font-semibold text-slate-800 dark:text-zinc-100">{y}</td>
                     <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400 tabular-nums">{yr.loanCount||0}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-slate-700 dark:text-zinc-200">{h$(yr.principalStarted)}</td>
                     <td className="px-5 py-3 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{h$(yr.interest)}</td>
                   </tr>
                 );
