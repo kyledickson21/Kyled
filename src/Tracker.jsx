@@ -2102,9 +2102,13 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const [propSortMode,setPropSortMode]=usePersistedState("nx-propSortMode","shortage");
   const [propSortDir,setPropSortDir]=usePersistedState("nx-propSortDir","asc");
   const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt}
+  const [fundsOpen,setFundsOpen]=usePersistedState("nx-propFundsOpen",true);
+  const [menuOpen,setMenuOpen]=useState(null);
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
-  const unassignedTotal = data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
+  const unassignedFunds = (data.unassigned||[]).filter(l=>!l.endDate);
+  const unassignedTotal = unassignedFunds.reduce((s,u)=>s+(u.principal||u.amount||0),0);
+  const sortedFunds = [...unassignedFunds].sort((a,b)=>(a.startDate||"").localeCompare(b.startDate||""));
   const manualOrder = data.propertyOrder||[];
   const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
   const handleDragEnd = ({active,over}) => {
@@ -2326,6 +2330,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 
   return (
     <div>
+      {menuOpen && <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)}/>}
       <div className="flex justify-between items-center mb-5">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Properties</h2>
@@ -2362,7 +2367,71 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           placeholder="Search address or lender…" className={SEARCH_CLS}/>
       </div>
 
-      {/* Unassigned funds moved to Dashboard */}
+      {/* ── HERO: Unassigned Money ── */}
+      {unassignedFunds.length > 0 ? (
+        <div className="mb-6 rounded-2xl overflow-hidden bg-gradient-to-br from-violet-600 to-purple-700 shadow-[0_4px_24px_rgba(124,58,237,0.30)] dark:shadow-[0_4px_24px_rgba(124,58,237,0.20)]">
+          {/* Collapsible header */}
+          <button onClick={() => setFundsOpen(o => !o)}
+            className="w-full px-5 py-4 flex items-center justify-between hover:bg-white/5 transition-colors">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-widest text-violet-200/70 mb-1 text-left">⚠️ Money Ready to Place</div>
+              <div className="text-4xl font-black text-white tabular-nums tracking-tight">{h$(unassignedTotal)}</div>
+              <div className="text-sm text-violet-200/70 mt-1 text-left">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} sitting idle</div>
+            </div>
+            <span className="text-white/40 text-xs font-bold ml-4 shrink-0">{fundsOpen ? "▲" : "▼"}</span>
+          </button>
+          {fundsOpen && (
+            <div className="border-t border-white/15 divide-y divide-white/10">
+              {sortedFunds.map(u => {
+                const principal = u.principal || u.amount || 0;
+                const days = daysBetween(u.startDate, TODAY);
+                return (
+                  <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 hover:bg-white/5 transition-colors">
+                    <div className="flex-1 min-w-0 flex items-center gap-2.5 flex-wrap">
+                      <button onClick={() => openPanel({ type: 'loan', loanId: u.id, propId: null })}
+                        className="font-semibold text-white text-sm hover:text-violet-200 transition-colors text-left">{u.lenderName}</button>
+                      <span className="font-bold text-white/90 text-sm tabular-nums">{h$(principal)}</span>
+                      {u.interestRate != null && <span className="text-xs text-violet-200/60">{fmtRate(u)}</span>}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        days > 60 ? "bg-red-500/30 text-red-200" :
+                        days > 30 ? "bg-amber-400/25 text-amber-200" :
+                        "bg-white/10 text-white/60"
+                      }`}>{days}d idle</span>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0 items-center">
+                      {u.loanType!=="hard"&&<button onClick={() => setModal({ type: "place", fund: u })}
+                        className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>}
+                      {/* ⋯ menu */}
+                      <div className="relative z-20">
+                        <button onClick={() => setMenuOpen(o => o === u.id ? null : u.id)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white text-sm font-bold transition-colors">⋯</button>
+                        {menuOpen === u.id && (
+                          <div className="absolute right-0 top-8 w-36 bg-white dark:bg-zinc-800 rounded-xl shadow-xl border border-slate-100 dark:border-zinc-700 overflow-hidden z-20 py-1">
+                            <button onClick={() => { setMenuOpen(null); setModal({ type: "editUnassigned", fund: u }); }}
+                              className="w-full text-left px-3 py-2 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
+                              ✏️ Edit
+                            </button>
+                            <button onClick={() => { setMenuOpen(null); delUnassigned(u.id); }}
+                              className="w-full text-left px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                              🗑 Remove
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mb-6 rounded-2xl border-2 border-dashed border-violet-300 dark:border-violet-800 p-6 text-center bg-violet-50/50 dark:bg-violet-900/10">
+          <div className="text-2xl mb-2">✅</div>
+          <div className="text-sm font-semibold text-violet-700 dark:text-violet-400">All Money Placed</div>
+          <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">No unassigned funds sitting idle</div>
+        </div>
+      )}
 
       {visible.length===0&&(
         <div className="text-center py-12 text-slate-400 dark:text-zinc-500 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl">
