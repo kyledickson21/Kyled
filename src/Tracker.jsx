@@ -4652,7 +4652,6 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const totInt = active.reduce((s,l) => s + calcIntEarned(l), 0);
   const totHistPrin = hist.reduce((s,l) => s + (l.principal||0), 0);
   const totHistInt = hist.reduce((s,l) => s + calcIntEarned(l), 0);
-  const lifetimeInterest = totInt + totHistInt;
 
   // ── Annual breakdown (for taxes) ──
   // Interest paid at closing counts toward the year the loan actually closes (cash basis) —
@@ -4702,6 +4701,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
     }
   });
   const sortedYears = Object.keys(yearStats).sort((a,b) => b.localeCompare(a));
+  const lifetimePaidOut = Object.values(yearStats).reduce((s,y) => s + y.interest, 0);
 
   const account = (data.lenderAccounts||[]).find(a => a.name === name || a.lenderName === name);
 
@@ -4764,7 +4764,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
         {[
           ["Active Principal", h$(totPrin), "text-slate-900 dark:text-zinc-100"],
           ["Interest (Active)", h$(totInt), "text-emerald-600 dark:text-emerald-400"],
-          ["Lifetime Interest", h$(lifetimeInterest), "text-emerald-700 dark:text-emerald-300"],
+          ["Lifetime Paid Out", h$(lifetimePaidOut), "text-emerald-700 dark:text-emerald-300"],
         ].map(([label, val, color]) => (
           <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
