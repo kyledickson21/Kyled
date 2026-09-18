@@ -4653,6 +4653,45 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const totInt = active.reduce((s,l) => s + calcIntEarned(l), 0);
   const totHistPrin = hist.reduce((s,l) => s + (l.principal||0), 0);
   const totHistInt = hist.reduce((s,l) => s + calcIntEarned(l), 0);
+  const lifetimeInterest = totInt + totHistInt;
+
+  // ── Annual breakdown (for taxes) ──
+  // Interest paid at closing counts toward the year the loan actually closes (cash basis) —
+  // still-active closing-type loans have accrued-but-unpaid interest, tracked separately below.
+  // Monthly-paid interest (rate or fixed) is prorated across every calendar year it was active in.
+  const yearStats = {};
+  const bumpYear = (y, field, amt) => {
+    if (!yearStats[y]) yearStats[y] = { interest: 0, principalStarted: 0, loanCount: 0 };
+    yearStats[y][field] += amt;
+  };
+  let pendingInterest = 0, pendingCount = 0;
+  allLoans.forEach(l => {
+    if (l.startDate) {
+      bumpYear(l.startDate.slice(0,4), "principalStarted", l.principal||0);
+      bumpYear(l.startDate.slice(0,4), "loanCount", 1);
+    }
+    const pt = l.paymentType||"closing";
+    if (pt==="closing") {
+      if (l.endDate) {
+        bumpYear(l.endDate.slice(0,4), "interest", calcIntEarned(l, l.endDate));
+      } else {
+        pendingInterest += calcIntEarned(l);
+        pendingCount += 1;
+      }
+    } else if (l.startDate) {
+      const lastDate = l.endDate || TODAY;
+      const startY = parseInt(l.startDate.slice(0,4));
+      const endY = parseInt(lastDate.slice(0,4));
+      for (let y=startY; y<=endY; y++) {
+        const upTo = y===endY ? lastDate : `${y}-12-31`;
+        const cum = calcIntEarned(l, upTo);
+        const cumBefore = y===startY ? 0 : calcIntEarned(l, `${y-1}-12-31`);
+        const portion = cum - cumBefore;
+        if (portion) bumpYear(String(y), "interest", portion);
+      }
+    }
+  });
+  const sortedYears = Object.keys(yearStats).sort((a,b) => b.localeCompare(a));
 
   const account = (data.lenderAccounts||[]).find(a => a.name === name || a.lenderName === name);
 
@@ -4711,12 +4750,13 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         {[
           ["Active Principal", h$(totPrin), "text-slate-900 dark:text-zinc-100"],
           ["Balance", h$(totBal), "text-blue-600 dark:text-blue-400"],
           ["Interest (Active)", h$(totInt), "text-emerald-600 dark:text-emerald-400"],
           ["All-Time Paid", h$(totHistPrin), "text-violet-600 dark:text-violet-400"],
+          ["Lifetime Interest", h$(lifetimeInterest), "text-emerald-700 dark:text-emerald-300"],
         ].map(([label, val, color]) => (
           <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
@@ -4735,6 +4775,45 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
             {account.entity && <div><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-0.5">Entity</div><div className="font-medium text-slate-800 dark:text-zinc-200">{account.entity}</div></div>}
             {account.notes && <div className="sm:col-span-3"><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-0.5">Notes</div><div className="text-slate-600 dark:text-zinc-300">{account.notes}</div></div>}
           </div>
+        </div>
+      )}
+
+      {/* Annual breakdown — for taxes */}
+      {sortedYears.length > 0 && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
+            <SectionHead title="📊 By Year (for taxes)"/>
+          </div>
+          <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
+                <th className="px-5 pb-2 pt-3 text-left font-semibold">Year</th>
+                <th className="px-3 pb-2 pt-3 text-right font-semibold">Loans Started</th>
+                <th className="px-3 pb-2 pt-3 text-right font-semibold">Principal Placed</th>
+                <th className="px-5 pb-2 pt-3 text-right font-semibold">Interest Paid</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
+              {sortedYears.map(y => {
+                const yr = yearStats[y];
+                return (
+                  <tr key={y} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
+                    <td className="px-5 py-3 font-semibold text-slate-800 dark:text-zinc-100">{y}</td>
+                    <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400 tabular-nums">{yr.loanCount||0}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-slate-700 dark:text-zinc-200">{h$(yr.principalStarted)}</td>
+                    <td className="px-5 py-3 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{h$(yr.interest)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          </div>
+          {pendingCount > 0 && (
+            <div className="px-5 py-3 border-t border-slate-100 dark:border-zinc-800 text-[11px] text-slate-400 dark:text-zinc-500">
+              Plus {h$(pendingInterest)} accrued but not yet paid across {pendingCount} active loan{pendingCount!==1?"s":""} paid at closing — not counted above until the loan actually closes.
+            </div>
+          )}
         </div>
       )}
 
