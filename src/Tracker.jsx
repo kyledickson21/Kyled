@@ -1152,7 +1152,14 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               const rowAmt=parseFloat(row.amount)||0;
               const hasAmt=row.amount!==""&&rowAmt>0;
               const destProp=row.propId&&row.propId!=="unassigned"?activeProps.find(p=>p.id===row.propId):null;
-              const propOptions=[...candidateProps].sort((a,b)=>propGap(b)-propGap(a)).map(p=>({prop:p,c:propConflict(loan.startDate,rowAmt,p)}));
+              // Pickable properties first (most available first), grayed-out ones pushed below.
+              const propOptions=candidateProps
+                .map(p=>({prop:p,c:propConflict(loan.startDate,rowAmt,p)}))
+                .sort((a,b)=>{
+                  const aBlocked=a.c!==null, bBlocked=b.c!==null;
+                  if(aBlocked!==bBlocked) return aBlocked?1:-1;
+                  return propGap(b.prop)-propGap(a.prop);
+                });
               const pickerLabel=row.propId===""?(hasAmt?"— pick destination —":"Enter amount first"):row.propId==="unassigned"?"💼 Leave unassigned":(()=>{const p=activeProps.find(x=>x.id===row.propId);const c=propConflict(loan.startDate,rowAmt,p);return`${c==="date"?"🕐":c==="size"?"📐":"🏠"} ${p?.address||"?"}`;})();
               return(
                 <div key={i} className="space-y-1.5">
