@@ -14,6 +14,16 @@ const $$p   = n  => "$" + Math.abs(n??0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d)
 const $$ps  = n  => { if(n==null) return "—"; const a=Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); return n>=0?`+$${a}`:`-$${a}`; };
 const pct   = (a,b) => b>0 ? Math.min(100, Math.round(a/b*100)) : 0;
 
+// Sort key for an address that ignores the house number and a leading directional
+// abbreviation (N/S/E/W/NE/NW/SE/SW), so "1024 E Paint St" sorts under "Paint", not "E".
+const streetSortKey = address => {
+  if (!address) return "";
+  const street = address.split(',')[0].trim();
+  const noNumber = street.replace(/^\d+[\w-]*\s+/, '');
+  const noDirection = noNumber.replace(/^(N|S|E|W|NE|NW|SE|SW)\.?\s+/i, '');
+  return noDirection.toLowerCase();
+};
+
 const daysBetween = (d1, d2) => {
   if (!d1||!d2) return 0;
   return Math.max(0, Math.floor((new Date(d2)-new Date(d1))/864e5));
@@ -395,6 +405,10 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
       else if (c==='size') blockedSize.push(p);
       else blockedDate.push(p);
     }
+    // Most available (biggest funding gap) first, so the best fits surface at the top.
+    available.sort((a,b)=>propGap(b)-propGap(a));
+    blockedSize.sort((a,b)=>propGap(b)-propGap(a));
+    blockedDate.sort((a,b)=>propGap(b)-propGap(a));
   }
 
   // Changing amount/date can invalidate an already-picked property — drop it.
@@ -543,7 +557,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         )}
         {!canShowConflicts&&activeProps.length>0&&(
           <div className="space-y-1.5">
-            {activeProps.map(p=>(
+            {[...activeProps].sort((a,b)=>propGap(b)-propGap(a)).map(p=>(
               <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
                 className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${f.destination===p.id?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700"}`}>
                 <span className={`font-medium text-[13px] truncate ${f.destination===p.id?"text-emerald-700 dark:text-emerald-300":"text-slate-800 dark:text-zinc-200"}`}>🏠 {p.address}</span>
@@ -1008,6 +1022,10 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
     else if(c==='date') blockedDate.push(p);
     else blockedSize.push(p);
   }
+  // Most available (biggest funding gap) first, so the best fits surface at the top.
+  available.sort((a,b)=>propGap(b)-propGap(a));
+  blockedSize.sort((a,b)=>propGap(b)-propGap(a));
+  blockedDate.sort((a,b)=>propGap(b)-propGap(a));
   const hasViableDest = available.length>0||blockedSize.length>0||blockedDate.length>0;
   const showUnassigned = currentPropId!==null && (available.length>0||blockedSize.length>0);
 
@@ -1134,7 +1152,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               const rowAmt=parseFloat(row.amount)||0;
               const hasAmt=row.amount!==""&&rowAmt>0;
               const destProp=row.propId&&row.propId!=="unassigned"?activeProps.find(p=>p.id===row.propId):null;
-              const propOptions=candidateProps.map(p=>({prop:p,c:propConflict(loan.startDate,rowAmt,p)}));
+              const propOptions=[...candidateProps].sort((a,b)=>propGap(b)-propGap(a)).map(p=>({prop:p,c:propConflict(loan.startDate,rowAmt,p)}));
               const pickerLabel=row.propId===""?(hasAmt?"— pick destination —":"Enter amount first"):row.propId==="unassigned"?"💼 Leave unassigned":(()=>{const p=activeProps.find(x=>x.id===row.propId);const c=propConflict(loan.startDate,rowAmt,p);return`${c==="date"?"🕐":c==="size"?"📐":"🏠"} ${p?.address||"?"}`;})();
               return(
                 <div key={i} className="space-y-1.5">
@@ -2241,7 +2259,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       }
       if(propSortMode==="rehabPriority")return d*(rehabBurn(b)-rehabBurn(a));
       if(propSortMode==="dateAcquired")return d*propPurchaseDate(a).localeCompare(propPurchaseDate(b));
-      if(propSortMode==="address")return d*(a.address||"").localeCompare(b.address||"");
+      if(propSortMode==="address")return d*streetSortKey(a.address).localeCompare(streetSortKey(b.address));
       if(propSortMode==="dateSold")return d*(a.dateSold||"0000").localeCompare(b.dateSold||"0000");
       return d*propSellDate(a).localeCompare(propSellDate(b));
     });
@@ -2250,7 +2268,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       if(propSortMode==="shortage"){const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};return shortOf(b)-shortOf(a)||(a.id||"").localeCompare(b.id||"");}
       if(propSortMode==="rehabPriority")return rehabBurn(b)-rehabBurn(a);
       if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
-      if(propSortMode==="address")return (a.address||"").localeCompare(b.address||"");
+      if(propSortMode==="address")return streetSortKey(a.address).localeCompare(streetSortKey(b.address));
       if(propSortMode==="dateSold")return (a.dateSold||"0000").localeCompare(b.dateSold||"0000");
       return propSellDate(a).localeCompare(propSellDate(b));
     }).map((p,i)=>[p.id,i+1])
@@ -2311,14 +2329,12 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           const over=needed>0?Math.max(0,funded-needed):0;
           return{prop,active,funded,needed,short,over,full:_f,under:!prop.dateSold&&short>0&&!_f};
         });
-        const sorted=[...rows].sort((a,b)=>{
-          if(!propSort.col){
-            if(propSortMode==="rehabPriority")return 0; // already ordered by burn in visible[]
-            return propSellDate(a.prop).localeCompare(propSellDate(b.prop));
-          }
+        // No column header actively clicked — keep rows' order, which already reflects the
+        // sort dropdown (propSortMode/propSortDir) via visible[]. A clicked column overrides it.
+        const sorted=!propSort.col ? rows : [...rows].sort((a,b)=>{
           const d=propSort.dir==="asc"?1:-1;
           switch(propSort.col){
-            case"Address": return d*(a.prop.address||"").localeCompare(b.prop.address||"");
+            case"Address": return d*streetSortKey(a.prop.address).localeCompare(streetSortKey(b.prop.address));
             case"Loans":   return d*(a.active.length-b.active.length);
             case"Funded":  return d*(a.funded-b.funded);
             case"Needed":  return d*(a.needed-b.needed);
