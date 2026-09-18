@@ -220,13 +220,18 @@ const DateInp = ({label,value,onChange,helpText}) => (
 
 // Drag wrapper for manual property sorting — reuses the whole element as the drag
 // surface (tap still works normally via the PointerSensor's activation distance).
+// `children` can be a node (whole item is the drag handle) or a render-prop
+// `(handleProps) => node` so the caller can put the handle on just part of
+// the item (e.g. a header bar) instead of the whole thing.
 const SortableItem = ({id,disabled,as:Tag="div",className,children}) => {
   const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id,disabled});
+  const isRenderProp = typeof children==="function";
+  const handleProps = disabled ? {} : {...attributes,...listeners};
   return (
     <Tag ref={setNodeRef} className={className}
-      style={{transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.5:1,zIndex:isDragging?10:undefined,cursor:disabled?undefined:"grab"}}
-      {...(disabled?{}:attributes)} {...(disabled?{}:listeners)}>
-      {children}
+      style={{transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.5:1,zIndex:isDragging?10:undefined,cursor:(!isRenderProp&&!disabled)?"grab":undefined}}
+      {...(isRenderProp?{}:handleProps)}>
+      {isRenderProp ? children(handleProps) : children}
     </Tag>
   );
 };
@@ -2540,16 +2545,15 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);
           const daysOwned=pd?Math.floor((new Date(TODAY)-new Date(pd))/86400000):null;
           const manualMode=propSortMode==="manual";
-          const {attributes:dragAttrs,listeners:dragListeners,setNodeRef:dragRef,transform:dragTransform,transition:dragTransition,isDragging}=useSortable({id:prop.id,disabled:!manualMode});
 
           return (
-            <div key={prop.id} ref={dragRef}
-              style={{transform:CSS.Transform.toString(dragTransform),transition:dragTransition,opacity:isDragging?0.5:1,zIndex:isDragging?10:undefined}}
+            <SortableItem key={prop.id} id={prop.id} disabled={!manualMode}
               className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none"} bg-white dark:bg-[#1C1C1E]`}>
+            {handleProps => (<>
 
               {/* Header — clean PropDash style, click anywhere to expand (drag handle in manual mode) */}
               <div className={`px-5 py-3.5 cursor-pointer ${under?"bg-red-50/60 dark:bg-red-950/15":""} ${manualMode?"cursor-grab":""}`}
-                onClick={()=>toggle(prop.id)} {...(manualMode?dragAttrs:{})} {...(manualMode?dragListeners:{})}>
+                onClick={()=>toggle(prop.id)} {...handleProps}>
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 min-w-0 mr-3">
                     <span className="text-[11px] text-slate-300 dark:text-zinc-600 tabular-nums font-medium shrink-0">{rankMap[prop.id]}</span>
@@ -2683,7 +2687,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   </div>
                 </div>
               )}
-            </div>
+            </>)}
+            </SortableItem>
           );
         })}
       </div>
