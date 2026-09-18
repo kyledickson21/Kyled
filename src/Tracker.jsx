@@ -5931,8 +5931,9 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   };
 
   useEffect(()=>{
-    load().then(({data:d, updatedAt})=>{
-      updatedAtRef.current = updatedAt;
+    // Pure function of whatever base data is passed in, so a conflict retry can safely
+    // recompute this against fresh server data instead of resaving a stale snapshot.
+    const applyMigrations = d => {
       const migrateLoans = loans => loans.map(l=>
         (!l.paymentType && l.loanType==="hard") ? {...l,paymentType:"monthly_rate"} : l
       );
@@ -5950,31 +5951,37 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       const needsLenderMig = !d.lenders || d.lenders.length===0;
       const needsPhoenixFix = [...d.properties.flatMap(p=>p.loans),...d.unassigned]
         .some(l=>l.lenderName&&isHardOverride(l.lenderName)&&l.loanType!=="hard");
-      if (needsPropMig||needsLoanMig||needsLenderMig||needsPhoenixFix) {
-        const allLoans = [...d.properties.flatMap(p=>p.loans),...d.unassigned];
-        const lenderMap = {};
-        for (const l of allLoans) {
-          if (!l.lenderName) continue;
-          const name = l.lenderName.trim();
-          const type = isHardOverride(name) ? "hard" : (l.loanType||"private");
-          if (!lenderMap[name]) lenderMap[name] = {id:uid(), name, loanType:type};
-          else if (type==="hard") lenderMap[name].loanType = "hard";
-        }
-        const builtLenders = needsLenderMig
-          ? Object.values(lenderMap)
-          : d.lenders.map(l=>isHardOverride(l.name)?{...l,loanType:"hard"}:l);
-        const migrated={...d,
-          lenders: builtLenders,
-          properties:d.properties.map(p=>({
-            ...p,
-            ...(needsPropMig&&!p.purchasePrice&&!p.rehabBudget&&p.fundingNeeded>0
-              ? {purchasePrice:p.fundingNeeded,rehabBudget:0,monthlyHolding:p.monthlyHolding??500}
-              : {}),
-            loans:fixLoanTypes(migrateLoans(p.loans)),
-          })),
-          unassigned:fixLoanTypes(migrateLoans(d.unassigned)),
-        };
-        saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(migrated, ()=>migrated));
+      if (!(needsPropMig||needsLoanMig||needsLenderMig||needsPhoenixFix)) return d;
+      const allLoans = [...d.properties.flatMap(p=>p.loans),...d.unassigned];
+      const lenderMap = {};
+      for (const l of allLoans) {
+        if (!l.lenderName) continue;
+        const name = l.lenderName.trim();
+        const type = isHardOverride(name) ? "hard" : (l.loanType||"private");
+        if (!lenderMap[name]) lenderMap[name] = {id:uid(), name, loanType:type};
+        else if (type==="hard") lenderMap[name].loanType = "hard";
+      }
+      const builtLenders = needsLenderMig
+        ? Object.values(lenderMap)
+        : d.lenders.map(l=>isHardOverride(l.name)?{...l,loanType:"hard"}:l);
+      return {...d,
+        lenders: builtLenders,
+        properties:d.properties.map(p=>({
+          ...p,
+          ...(needsPropMig&&!p.purchasePrice&&!p.rehabBudget&&p.fundingNeeded>0
+            ? {purchasePrice:p.fundingNeeded,rehabBudget:0,monthlyHolding:p.monthlyHolding??500}
+            : {}),
+          loans:fixLoanTypes(migrateLoans(p.loans)),
+        })),
+        unassigned:fixLoanTypes(migrateLoans(d.unassigned)),
+      };
+    };
+
+    load().then(({data:d, updatedAt})=>{
+      updatedAtRef.current = updatedAt;
+      const migrated = applyMigrations(d);
+      if (migrated !== d) {
+        saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(migrated, applyMigrations));
         setData(migrated);
       } else {
         setData(d);

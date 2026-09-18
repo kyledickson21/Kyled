@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { loadData, saveData, subscribeToChanges } from "./supabase";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
@@ -283,11 +283,31 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
   const [modal, setModal] = useState(null); // null | "add" | {type:"editLink", link} | "addFolder" | {type:"folder", folder}
   const [editMode, setEditMode] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const updatedAtRef = useRef(null);
 
   useEffect(() => {
-    loadData().then(setData);
-    const channel = subscribeToChanges(setData);
-    return () => channel.unsubscribe();
+    loadData().then(({ data: d, updatedAt }) => {
+      updatedAtRef.current = updatedAt;
+      setData(d);
+    });
+    const channel = subscribeToChanges((newData, newUpdatedAt) => {
+      updatedAtRef.current = newUpdatedAt;
+      setData(newData);
+    });
+    const resync = () => {
+      if (document.visibilityState !== 'visible') return;
+      loadData().then(({ data: d, updatedAt }) => {
+        updatedAtRef.current = updatedAt;
+        setData(d);
+      }).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', resync);
+    window.addEventListener('focus', resync);
+    return () => {
+      channel.unsubscribe();
+      document.removeEventListener('visibilitychange', resync);
+      window.removeEventListener('focus', resync);
+    };
   }, []);
 
   const links = data?.quickLinks || [];
@@ -308,13 +328,31 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
     ...allItems.filter(it => !savedOrder.includes(it.key)),
   ];
 
-  // Always re-fetch the latest blob right before writing, so this never clobbers
-  // changes made elsewhere (e.g. the Tracker) since this component last loaded.
-  const mutate = fn => {
-    loadData().then(fresh => {
-      const payload = fn(fresh);
-      saveData(payload);
-      setData(payload);
+  // Optimistic concurrency, same as the Tracker: save only succeeds if nobody else has
+  // saved since we last read. On conflict, refetch and re-apply this same edit on top of
+  // the latest data instead of ever overwriting someone else's change (e.g. properties/
+  // loans saved from the Tracker, which lives in this same row).
+  const mutate = (fn, attempt = 0) => {
+    setData(prev => {
+      const payload = fn(prev);
+      saveData(payload, updatedAtRef.current).then(newUpdatedAt => {
+        updatedAtRef.current = newUpdatedAt;
+      }).catch(e => {
+        if (e?.isConflict && attempt < 4) {
+          loadData().then(({ data: fresh, updatedAt }) => {
+            updatedAtRef.current = updatedAt;
+            setData(fresh);
+            mutate(fn, attempt + 1);
+          });
+          return;
+        }
+        console.error('Failed to save to Supabase:', e);
+        loadData().then(({ data: fresh, updatedAt }) => {
+          updatedAtRef.current = updatedAt;
+          setData(fresh);
+        }).catch(() => {});
+      });
+      return payload;
     });
   };
 
