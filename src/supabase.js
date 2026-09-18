@@ -10,19 +10,32 @@ const ORG_ID = 'nexus-homes'
 export async function loadData() {
   const { data, error } = await supabase
     .from('nexus_data')
-    .select('data')
+    .select('data, updated_at')
     .eq('org_id', ORG_ID)
     .single()
   if (error) throw error
-  return data.data
+  return { data: data.data, updatedAt: data.updated_at }
 }
 
-export async function saveData(payload) {
-  const { error } = await supabase
+// Optimistic concurrency: if `expectedUpdatedAt` is given, the write only lands when
+// nobody else has saved since we last read. If another tab/device/session saved in the
+// meantime, `updated_at` no longer matches, zero rows are updated, and we surface that as
+// a conflict instead of silently overwriting whatever they just wrote.
+export async function saveData(payload, expectedUpdatedAt) {
+  const nowIso = new Date().toISOString()
+  let query = supabase
     .from('nexus_data')
-    .update({ data: payload, updated_at: new Date().toISOString() })
+    .update({ data: payload, updated_at: nowIso })
     .eq('org_id', ORG_ID)
+  if (expectedUpdatedAt) query = query.eq('updated_at', expectedUpdatedAt)
+  const { data, error } = await query.select('updated_at')
   if (error) throw error
+  if (expectedUpdatedAt && (!data || data.length === 0)) {
+    const conflict = new Error('nexus_data was changed by another session since last read')
+    conflict.isConflict = true
+    throw conflict
+  }
+  return data?.[0]?.updated_at ?? nowIso
 }
 
 export function subscribeToChanges(callback) {
@@ -30,7 +43,7 @@ export function subscribeToChanges(callback) {
     .channel('nexus_data_changes')
     .on('postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'nexus_data' },
-      (payload) => callback(payload.new.data)
+      (payload) => callback(payload.new.data, payload.new.updated_at)
     )
     .subscribe()
 }

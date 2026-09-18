@@ -5891,6 +5891,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const fabRef=useRef(null);
   const settingsRef=useRef(null);
   const globalSearchRef=useRef(null);
+  const updatedAtRef=useRef(null);
+  const saveQueueRef=useRef(Promise.resolve());
 
   useEffect(()=>{
     const handler=e=>{
@@ -5902,8 +5904,35 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     return ()=>document.removeEventListener('mousedown',handler);
   },[]);
 
+  // Save with optimistic concurrency: if another tab/device saved since we last read,
+  // the write is rejected instead of silently overwriting their change. On conflict we
+  // refetch the latest server data and re-apply this same edit on top of it, so a stale
+  // background tab can never blindly wipe out work done elsewhere.
+  const persistWithRetry = async (next, fn, attempt=0) => {
+    try {
+      const newUpdatedAt = await save(next, updatedAtRef.current);
+      updatedAtRef.current = newUpdatedAt;
+    } catch (e) {
+      if (e?.isConflict && attempt < 4) {
+        const fresh = await load();
+        const merged = typeof fn==="function" ? fn(fresh.data) : next;
+        updatedAtRef.current = fresh.updatedAt;
+        setData(merged);
+        return persistWithRetry(merged, fn, attempt+1);
+      }
+      console.error('Failed to save to Supabase:', e);
+      alert('Your last change could not be saved — another device may have updated this data at the same time. Refreshing to the latest data; please try your change again.');
+      try {
+        const fresh = await load();
+        updatedAtRef.current = fresh.updatedAt;
+        setData(fresh.data);
+      } catch {}
+    }
+  };
+
   useEffect(()=>{
-    load().then(d=>{
+    load().then(({data:d, updatedAt})=>{
+      updatedAtRef.current = updatedAt;
       const migrateLoans = loans => loans.map(l=>
         (!l.paymentType && l.loanType==="hard") ? {...l,paymentType:"monthly_rate"} : l
       );
@@ -5945,21 +5974,40 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           })),
           unassigned:fixLoanTypes(migrateLoans(d.unassigned)),
         };
-        save(migrated);
+        saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(migrated, ()=>migrated));
         setData(migrated);
       } else {
         setData(d);
       }
       setLoading(false);
     })
-    const channel=subscribeToChanges(newData=>setData(newData))
-    return()=>channel.unsubscribe()
+    const channel=subscribeToChanges((newData,newUpdatedAt)=>{
+      updatedAtRef.current = newUpdatedAt;
+      setData(newData);
+    })
+    // A backgrounded tab/phone can silently drop the realtime connection without
+    // reconnecting cleanly — resync from the server whenever the tab becomes visible
+    // again so stale data never sits around waiting to be saved over something newer.
+    const resync = () => {
+      if (document.visibilityState !== 'visible') return;
+      load().then(({data:d, updatedAt})=>{
+        updatedAtRef.current = updatedAt;
+        setData(d);
+      }).catch(()=>{});
+    };
+    document.addEventListener('visibilitychange', resync);
+    window.addEventListener('focus', resync);
+    return()=>{
+      channel.unsubscribe();
+      document.removeEventListener('visibilitychange', resync);
+      window.removeEventListener('focus', resync);
+    }
   },[])
 
   const update = fn => {
     setData(prev=>{
       const next=typeof fn==="function"?fn(prev):fn
-      save(next)
+      saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(next, fn));
       return next
     })
   }
