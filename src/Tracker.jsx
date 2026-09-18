@@ -4665,6 +4665,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
     yearStats[y][field] += amt;
   };
   let pendingInterest = 0, pendingCount = 0;
+  let waivedInterest = 0, waivedCount = 0;
   allLoans.forEach(l => {
     if (l.startDate) {
       bumpYear(l.startDate.slice(0,4), "principalStarted", l.principal||0);
@@ -4673,7 +4674,18 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
     const pt = l.paymentType||"closing";
     if (pt==="closing") {
       if (l.endDate) {
-        bumpYear(l.endDate.slice(0,4), "interest", calcIntEarned(l, l.endDate));
+        // A property sale can roll a lender's payoff instead of cutting a check — check the
+        // actual disposition: "rollFull"/"payInterest"/"paidOut"/"custom" still realize the
+        // interest (constructive receipt, even if reinvested); "rollPrincipal"/"waiveInterest"
+        // mean the lender never actually got that interest, so it isn't taxable income to them.
+        const payoff = l.prop?.closingData?.lenderPayoffs?.find(lp => lp.loanId===l.id);
+        const notReceived = payoff && (payoff.type==="rollPrincipal" || payoff.type==="waiveInterest");
+        if (notReceived) {
+          waivedInterest += calcIntEarned(l, l.endDate);
+          waivedCount += 1;
+        } else {
+          bumpYear(l.endDate.slice(0,4), "interest", calcIntEarned(l, l.endDate));
+        }
       } else {
         pendingInterest += calcIntEarned(l);
         pendingCount += 1;
@@ -4812,6 +4824,11 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
           {pendingCount > 0 && (
             <div className="px-5 py-3 border-t border-slate-100 dark:border-zinc-800 text-[11px] text-slate-400 dark:text-zinc-500">
               Plus {h$(pendingInterest)} accrued but not yet paid across {pendingCount} active loan{pendingCount!==1?"s":""} paid at closing — not counted above until the loan actually closes.
+            </div>
+          )}
+          {waivedCount > 0 && (
+            <div className="px-5 py-3 border-t border-slate-100 dark:border-zinc-800 text-[11px] text-slate-400 dark:text-zinc-500">
+              {h$(waivedInterest)} in interest was rolled or waived without being paid to this lender across {waivedCount} closed loan{waivedCount!==1?"s":""} — excluded above since they never received it.
             </div>
           )}
         </div>
