@@ -4649,7 +4649,6 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const active = allLoans.filter(l => !l.endDate);
   const hist = allLoans.filter(l => l.endDate).sort((a,b) => (b.endDate||"").localeCompare(a.endDate||""));
   const totPrin = active.reduce((s,l) => s + (l.principal||0), 0);
-  const totBal = active.reduce((s,l) => s + calcBalance(l), 0);
   const totInt = active.reduce((s,l) => s + calcIntEarned(l), 0);
   const totHistPrin = hist.reduce((s,l) => s + (l.principal||0), 0);
   const totHistInt = hist.reduce((s,l) => s + calcIntEarned(l), 0);
@@ -4761,10 +4760,9 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-6">
         {[
           ["Active Principal", h$(totPrin), "text-slate-900 dark:text-zinc-100"],
-          ["Balance", h$(totBal), "text-blue-600 dark:text-blue-400"],
           ["Interest (Active)", h$(totInt), "text-emerald-600 dark:text-emerald-400"],
           ["Lifetime Interest", h$(lifetimeInterest), "text-emerald-700 dark:text-emerald-300"],
         ].map(([label, val, color]) => (
