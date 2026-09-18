@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, createContext, useContext, Fragment } from "react";
 import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, deleteLenderAccount } from './supabase'
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const load = loadData
 const save = saveData
@@ -214,6 +217,19 @@ const DateInp = ({label,value,onChange,helpText}) => (
     {helpText&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5">{helpText}</p>}
   </div>
 );
+
+// Drag wrapper for manual property sorting — reuses the whole element as the drag
+// surface (tap still works normally via the PointerSensor's activation distance).
+const SortableItem = ({id,disabled,as:Tag="div",className,children}) => {
+  const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id,disabled});
+  return (
+    <Tag ref={setNodeRef} className={className}
+      style={{transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.5:1,zIndex:isDragging?10:undefined,cursor:disabled?undefined:"grab"}}
+      {...(disabled?{}:attributes)} {...(disabled?{}:listeners)}>
+      {children}
+    </Tag>
+  );
+};
 
 const TypeBadge = ({type,sm}) => {
   const c = type==="hard"
@@ -2084,6 +2100,18 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const toggle = id => setExpanded(e=>({...e,[id]:!e[id]}));
   const togglePropSort = col => setPropSort(s=>({col,dir:s.col===col&&s.dir==="asc"?"desc":"asc"}));
   const unassignedTotal = data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
+  const manualOrder = data.propertyOrder||[];
+  const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
+  const handleDragEnd = ({active,over}) => {
+    if(!over||active.id===over.id) return;
+    const ids = visible.map(p=>p.id);
+    const oldIndex = ids.indexOf(active.id), newIndex = ids.indexOf(over.id);
+    if(oldIndex===-1||newIndex===-1) return;
+    const reordered = arrayMove(visible,oldIndex,newIndex).map(p=>p.id);
+    const rest = manualOrder.filter(id=>!reordered.includes(id) && data.properties.some(p=>p.id===id));
+    const untouched = data.properties.map(p=>p.id).filter(id=>!reordered.includes(id) && !rest.includes(id));
+    update(d=>({...d,propertyOrder:[...reordered,...rest,...untouched]}));
+  };
 
   const commitInlineDraw = () => {
     if (!inlineDraw) return;
@@ -2260,6 +2288,10 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     })
     .sort((a,b)=>{
       const d=propSortDir==="asc"?1:-1;
+      if(propSortMode==="manual"){
+        const ia=manualOrder.indexOf(a.id), ib=manualOrder.indexOf(b.id);
+        return (ia===-1?Infinity:ia)-(ib===-1?Infinity:ib)||(a.id||"").localeCompare(b.id||"");
+      }
       if(propSortMode==="shortage"){
         const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};
         return d*(shortOf(b)-shortOf(a))||(a.id||"").localeCompare(b.id||"");
@@ -2272,6 +2304,10 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     });
   const rankMap=Object.fromEntries(
     [...visible].sort((a,b)=>{
+      if(propSortMode==="manual"){
+        const ia=manualOrder.indexOf(a.id), ib=manualOrder.indexOf(b.id);
+        return (ia===-1?Infinity:ia)-(ib===-1?Infinity:ib)||(a.id||"").localeCompare(b.id||"");
+      }
       if(propSortMode==="shortage"){const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};return shortOf(b)-shortOf(a)||(a.id||"").localeCompare(b.id||"");}
       if(propSortMode==="rehabPriority")return rehabBurn(b)-rehabBurn(a);
       if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
@@ -2307,11 +2343,16 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       {/* Sort + Search */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <SortDropdown value={propSortMode} onChange={setPropSortMode}
-          options={[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["address","A–Z"]]}/>
-        <button onClick={()=>setPropSortDir(d=>d==="asc"?"desc":"asc")}
-          className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
-          {propSortDir==="asc"?"↑ Asc":"↓ Desc"}
-        </button>
+          options={[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["address","A–Z"],["manual","✋ Manual (drag)"]]}/>
+        {propSortMode!=="manual"&&(
+          <button onClick={()=>setPropSortDir(d=>d==="asc"?"desc":"asc")}
+            className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
+            {propSortDir==="asc"?"↑ Asc":"↓ Desc"}
+          </button>
+        )}
+        {propSortMode==="manual"&&(
+          <span className="text-[11px] text-slate-400 dark:text-zinc-500 italic">Drag properties below to reorder</span>
+        )}
         <input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
           placeholder="Search address or lender…" className={SEARCH_CLS}/>
       </div>
@@ -2415,6 +2456,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       })()}
 
       {viewMode==="grid"&&visible.length>0&&(
+        <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={visible.map(p=>p.id)} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {visible.map(prop=>{
             const active=prop.loans.filter(l=>!l.endDate);
@@ -2427,8 +2470,9 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);
             const daysOwned=pd?Math.floor((new Date(TODAY)-new Date(pd))/86400000):null;
             return (
-              <button key={prop.id} onClick={()=>openPanel?.({type:'property',id:prop.id})}
-                className={`text-left rounded-2xl overflow-hidden transition-all hover:-translate-y-0.5 bg-white dark:bg-[#1C1C1E] ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)]"}`}>
+              <SortableItem key={prop.id} id={prop.id} disabled={propSortMode!=="manual"}>
+              <button onClick={()=>openPanel?.({type:'property',id:prop.id})}
+                className={`w-full text-left rounded-2xl overflow-hidden transition-all hover:-translate-y-0.5 bg-white dark:bg-[#1C1C1E] ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)]"}`}>
                 <div className={`px-4 py-3 ${under?"bg-red-50/60 dark:bg-red-950/15":""}`}>
                   <div className="flex justify-between items-start gap-2 mb-2">
                     <div className="flex items-center gap-1.5 min-w-0">
@@ -2462,12 +2506,18 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   {daysOwned!==null&&<span className="tabular-nums">{daysOwned}d owned</span>}
                 </div>
               </button>
+              </SortableItem>
             );
           })}
         </div>
+        </SortableContext>
+        </DndContext>
       )}
 
-      {viewMode==="expanded"&&<div className="space-y-3">
+      {viewMode==="expanded"&&(
+      <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={visible.map(p=>p.id)} strategy={verticalListSortingStrategy}>
+      <div className="space-y-3">
         {visible.map((prop,visIdx)=>{
           const active=prop.loans.filter(l=>!l.endDate);
           const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
@@ -2489,12 +2539,17 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           const hasBreakdown=purchaseAmt>0||rehabAmt>0||holdIntAmt>0;
           const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);
           const daysOwned=pd?Math.floor((new Date(TODAY)-new Date(pd))/86400000):null;
+          const manualMode=propSortMode==="manual";
+          const {attributes:dragAttrs,listeners:dragListeners,setNodeRef:dragRef,transform:dragTransform,transition:dragTransition,isDragging}=useSortable({id:prop.id,disabled:!manualMode});
 
           return (
-            <div key={prop.id} className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none"} bg-white dark:bg-[#1C1C1E]`}>
+            <div key={prop.id} ref={dragRef}
+              style={{transform:CSS.Transform.toString(dragTransform),transition:dragTransition,opacity:isDragging?0.5:1,zIndex:isDragging?10:undefined}}
+              className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none"} bg-white dark:bg-[#1C1C1E]`}>
 
-              {/* Header — clean PropDash style, click anywhere to expand */}
-              <div className={`px-5 py-3.5 cursor-pointer ${under?"bg-red-50/60 dark:bg-red-950/15":""}`} onClick={()=>toggle(prop.id)}>
+              {/* Header — clean PropDash style, click anywhere to expand (drag handle in manual mode) */}
+              <div className={`px-5 py-3.5 cursor-pointer ${under?"bg-red-50/60 dark:bg-red-950/15":""} ${manualMode?"cursor-grab":""}`}
+                onClick={()=>toggle(prop.id)} {...(manualMode?dragAttrs:{})} {...(manualMode?dragListeners:{})}>
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 min-w-0 mr-3">
                     <span className="text-[11px] text-slate-300 dark:text-zinc-600 tabular-nums font-medium shrink-0">{rankMap[prop.id]}</span>
@@ -2631,7 +2686,10 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             </div>
           );
         })}
-      </div>}
+      </div>
+      </SortableContext>
+      </DndContext>
+      )}
 
       {(modal==="addMoney"||modal?.type==="addMoney")&&<Modal title="Add Lender Money" onClose={()=>setModal(null)}><LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={modal?.propId?{destination:modal.propId}:undefined} onSave={saveMoneyForm} onClose={()=>setModal(null)}/></Modal>}
       {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
