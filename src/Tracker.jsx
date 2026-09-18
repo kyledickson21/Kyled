@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext } from "react";
+import { useState, useEffect, useRef, createContext, useContext, Fragment } from "react";
 import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, deleteLenderAccount } from './supabase'
 
 const load = loadData
@@ -4633,6 +4633,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [editing, setEditing] = useState(false);
+  const [expandedYears, setExpandedYears] = useState({});
   const [editName, setEditName] = useState(name);
   const [editType, setEditType] = useState(() => {
     const loans = [
@@ -4650,8 +4651,15 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const hist = allLoans.filter(l => l.endDate).sort((a,b) => (b.endDate||"").localeCompare(a.endDate||""));
   const totPrin = active.reduce((s,l) => s + (l.principal||0), 0);
   const totInt = active.reduce((s,l) => s + calcIntEarned(l), 0);
-  const totHistPrin = hist.reduce((s,l) => s + (l.principal||0), 0);
-  const totHistInt = hist.reduce((s,l) => s + calcIntEarned(l), 0);
+  const histByYear = {};
+  hist.forEach(l => {
+    const y = l.endDate.slice(0,4);
+    (histByYear[y] ||= []).push(l);
+  });
+  const isWaived = l => {
+    const payoff = l.prop?.closingData?.lenderPayoffs?.find(lp => lp.loanId===l.id);
+    return !!(payoff && (payoff.type==="rollPrincipal" || payoff.type==="waiveInterest"));
+  };
 
   // ── Annual breakdown (for taxes) ──
   // Interest paid at closing counts toward the year the loan actually closes (cash basis) —
@@ -4675,9 +4683,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
         // actual disposition: "rollFull"/"payInterest"/"paidOut"/"custom" still realize the
         // interest (constructive receipt, even if reinvested); "rollPrincipal"/"waiveInterest"
         // mean the lender never actually got that interest, so it isn't taxable income to them.
-        const payoff = l.prop?.closingData?.lenderPayoffs?.find(lp => lp.loanId===l.id);
-        const notReceived = payoff && (payoff.type==="rollPrincipal" || payoff.type==="waiveInterest");
-        if (notReceived) {
+        if (isWaived(l)) {
           waivedInterest += calcIntEarned(l, l.endDate);
           waivedCount += 1;
         } else {
@@ -4786,11 +4792,11 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
         </div>
       )}
 
-      {/* Annual breakdown — for taxes */}
+      {/* History — for taxes */}
       {sortedYears.length > 0 && (
         <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
-            <SectionHead title="📊 By Year (for taxes)"/>
+            <SectionHead title="📊 History (for Taxes)"/>
           </div>
           <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -4804,12 +4810,41 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
             <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
               {sortedYears.map(y => {
                 const yr = yearStats[y];
+                const loansThisYear = histByYear[y]||[];
+                const isOpen = !!expandedYears[y];
                 return (
-                  <tr key={y} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
-                    <td className="px-5 py-3 font-semibold text-slate-800 dark:text-zinc-100">{y}</td>
-                    <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400 tabular-nums">{yr.loanCount||0}</td>
-                    <td className="px-5 py-3 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{h$(yr.interest)}</td>
-                  </tr>
+                  <Fragment key={y}>
+                    <tr onClick={()=>loansThisYear.length>0&&setExpandedYears(e=>({...e,[y]:!e[y]}))}
+                      className={`transition-colors ${loansThisYear.length>0?"cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-900/40":""}`}>
+                      <td className="px-5 py-3 font-semibold text-slate-800 dark:text-zinc-100">
+                        <span className="inline-flex items-center gap-1.5">
+                          {loansThisYear.length>0&&<span className={`text-slate-300 dark:text-zinc-600 text-[9px] transition-transform ${isOpen?"rotate-90":""}`}>▶</span>}
+                          {y}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400 tabular-nums">{yr.loanCount||0}</td>
+                      <td className="px-5 py-3 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{h$(yr.interest)}</td>
+                    </tr>
+                    {isOpen&&loansThisYear.map(l=>(
+                      <tr key={l.id} className="bg-slate-50/60 dark:bg-zinc-900/30">
+                        <td className="pl-9 pr-5 py-2.5" colSpan={3}>
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <button onClick={()=>navigate({type:'loan',loanId:l.id,propId:l.prop?.id||null,startEditing:false})}
+                              className="font-medium text-blue-600 dark:text-blue-400 hover:underline text-left shrink-0">
+                              {l.prop?l.prop.address:"Unassigned"}
+                            </button>
+                            <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-zinc-400 tabular-nums">
+                              <span>{h$(l.principal)} principal</span>
+                              <span className={isWaived(l)?"text-slate-400 dark:text-zinc-500":"text-emerald-600 dark:text-emerald-400"}>
+                                {isWaived(l)?"$0 (waived/rolled)":`${h$(calcIntEarned(l,l.endDate))} interest`}
+                              </span>
+                              <span>{l.startDate||"—"} → {l.endDate}</span>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -4871,49 +4906,6 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
                 </div>
               );
             })}
-          </div>
-        </div>
-      )}
-
-      {/* Loan history */}
-      {hist.length > 0 && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
-            <div className="flex items-center justify-between">
-              <SectionHead title="Loan History" count={hist.length}/>
-              <div className="text-xs text-slate-400 dark:text-zinc-500 mb-3">
-                {h$(totHistPrin)} principal · {h$(totHistInt)} interest
-              </div>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
-                <th className="px-5 pb-2 pt-3 text-left font-semibold">Property</th>
-                <th className="px-3 pb-2 pt-3 text-right font-semibold">Principal</th>
-                <th className="px-3 pb-2 pt-3 text-right font-semibold">Interest</th>
-                <th className="px-3 pb-2 pt-3 text-right font-semibold">Started</th>
-                <th className="px-5 pb-2 pt-3 text-right font-semibold">Closed</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
-              {hist.map(l => (
-                <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
-                  <td className="px-5 py-3">
-                    {l.prop
-                      ? <button onClick={() => navigate({type:'property', id:l.prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">{l.prop.address}</button>
-                      : <span className="text-slate-500 dark:text-zinc-400">Unassigned</span>
-                    }
-                  </td>
-                  <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{h$(calcIntEarned(l))}</td>
-                  <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{l.startDate||"—"}</td>
-                  <td className="px-5 py-3 text-right text-slate-500 dark:text-zinc-400">{l.endDate||"—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
           </div>
         </div>
       )}
