@@ -4762,12 +4762,11 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
           ["Active Principal", h$(totPrin), "text-slate-900 dark:text-zinc-100"],
           ["Balance", h$(totBal), "text-blue-600 dark:text-blue-400"],
           ["Interest (Active)", h$(totInt), "text-emerald-600 dark:text-emerald-400"],
-          ["All-Time Paid", h$(totHistPrin), "text-violet-600 dark:text-violet-400"],
           ["Lifetime Interest", h$(lifetimeInterest), "text-emerald-700 dark:text-emerald-300"],
         ].map(([label, val, color]) => (
           <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
