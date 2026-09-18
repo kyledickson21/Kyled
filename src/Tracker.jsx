@@ -2847,6 +2847,46 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = usePersistedState("nx-loansSortBy", "date");
   const [sortDir, setSortDir] = usePersistedState("nx-loansSortDir", "desc");
+  const [moveLoan, setMoveLoan] = useState(null);
+
+  const handleMoveConfirm = (loanRow, result) => {
+    const { prop, propAddress, propId: srcPropId, ...loan } = loanRow; // strip UI-only fields before persisting
+    if (result.type === "split") {
+      const newUnassigned = result.splits.filter(s=>s.propId==="unassigned").map(s=>({...loan,id:uid(),principal:s.amount,drawFacility:null}));
+      update(d=>({
+        ...d,
+        unassigned: srcPropId
+          ? [...(d.unassigned||[]), ...newUnassigned]
+          : [...(d.unassigned||[]).filter(u=>u.id!==loan.id), ...newUnassigned],
+        properties: d.properties.map(p=>{
+          if(srcPropId && p.id===srcPropId){
+            const withoutLoan = p.loans.filter(l=>l.id!==loan.id);
+            const piece = result.splits.find(s=>s.propId===p.id);
+            const added = piece ? [{...loan,id:uid(),principal:piece.amount,drawFacility:null}] : [];
+            return {...p,loans:[...withoutLoan,...added]};
+          }
+          const piece = result.splits.find(s=>s.propId===p.id);
+          if(!piece) return p;
+          return {...p,loans:[...p.loans,{...loan,id:uid(),principal:piece.amount,drawFacility:null}]};
+        }),
+      }));
+    } else if (result.type === "unassigned") {
+      if (srcPropId) {
+        const fund={id:uid(),...loan};
+        update(d=>({...d,properties:d.properties.map(p=>p.id!==srcPropId?p:{...p,loans:p.loans.filter(l=>l.id!==loan.id)}),unassigned:[...(d.unassigned||[]),fund]}));
+      }
+    } else if (srcPropId) {
+      update(d=>({...d,properties:d.properties.map(p=>{
+        if(p.id===srcPropId) return {...p,loans:p.loans.filter(l=>l.id!==loan.id)};
+        if(p.id===result.propId) return {...p,loans:[...p.loans,loan]};
+        return p;
+      })}));
+    } else {
+      const placed={id:uid(),...loan};
+      update(d=>({...d,unassigned:(d.unassigned||[]).filter(u=>u.id!==loan.id),properties:d.properties.map(p=>p.id!==result.propId?p:{...p,loans:[...p.loans,placed]})}));
+    }
+    setMoveLoan(null);
+  };
   useEffect(() => {
     if (pendingTypeFilter) { setTypeFilter(pendingTypeFilter); onClearPendingTypeFilter?.(); }
   }, [pendingTypeFilter]);
@@ -2965,6 +3005,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
                   </span>
                 </th>
                 <th className="px-4 pb-2.5 pt-3 text-right font-semibold">Status</th>
+                <th className="px-3 pb-2.5 pt-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
@@ -2994,6 +3035,11 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
                         {l.endDate ? "Closed" : "Active"}
                       </span>
                     </td>
+                    <td className="px-3 py-3 text-right">
+                      {!l.endDate&&l.loanType!=="hard"&&(
+                        <button onClick={e=>{e.stopPropagation();setMoveLoan(l);}} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap transition-colors">Move →</button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -3002,6 +3048,11 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
           </div>
         )}
       </div>
+
+      {moveLoan&&(
+        <PlaceSplitModal loan={moveLoan} currentPropId={moveLoan.propId} properties={data.properties}
+          onConfirm={result=>handleMoveConfirm(moveLoan,result)} onClose={()=>setMoveLoan(null)}/>
+      )}
     </div>
   );
 }
@@ -4478,6 +4529,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const hs = v => prv ? maskMoney($$s(v)) : $$s(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [editing, setEditing] = useState(false);
+  const [moveLoan, setMoveLoan] = useState(null);
 
   const prop = data.properties.find(p => p.id === propId);
   if (!prop) return (
@@ -4493,6 +4545,37 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const funded = active.reduce((s,l) => s + (l.principal||0) + (l.drawFacility?.committed||0), 0);
   const shortage = Math.max(0, needed - funded);
   const cd = prop.closingData;
+
+  const handleMoveConfirm = (loan, result) => {
+    if (result.type === "split") {
+      const newUnassigned = result.splits.filter(s=>s.propId==="unassigned").map(s=>({...loan,id:uid(),principal:s.amount,drawFacility:null}));
+      update(d=>({
+        ...d,
+        unassigned: [...(d.unassigned||[]), ...newUnassigned],
+        properties: d.properties.map(p=>{
+          if(p.id===propId){
+            const withoutLoan = p.loans.filter(l=>l.id!==loan.id);
+            const piece = result.splits.find(s=>s.propId===p.id);
+            const added = piece ? [{...loan,id:uid(),principal:piece.amount,drawFacility:null}] : [];
+            return {...p,loans:[...withoutLoan,...added]};
+          }
+          const piece = result.splits.find(s=>s.propId===p.id);
+          if(!piece) return p;
+          return {...p,loans:[...p.loans,{...loan,id:uid(),principal:piece.amount,drawFacility:null}]};
+        }),
+      }));
+    } else if (result.type === "unassigned") {
+      const fund={id:uid(),...loan};
+      update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:p.loans.filter(l=>l.id!==loan.id)}),unassigned:[...(d.unassigned||[]),fund]}));
+    } else {
+      update(d=>({...d,properties:d.properties.map(p=>{
+        if(p.id===propId) return {...p,loans:p.loans.filter(l=>l.id!==loan.id)};
+        if(p.id===result.propId) return {...p,loans:[...p.loans,loan]};
+        return p;
+      })}));
+    }
+    setMoveLoan(null);
+  };
 
   const SectionHead = ({title, count}) => (
     <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-2">
@@ -4595,6 +4678,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                       </button>
                       <TypeLabel type={l.loanType}/>
                     </div>
+                    {l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap transition-colors">Move →</button>}
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
                     {[
@@ -4712,6 +4796,11 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
       {prop.loans.length === 0 && (
         <div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">No loans recorded for this property.</div>
       )}
+
+      {moveLoan&&(
+        <PlaceSplitModal loan={moveLoan} currentPropId={propId} properties={data.properties}
+          onConfirm={result=>handleMoveConfirm(moveLoan,result)} onClose={()=>setMoveLoan(null)}/>
+      )}
     </div>
   );
 }
@@ -4722,6 +4811,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [editing, setEditing] = useState(false);
   const [expandedYears, setExpandedYears] = useState({});
+  const [moveLoan, setMoveLoan] = useState(null);
   const [editName, setEditName] = useState(name);
   const [editType, setEditType] = useState(() => {
     const loans = [
@@ -4737,6 +4827,47 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   ].filter(l => l.lenderName === name);
   const active = allLoans.filter(l => !l.endDate);
   const hist = allLoans.filter(l => l.endDate).sort((a,b) => (b.endDate||"").localeCompare(a.endDate||""));
+
+  const handleMoveConfirm = (loanWithProp, result) => {
+    const { prop, ...loan } = loanWithProp; // strip the UI-only `prop` augmentation before persisting
+    const srcPropId = prop?.id || null;
+    if (result.type === "split") {
+      const newUnassigned = result.splits.filter(s=>s.propId==="unassigned").map(s=>({...loan,id:uid(),principal:s.amount,drawFacility:null}));
+      update(d=>({
+        ...d,
+        unassigned: srcPropId
+          ? [...(d.unassigned||[]), ...newUnassigned]
+          : [...(d.unassigned||[]).filter(u=>u.id!==loan.id), ...newUnassigned],
+        properties: d.properties.map(p=>{
+          if(srcPropId && p.id===srcPropId){
+            const withoutLoan = p.loans.filter(l=>l.id!==loan.id);
+            const piece = result.splits.find(s=>s.propId===p.id);
+            const added = piece ? [{...loan,id:uid(),principal:piece.amount,drawFacility:null}] : [];
+            return {...p,loans:[...withoutLoan,...added]};
+          }
+          const piece = result.splits.find(s=>s.propId===p.id);
+          if(!piece) return p;
+          return {...p,loans:[...p.loans,{...loan,id:uid(),principal:piece.amount,drawFacility:null}]};
+        }),
+      }));
+    } else if (result.type === "unassigned") {
+      if (srcPropId) {
+        const fund={id:uid(),...loan};
+        update(d=>({...d,properties:d.properties.map(p=>p.id!==srcPropId?p:{...p,loans:p.loans.filter(l=>l.id!==loan.id)}),unassigned:[...(d.unassigned||[]),fund]}));
+      }
+    } else if (srcPropId) {
+      update(d=>({...d,properties:d.properties.map(p=>{
+        if(p.id===srcPropId) return {...p,loans:p.loans.filter(l=>l.id!==loan.id)};
+        if(p.id===result.propId) return {...p,loans:[...p.loans,loan]};
+        return p;
+      })}));
+    } else {
+      const placed={id:uid(),...loan};
+      update(d=>({...d,unassigned:(d.unassigned||[]).filter(u=>u.id!==loan.id),properties:d.properties.map(p=>p.id!==result.propId?p:{...p,loans:[...p.loans,placed]})}));
+    }
+    setMoveLoan(null);
+  };
+
   const totPrin = active.reduce((s,l) => s + (l.principal||0), 0);
   const totInt = active.reduce((s,l) => s + calcIntEarned(l), 0);
   const histByYear = {};
@@ -4971,9 +5102,12 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
                       }
                       <TypeLabel type={l.loanType}/>
                     </div>
-                    <button onClick={() => navigate({type:'loan', loanId:l.id, propId:l.prop?.id||null, startEditing:false})} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap transition-colors">
-                      View →
-                    </button>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap transition-colors">Move →</button>}
+                      <button onClick={() => navigate({type:'loan', loanId:l.id, propId:l.prop?.id||null, startEditing:false})} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap transition-colors">
+                        View →
+                      </button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
                     {[
@@ -5000,6 +5134,11 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
 
       {allLoans.length === 0 && (
         <div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">No loans found for this lender.</div>
+      )}
+
+      {moveLoan&&(
+        <PlaceSplitModal loan={moveLoan} currentPropId={moveLoan.prop?.id||null} properties={data.properties}
+          onConfirm={result=>handleMoveConfirm(moveLoan,result)} onClose={()=>setMoveLoan(null)}/>
       )}
     </div>
   );
