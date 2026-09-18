@@ -500,8 +500,9 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
                 <div className="space-y-1.5">
                   {available.map(p=>(
                     <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
-                      className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all ${f.destination===p.id?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700"}`}>
-                      <span className={`font-medium text-[13px] ${f.destination===p.id?"text-emerald-700 dark:text-emerald-300":"text-slate-800 dark:text-zinc-200"}`}>🏠 {p.address}</span>
+                      className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${f.destination===p.id?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700"}`}>
+                      <span className={`font-medium text-[13px] truncate ${f.destination===p.id?"text-emerald-700 dark:text-emerald-300":"text-slate-800 dark:text-zinc-200"}`}>🏠 {p.address}</span>
+                      <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
                     </button>
                   ))}
                 </div>
@@ -513,8 +514,9 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
                 <div className="space-y-1.5">
                   {blockedSize.map(p=>(
                     <button key={p.id} type="button" disabled
-                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed pointer-events-none">
-                      <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
+                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed pointer-events-none flex items-center justify-between gap-2">
+                      <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500 truncate">📐 {p.address}</span>
+                      <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
                     </button>
                   ))}
                 </div>
@@ -526,8 +528,9 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
                 <div className="space-y-1.5">
                   {blockedDate.map(p=>(
                     <button key={p.id} type="button" disabled
-                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed pointer-events-none">
-                      <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
+                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed pointer-events-none flex items-center justify-between gap-2">
+                      <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500 truncate">🕐 {p.address}</span>
+                      <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
                     </button>
                   ))}
                 </div>
@@ -542,8 +545,9 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           <div className="space-y-1.5">
             {activeProps.map(p=>(
               <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
-                className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all ${f.destination===p.id?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700"}`}>
-                <span className={`font-medium text-[13px] ${f.destination===p.id?"text-emerald-700 dark:text-emerald-300":"text-slate-800 dark:text-zinc-200"}`}>🏠 {p.address}</span>
+                className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${f.destination===p.id?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700"}`}>
+                <span className={`font-medium text-[13px] truncate ${f.destination===p.id?"text-emerald-700 dark:text-emerald-300":"text-slate-800 dark:text-zinc-200"}`}>🏠 {p.address}</span>
+                <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
               </button>
             ))}
           </div>
@@ -624,13 +628,17 @@ const loanPropConflict = (loanStartDate, prop) => {
   if (!pd || !loanStartDate || loanStartDate >= pd) return 0;
   return daysBetween(loanStartDate, pd);
 };
-const propSizeConflict = (loanAmount, prop) => {
+// Funding gap remaining on a property — how much more it can still take
+const propGap = prop => {
   const active = prop.loans.filter(l=>!l.endDate);
   const needed = propNeeded(prop, active);
-  if (needed <= 0) return false;
   const funded = active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
-  const shortage = Math.max(0, needed - funded);
-  return loanAmount > shortage + needed * 0.10; // allow 10% of total needed over the gap
+  return Math.max(0, needed - funded);
+};
+const propSizeConflict = (loanAmount, prop) => {
+  const needed = propNeeded(prop, prop.loans.filter(l=>!l.endDate));
+  if (needed <= 0) return false;
+  return loanAmount > propGap(prop) + needed * 0.10; // allow 10% of total needed over the gap
 };
 // Returns 'date' | 'size' | null — date takes priority if both apply
 const propConflict = (loanStartDate, loanAmount, prop) => {
@@ -1075,8 +1083,9 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               <div className="space-y-1.5">
                 {available.map(p=>(
                   <button key={p.id} type="button" onClick={()=>{setBlockMsg("");handlePlace(p.id);}}
-                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
-                    <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">🏠 {p.address}</span>
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex items-center justify-between gap-2">
+                    <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200 truncate">🏠 {p.address}</span>
+                    <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
                   </button>
                 ))}
               </div>
@@ -1088,8 +1097,9 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               <div className="space-y-1.5">
                 {blockedSize.map(p=>(
                   <button key={p.id} type="button" disabled
-                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed">
-                    <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">📐 {p.address}</span>
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed flex items-center justify-between gap-2">
+                    <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500 truncate">📐 {p.address}</span>
+                    <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
                   </button>
                 ))}
               </div>
@@ -1101,8 +1111,9 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               <div className="space-y-1.5">
                 {blockedDate.map(p=>(
                   <button key={p.id} type="button" disabled
-                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed">
-                    <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500">🕐 {p.address}</span>
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed flex items-center justify-between gap-2">
+                    <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500 truncate">🕐 {p.address}</span>
+                    <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
                   </button>
                 ))}
               </div>
@@ -1157,12 +1168,13 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                           {propOptions.map(({prop,c})=>{
                             const disabled=c!==null;
                             const emoji=c==="date"?"🕐":c==="size"?"📐":"🏠";
-                            const suffix=c==="date"?" — timing conflict":c==="size"?" — over gap":"";
+                            const suffix=c==="date"?" — timing conflict":"";
                             return(
                               <button key={prop.id} type="button" disabled={disabled}
                                 onClick={()=>{setRow(i,"propId",prop.id);setOpenPicker(null);}}
-                                className={`w-full text-left px-3 py-2.5 text-xs font-medium transition-colors ${disabled?"opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500":"text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
-                                {emoji} {prop.address}{suffix}
+                                className={`w-full text-left px-3 py-2.5 text-xs font-medium transition-colors flex items-center justify-between gap-2 ${disabled?"opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500":"text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+                                <span className="truncate">{emoji} {prop.address}{suffix}</span>
+                                <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(prop))} avail</span>
                               </button>
                             );
                           })}
