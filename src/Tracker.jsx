@@ -2257,8 +2257,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             <input type="checkbox" checked={showSold} onChange={e=>setShowSold(e.target.checked)} className="rounded"/> Show Sold
           </label>
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-lg p-0.5 gap-0.5">
-            {[["condensed","≡"],["expanded","⊞"]].map(([v,icon])=>(
-              <button key={v} onClick={()=>setViewMode(v)} title={v==="condensed"?"Condensed view":"Expanded view"}
+            {[["condensed","≡"],["grid","▦"],["expanded","⊞"]].map(([v,icon])=>(
+              <button key={v} onClick={()=>setViewMode(v)} title={v==="condensed"?"Condensed view":v==="grid"?"Card view":"Expanded view"}
                 className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${viewMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
                 {icon}
               </button>
@@ -2378,6 +2378,59 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           </div>
         );
       })()}
+
+      {viewMode==="grid"&&visible.length>0&&(
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {visible.map(prop=>{
+            const active=prop.loans.filter(l=>!l.endDate);
+            const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+            const needed=propNeeded(prop,active);
+            const short=Math.max(0,needed-funded);
+            const full=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
+            const under=!prop.dateSold&&short>0&&!full;
+            const over=needed>0?Math.max(0,funded-needed):0;
+            const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);
+            const daysOwned=pd?Math.floor((new Date(TODAY)-new Date(pd))/86400000):null;
+            return (
+              <button key={prop.id} onClick={()=>openPanel?.({type:'property',id:prop.id})}
+                className={`text-left rounded-2xl overflow-hidden transition-all hover:-translate-y-0.5 bg-white dark:bg-[#1C1C1E] ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)]"}`}>
+                <div className={`px-4 py-3 ${under?"bg-red-50/60 dark:bg-red-950/15":""}`}>
+                  <div className="flex justify-between items-start gap-2 mb-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-[11px] text-slate-300 dark:text-zinc-600 tabular-nums font-medium shrink-0">{rankMap[prop.id]}</span>
+                      <span className="font-semibold text-slate-900 dark:text-zinc-100 truncate text-sm">{prop.address?.split(',')[0]||"Unnamed Property"}</span>
+                    </div>
+                    <div className="shrink-0 text-[11px] whitespace-nowrap">
+                      {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 font-semibold">Sold</span>}
+                      {full&&short===0&&over>needed*0.05&&<span className="text-amber-600 dark:text-amber-400 font-bold tabular-nums">+{h$(over)}</span>}
+                      {full&&short===0&&over<=needed*0.05&&<span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ Full</span>}
+                      {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">-{h$(short)}</span>}
+                      {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{h$(short)}</span>}
+                    </div>
+                  </div>
+                  {needed>0&&!prop.dateSold?(
+                    <>
+                      <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5">
+                        <div className={`h-full transition-all rounded-full ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
+                      </div>
+                      <div className="flex justify-between text-[10px]">
+                        <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{h$(funded)}</span>
+                        <span className="text-slate-400 dark:text-zinc-500 tabular-nums">of {h$(needed)}</span>
+                      </div>
+                    </>
+                  ):(
+                    <div className="text-[11px] text-slate-400 dark:text-zinc-500">{prop.dateSold?`Sold ${prop.dateSold}`:"No funding target set"}</div>
+                  )}
+                </div>
+                <div className="px-4 pb-3 pt-2.5 flex items-center justify-between text-[11px] text-slate-400 dark:text-zinc-500 border-t border-black/[0.04] dark:border-white/[0.04]">
+                  <span>{active.length} loan{active.length!==1?"s":""}</span>
+                  {daysOwned!==null&&<span className="tabular-nums">{daysOwned}d owned</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {viewMode==="expanded"&&<div className="space-y-3">
         {visible.map((prop,visIdx)=>{
