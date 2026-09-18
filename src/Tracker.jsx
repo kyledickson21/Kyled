@@ -2080,6 +2080,21 @@ const loanFields = f => ({
   specialTerms:f.specialTerms||"", endDate:f.endDate||null,
   dueDate:f.dueDate||null,
 });
+// When a loan is split across destinations, a FIXED-dollar interest term (a flat total
+// fee, or a flat monthly payment) has to be prorated by each piece's share of the
+// original principal — otherwise every piece would carry the full fixed amount,
+// multiplying the real interest owed by however many ways it's split.
+const splitPiece = (fund, amount) => {
+  const origPrincipal = fund.principal || 0;
+  const share = origPrincipal > 0 ? amount / origPrincipal : 0;
+  const interestRate = fund.interestType==="fixed"
+    ? Math.round((fund.interestRate||0) * share * 100) / 100
+    : fund.interestRate;
+  const monthlyPayment = fund.paymentType==="monthly_fixed"
+    ? Math.round((fund.monthlyPayment||0) * share * 100) / 100
+    : fund.monthlyPayment;
+  return {...fund, id:uid(), principal:amount, interestRate, monthlyPayment, drawFacility:null};
+};
 const upsertLender = (d, newLender) => {
   if (!newLender) return d;
   return {...d, lenders:[...(d.lenders||[]).filter(x=>x.name!==newLender.name), newLender]};
@@ -2213,7 +2228,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const handleSplitLoan = (fund, splits, srcPropId=null) => {
     const newUnassigned = splits
       .filter(s=>s.propId==="unassigned")
-      .map(s=>({...fund, id:uid(), principal:s.amount, drawFacility:null}));
+      .map(s=>splitPiece(fund, s.amount));
     update(d=>({
       ...d,
       unassigned: srcPropId
@@ -2223,12 +2238,12 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         if(srcPropId && p.id===srcPropId){
           const withoutLoan = p.loans.filter(l=>l.id!==fund.id);
           const piece = splits.find(s=>s.propId===p.id);
-          const added = piece ? [{...fund,id:uid(),principal:piece.amount,drawFacility:null}] : [];
+          const added = piece ? [splitPiece(fund, piece.amount)] : [];
           return {...p,loans:[...withoutLoan,...added]};
         }
         const piece=splits.find(s=>s.propId===p.id);
         if(!piece) return p;
-        return{...p,loans:[...p.loans,{...fund,id:uid(),principal:piece.amount,drawFacility:null}]};
+        return{...p,loans:[...p.loans,splitPiece(fund, piece.amount)]};
       }),
     }));
     splits.filter(s=>s.propId!=="unassigned").forEach(s=>setExpanded(e=>({...e,[s.propId]:true})));
@@ -2988,7 +3003,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
   const handleMoveConfirm = (loanRow, result) => {
     const { prop, propAddress, propId: srcPropId, ...loan } = loanRow; // strip UI-only fields before persisting
     if (result.type === "split") {
-      const newUnassigned = result.splits.filter(s=>s.propId==="unassigned").map(s=>({...loan,id:uid(),principal:s.amount,drawFacility:null}));
+      const newUnassigned = result.splits.filter(s=>s.propId==="unassigned").map(s=>splitPiece(loan, s.amount));
       update(d=>({
         ...d,
         unassigned: srcPropId
@@ -2998,12 +3013,12 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
           if(srcPropId && p.id===srcPropId){
             const withoutLoan = p.loans.filter(l=>l.id!==loan.id);
             const piece = result.splits.find(s=>s.propId===p.id);
-            const added = piece ? [{...loan,id:uid(),principal:piece.amount,drawFacility:null}] : [];
+            const added = piece ? [splitPiece(loan, piece.amount)] : [];
             return {...p,loans:[...withoutLoan,...added]};
           }
           const piece = result.splits.find(s=>s.propId===p.id);
           if(!piece) return p;
-          return {...p,loans:[...p.loans,{...loan,id:uid(),principal:piece.amount,drawFacility:null}]};
+          return {...p,loans:[...p.loans,splitPiece(loan, piece.amount)]};
         }),
       }));
     } else if (result.type === "unassigned") {
@@ -4684,7 +4699,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
 
   const handleMoveConfirm = (loan, result) => {
     if (result.type === "split") {
-      const newUnassigned = result.splits.filter(s=>s.propId==="unassigned").map(s=>({...loan,id:uid(),principal:s.amount,drawFacility:null}));
+      const newUnassigned = result.splits.filter(s=>s.propId==="unassigned").map(s=>splitPiece(loan, s.amount));
       update(d=>({
         ...d,
         unassigned: [...(d.unassigned||[]), ...newUnassigned],
@@ -4692,12 +4707,12 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
           if(p.id===propId){
             const withoutLoan = p.loans.filter(l=>l.id!==loan.id);
             const piece = result.splits.find(s=>s.propId===p.id);
-            const added = piece ? [{...loan,id:uid(),principal:piece.amount,drawFacility:null}] : [];
+            const added = piece ? [splitPiece(loan, piece.amount)] : [];
             return {...p,loans:[...withoutLoan,...added]};
           }
           const piece = result.splits.find(s=>s.propId===p.id);
           if(!piece) return p;
-          return {...p,loans:[...p.loans,{...loan,id:uid(),principal:piece.amount,drawFacility:null}]};
+          return {...p,loans:[...p.loans,splitPiece(loan, piece.amount)]};
         }),
       }));
     } else if (result.type === "unassigned") {
@@ -4968,7 +4983,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
     const { prop, ...loan } = loanWithProp; // strip the UI-only `prop` augmentation before persisting
     const srcPropId = prop?.id || null;
     if (result.type === "split") {
-      const newUnassigned = result.splits.filter(s=>s.propId==="unassigned").map(s=>({...loan,id:uid(),principal:s.amount,drawFacility:null}));
+      const newUnassigned = result.splits.filter(s=>s.propId==="unassigned").map(s=>splitPiece(loan, s.amount));
       update(d=>({
         ...d,
         unassigned: srcPropId
@@ -4978,12 +4993,12 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
           if(srcPropId && p.id===srcPropId){
             const withoutLoan = p.loans.filter(l=>l.id!==loan.id);
             const piece = result.splits.find(s=>s.propId===p.id);
-            const added = piece ? [{...loan,id:uid(),principal:piece.amount,drawFacility:null}] : [];
+            const added = piece ? [splitPiece(loan, piece.amount)] : [];
             return {...p,loans:[...withoutLoan,...added]};
           }
           const piece = result.splits.find(s=>s.propId===p.id);
           if(!piece) return p;
-          return {...p,loans:[...p.loans,{...loan,id:uid(),principal:piece.amount,drawFacility:null}]};
+          return {...p,loans:[...p.loans,splitPiece(loan, piece.amount)]};
         }),
       }));
     } else if (result.type === "unassigned") {
@@ -5676,14 +5691,14 @@ function DashboardPage({ data, update, onNavigateTab }) {
 
   const handleSplitLoan = (fund, splits) => {
     const newUnassigned = splits.filter(s => s.propId === "unassigned")
-      .map(s => ({ ...fund, id: uid(), principal: s.amount, drawFacility: null }));
+      .map(s => splitPiece(fund, s.amount));
     update(d => ({
       ...d,
       unassigned: [...d.unassigned.filter(u => u.id !== fund.id), ...newUnassigned],
       properties: d.properties.map(p => {
         const piece = splits.find(s => s.propId === p.id);
         if (!piece) return p;
-        return { ...p, loans: [...p.loans, { ...fund, id: uid(), principal: piece.amount, drawFacility: null }] };
+        return { ...p, loans: [...p.loans, splitPiece(fund, piece.amount)] };
       }),
     }));
     setModal(null);
