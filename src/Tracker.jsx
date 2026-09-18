@@ -2369,16 +2369,21 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 
       {/* ── HERO: Unassigned Money ── */}
       {unassignedFunds.length > 0 ? (
-        <div className="mb-6 rounded-2xl overflow-hidden bg-gradient-to-br from-violet-600 to-purple-700 shadow-[0_4px_24px_rgba(124,58,237,0.30)] dark:shadow-[0_4px_24px_rgba(124,58,237,0.20)]">
+        <div className="mb-4 rounded-2xl overflow-hidden bg-gradient-to-br from-violet-600 to-purple-700 shadow-[0_4px_24px_rgba(124,58,237,0.30)] dark:shadow-[0_4px_24px_rgba(124,58,237,0.20)]">
           {/* Collapsible header */}
           <button onClick={() => setFundsOpen(o => !o)}
-            className="w-full px-5 py-4 flex items-center justify-between hover:bg-white/5 transition-colors">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-widest text-violet-200/70 mb-1 text-left">⚠️ Money Ready to Place</div>
-              <div className="text-4xl font-black text-white tabular-nums tracking-tight">{h$(unassignedTotal)}</div>
-              <div className="text-sm text-violet-200/70 mt-1 text-left">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} sitting idle</div>
+            className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-white/5 transition-colors">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-sm shrink-0">⚠️</span>
+              <div className="text-left min-w-0">
+                <div className="text-[9px] font-bold uppercase tracking-widest text-violet-200/70 leading-none">Money Ready to Place</div>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <span className="text-lg font-black text-white tabular-nums tracking-tight leading-none">{h$(unassignedTotal)}</span>
+                  <span className="text-[11px] text-violet-200/70 leading-none">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} idle</span>
+                </div>
+              </div>
             </div>
-            <span className="text-white/40 text-xs font-bold ml-4 shrink-0">{fundsOpen ? "▲" : "▼"}</span>
+            <span className="text-white/40 text-xs font-bold ml-3 shrink-0">{fundsOpen ? "▲" : "▼"}</span>
           </button>
           {fundsOpen && (
             <div className="border-t border-white/15 divide-y divide-white/10">
@@ -2386,7 +2391,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 const principal = u.principal || u.amount || 0;
                 const days = daysBetween(u.startDate, TODAY);
                 return (
-                  <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 hover:bg-white/5 transition-colors">
+                  <div key={u.id} className="px-4 py-2 flex items-center justify-between gap-2 hover:bg-white/5 transition-colors">
                     <div className="flex-1 min-w-0 flex items-center gap-2.5 flex-wrap">
                       <button onClick={() => openPanel({ type: 'loan', loanId: u.id, propId: null })}
                         className="font-semibold text-white text-sm hover:text-violet-200 transition-colors text-left">{u.lenderName}</button>
@@ -2426,10 +2431,9 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           )}
         </div>
       ) : (
-        <div className="mb-6 rounded-2xl border-2 border-dashed border-violet-300 dark:border-violet-800 p-6 text-center bg-violet-50/50 dark:bg-violet-900/10">
-          <div className="text-2xl mb-2">✅</div>
-          <div className="text-sm font-semibold text-violet-700 dark:text-violet-400">All Money Placed</div>
-          <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">No unassigned funds sitting idle</div>
+        <div className="mb-4 rounded-2xl border border-dashed border-violet-300 dark:border-violet-800 px-4 py-2.5 flex items-center justify-center gap-1.5 bg-violet-50/50 dark:bg-violet-900/10">
+          <span className="text-sm font-semibold text-violet-700 dark:text-violet-400">✅ All Money Placed</span>
+          <span className="text-xs text-slate-400 dark:text-zinc-500">— no idle funds</span>
         </div>
       )}
 
@@ -5712,16 +5716,21 @@ function DashboardPage({ data, update, onNavigateTab }) {
 
       {/* ── HERO: Unassigned Money ── */}
       {unassignedFunds.length > 0 ? (
-        <div className="mb-6 rounded-2xl overflow-hidden bg-gradient-to-br from-violet-600 to-purple-700 shadow-[0_4px_24px_rgba(124,58,237,0.30)] dark:shadow-[0_4px_24px_rgba(124,58,237,0.20)]">
+        <div className="mb-4 rounded-2xl overflow-hidden bg-gradient-to-br from-violet-600 to-purple-700 shadow-[0_4px_24px_rgba(124,58,237,0.30)] dark:shadow-[0_4px_24px_rgba(124,58,237,0.20)]">
           {/* Collapsible header */}
           <button onClick={() => setFundsOpen(o => !o)}
-            className="w-full px-5 py-4 flex items-center justify-between hover:bg-white/5 transition-colors">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-widest text-violet-200/70 mb-1 text-left">⚠️ Money Ready to Place</div>
-              <div className="text-4xl font-black text-white tabular-nums tracking-tight">{h$(unassignedTotal)}</div>
-              <div className="text-sm text-violet-200/70 mt-1 text-left">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} sitting idle</div>
+            className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-white/5 transition-colors">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-sm shrink-0">⚠️</span>
+              <div className="text-left min-w-0">
+                <div className="text-[9px] font-bold uppercase tracking-widest text-violet-200/70 leading-none">Money Ready to Place</div>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <span className="text-lg font-black text-white tabular-nums tracking-tight leading-none">{h$(unassignedTotal)}</span>
+                  <span className="text-[11px] text-violet-200/70 leading-none">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} idle</span>
+                </div>
+              </div>
             </div>
-            <span className="text-white/40 text-xs font-bold ml-4 shrink-0">{fundsOpen ? "▲" : "▼"}</span>
+            <span className="text-white/40 text-xs font-bold ml-3 shrink-0">{fundsOpen ? "▲" : "▼"}</span>
           </button>
           {fundsOpen && (
             <div className="border-t border-white/15 divide-y divide-white/10">
@@ -5729,7 +5738,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
                 const principal = u.principal || u.amount || 0;
                 const days = daysBetween(u.startDate, TODAY);
                 return (
-                  <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 hover:bg-white/5 transition-colors">
+                  <div key={u.id} className="px-4 py-2 flex items-center justify-between gap-2 hover:bg-white/5 transition-colors">
                     <div className="flex-1 min-w-0 flex items-center gap-2.5 flex-wrap">
                       <button onClick={() => openPanel({ type: 'loan', loanId: u.id, propId: null })}
                         className="font-semibold text-white text-sm hover:text-violet-200 transition-colors text-left">{u.lenderName}</button>
@@ -5769,10 +5778,9 @@ function DashboardPage({ data, update, onNavigateTab }) {
           )}
         </div>
       ) : (
-        <div className="mb-6 rounded-2xl border-2 border-dashed border-violet-300 dark:border-violet-800 p-6 text-center bg-violet-50/50 dark:bg-violet-900/10">
-          <div className="text-2xl mb-2">✅</div>
-          <div className="text-sm font-semibold text-violet-700 dark:text-violet-400">All Money Placed</div>
-          <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">No unassigned funds sitting idle</div>
+        <div className="mb-4 rounded-2xl border border-dashed border-violet-300 dark:border-violet-800 px-4 py-2.5 flex items-center justify-center gap-1.5 bg-violet-50/50 dark:bg-violet-900/10">
+          <span className="text-sm font-semibold text-violet-700 dark:text-violet-400">✅ All Money Placed</span>
+          <span className="text-xs text-slate-400 dark:text-zinc-500">— no idle funds</span>
         </div>
       )}
 
