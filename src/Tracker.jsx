@@ -359,6 +359,17 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const [blockMsg,setBlockMsg]=useState("");
   const s = k => v => sf(p=>({...p,[k]:v}));
 
+  // Default "How Is Interest Paid?" by loan type — hard money to monthly interest-only,
+  // private money to paid-at-closing — and keep it in sync as the user picks a lender or
+  // switches the new-lender type, unless they've manually overridden it themselves. Only
+  // applies to a fresh entry (init already carrying a paymentType means we're editing one
+  // that was set deliberately, so it's left alone).
+  const [paymentTypeTouched,setPaymentTypeTouched]=useState(!!init?.paymentType);
+  useEffect(()=>{
+    if (paymentTypeTouched) return;
+    sf(p=>({...p,paymentType:currentLoanType==="hard"?"monthly_rate":"closing"}));
+  },[currentLoanType]);
+
   const isFixed = (f.interestType || "percentage") === "fixed";
   const addDraw = () => {
     const amount = parseFloat(drawAmt);
@@ -599,7 +610,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           ? <Inp label="Fixed Interest Amount ($) *" type="number" value={f.interestRate} onChange={s("interestRate")} placeholder="5000" helpText="Total interest they receive — e.g. lend $100k, get back $105k → enter 5000."/>
           : <Inp label="Annual Interest Rate (%) *" type="number" value={f.interestRate} onChange={s("interestRate")} placeholder="10" helpText="Enter 0 for no interest."/>
         }
-        <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"} onChange={s("paymentType")} options={[
+        <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"} onChange={v=>{setPaymentTypeTouched(true);s("paymentType")(v);}} options={[
           ["closing",       "Pay at Closing — all interest owed when deal closes"],
           ["monthly_rate",  "Monthly Interest-Only — pay rate monthly, principal at closing"],
           ["monthly_fixed", "Monthly Fixed Amount — set dollar amount each month"],
