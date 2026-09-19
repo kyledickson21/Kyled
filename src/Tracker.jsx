@@ -3865,6 +3865,15 @@ function HistoryPage({ data }) {
       raw.push({date:prop.dateSold,sx:"c",etype:"saleSummary",property:prop.address,propId:prop.id,closingData:prop.closingData,loanId:`sale-${prop.id}`});
     }
   });
+  // Same calendar date N months later, with the day clamped to that month's length
+  // (Jan 31 + 1 month -> Feb 28/29, not an overflow into March).
+  const monthsLater = (y,m,d,n) => {
+    let nm = m + n;
+    const ny = y + Math.floor((nm-1)/12);
+    nm = ((nm-1)%12)+1;
+    const lastDay = new Date(ny, nm, 0).getDate();
+    return `${ny}-${String(nm).padStart(2,'0')}-${String(Math.min(d,lastDay)).padStart(2,'0')}`;
+  };
   // Recurring monthly interest payments, due the 1st of every month the loan was active
   // — generated for the loan's whole life (past through today) so bookkeepers can map
   // every payment, not just the loan's start/close events. Any loan can be set up with
@@ -3875,21 +3884,51 @@ function HistoryPage({ data }) {
     if (!loan.startDate) return;
     const pt = loan.paymentType||"closing";
     if (pt!=="monthly_rate"&&pt!=="monthly_fixed") return;
-    // Not monthlyLoanPayment() — that helper returns 0 for any loan with an endDate
-    // (correct for "what's currently owed" on the Dashboard, wrong here: a closed loan
-    // still owes every past month's payment up to its close date).
-    const monthly = pt==="monthly_fixed" ? Math.round(loan.monthlyPayment||0) : Math.round((loan.principal||0)*(loan.interestRate||0)/100/12);
-    if (monthly<=0) return;
     const endBound = loan.endDate || TODAY;
     const [sy,sm,sd] = loan.startDate.split('-').map(Number);
-    let cy=sy, cm=sm;
-    if (sd>1) { cm+=1; if(cm>12){cm=1;cy+=1;} }
+    // Hard money loans get a free first month: no payment is due on a 1st that falls
+    // before the one-month anniversary of origination. E.g. a loan originated Jan 15
+    // doesn't owe on Feb 1 (only 17 days in) — its first payment is Mar 1, and it's
+    // prorated back to Jan 15 to cover everything accrued since origination. Private
+    // monthly-paid loans don't follow this convention; their first payment is simply
+    // the next 1st after origination.
+    const firstDue = loan.loanType==="hard" ? monthsLater(sy,sm,sd,1) : loan.startDate;
+    let cy=sy, cm=sm+1; if(cm>12){cm=1;cy+=1;}
+    const schedule=[];
     while (true) {
       const dateStr = `${cy}-${String(cm).padStart(2,'0')}-01`;
       if (dateStr>endBound) break;
-      raw.push({date:dateStr, sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount:monthly, principal:loan.principal||0, property:propAddress, propId, rate:loan.interestRate||0, loanId:`${loan.id}-pay-${dateStr}`});
+      if (dateStr>=firstDue) schedule.push(dateStr);
       cm+=1; if(cm>12){cm=1;cy+=1;}
     }
+    // Per-diem, not a flat 1/12 — a 28-day February and a 31-day month owe different
+    // interest even at the same rate, and this is also what lets a stub period (the
+    // first payment after a mid-month start, or a mid-period rehab draw) prorate
+    // correctly instead of billing a full month for a partial one.
+    const dailyRate = (loan.interestRate||0)/100/yearDays(loan);
+    let prevDate = loan.startDate;
+    schedule.forEach(dateStr=>{
+      const days = daysBetween(prevDate,dateStr);
+      let amount;
+      if (pt==="monthly_fixed") {
+        amount = (loan.monthlyPayment||0)*days/30.44;
+      } else {
+        amount = (loan.principal||0)*dailyRate*days;
+        // Rehab draw facility: each draw accrues its own interest from its actual draw
+        // date (not the loan's origination date), folded into the same 1st-of-month
+        // payment as the base principal.
+        (loan.drawFacility?.draws||[]).forEach(d=>{
+          if (!d.date||d.date>=dateStr) return;
+          const drawStart = d.date>prevDate ? d.date : prevDate;
+          amount += (d.amount||0)*dailyRate*daysBetween(drawStart,dateStr);
+        });
+      }
+      amount = Math.round(amount);
+      if (amount>0) {
+        raw.push({date:dateStr, sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount, principal:loan.principal||0, property:propAddress, propId, rate:loan.interestRate||0, loanId:`${loan.id}-pay-${dateStr}`});
+      }
+      prevDate = dateStr;
+    });
   };
   data.properties.forEach(prop=>{
     prop.loans.forEach(loan=>addHardPayments(loan, prop.address, prop.id));
