@@ -3874,6 +3874,16 @@ function HistoryPage({ data }) {
     const lastDay = new Date(ny, nm, 0).getDate();
     return `${ny}-${String(nm).padStart(2,'0')}-${String(Math.min(d,lastDay)).padStart(2,'0')}`;
   };
+  // Interest is requested/prorated as of the 1st, but the bank doesn't move money on a
+  // weekend — if the 1st is a Sat/Sun, it actually posts the next Monday. Purely a
+  // display-date shift for the bookkeeper; proration always uses the 1st itself.
+  const firstBusinessDay = dateStr => {
+    const [y,m,d] = dateStr.split('-').map(Number);
+    const dow = new Date(y,m-1,d).getDay();
+    const add = dow===6 ? 2 : dow===0 ? 1 : 0;
+    const dt = new Date(y,m-1,d+add);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  };
   // Recurring monthly interest payments, due the 1st of every month the loan was active
   // — generated for the loan's whole life (past through today) so bookkeepers can map
   // every payment, not just the loan's start/close events. Any loan can be set up with
@@ -3925,7 +3935,7 @@ function HistoryPage({ data }) {
       }
       amount = Math.round(amount);
       if (amount>0) {
-        raw.push({date:dateStr, sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount, principal:loan.principal||0, property:propAddress, propId, rate:loan.interestRate||0, loanId:`${loan.id}-pay-${dateStr}`});
+        raw.push({date:firstBusinessDay(dateStr), sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount, principal:loan.principal||0, property:propAddress, propId, rate:loan.interestRate||0, loanId:`${loan.id}-pay-${dateStr}`});
       }
       prevDate = dateStr;
     });
