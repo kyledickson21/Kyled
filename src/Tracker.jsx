@@ -196,7 +196,7 @@ const moneyLiveFormat = raw => {
   if (rest.length>0) return `${intFmt}.${rest.join("")}`;
   return raw.endsWith(".") ? intFmt+"." : intFmt;
 };
-const MoneyField = ({value,onChange,className,placeholder,autoFocus}) => {
+const MoneyField = ({value,onChange,className,placeholder,autoFocus,onBlur}) => {
   const [focused,setFocused] = useState(false);
   const ref = useRef(null);
   const nextCursor = useRef(null);
@@ -219,7 +219,7 @@ const MoneyField = ({value,onChange,className,placeholder,autoFocus}) => {
       value={display}
       placeholder={placeholder}
       onFocus={()=>setFocused(true)}
-      onBlur={()=>setFocused(false)}
+      onBlur={()=>{setFocused(false);onBlur&&onBlur();}}
       onChange={e=>{
         const el=e.target;
         const cursorPos=el.selectionStart??el.value.length;
@@ -244,16 +244,16 @@ const MoneyField = ({value,onChange,className,placeholder,autoFocus}) => {
   );
 };
 
-const Inp = ({label,type="text",value,onChange,placeholder,helpText,money}) => (
+const Inp = ({label,type="text",value,onChange,placeholder,helpText,money,autoFocus,onBlur}) => (
   <div className="mb-3">
     <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
     {money ? (
-      <MoneyField value={value} onChange={onChange} placeholder={placeholder}
+      <MoneyField value={value} onChange={onChange} placeholder={placeholder} autoFocus={autoFocus} onBlur={onBlur}
         className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
     ) : (
       <input type={type} value={value??""} onChange={e=>onChange(e.target.value)}
         onWheel={e=>e.target.blur()}
-        placeholder={placeholder}
+        placeholder={placeholder} autoFocus={autoFocus} onBlur={onBlur}
         className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
     )}
     {helpText&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5">{helpText}</p>}
@@ -2015,6 +2015,8 @@ function PropertyForm({ init, onSave, onClose }) {
   const holding=parseFloat(f.monthlyHolding)||500;
   const purchase=parseFloat(f.purchasePrice)||0;
   const totalBase=purchase+rehab+holding*months;
+  const [editingMonths,setEditingMonths]=useState(false);
+  const [editingHolding,setEditingHolding]=useState(false);
   return (
     <div>
       <Inp label="Property Address" value={f.address} onChange={s("address")} placeholder="123 Oak Ave, Nashville, TN"/>
@@ -2023,23 +2025,46 @@ function PropertyForm({ init, onSave, onClose }) {
         <Inp label="Cost to Buy ($)" money value={f.purchasePrice} onChange={s("purchasePrice")} placeholder="150000"/>
         <Inp label="Rehab Budget ($)" money value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
       </div>
-      <div className="mb-3">
-        <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
-          Project Length (months)
-          {f.projectMonths!==""&&parseFloat(f.projectMonths)!==autoMonths&&(
-            <button type="button" onClick={()=>s("projectMonths")("")}
-              className="text-blue-500 hover:text-blue-700 dark:text-blue-400 text-[10px] font-semibold transition-colors normal-case">
-              ↺ Reset ({autoMonths} mo)
-            </button>
-          )}
-        </label>
-        <input type="number" step="0.5" min="0.5" onWheel={e=>e.target.blur()}
-          value={f.projectMonths!==""?f.projectMonths:autoMonths}
-          onChange={e=>s("projectMonths")(e.target.value)}
-          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
-        {rehab>0&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5">Formula: {Math.floor(rehab/1000)} rehab days + 60 listing days = {autoMonths} mo</p>}
-      </div>
-      <Inp label="Monthly Utilities & Insurance ($)" money value={f.monthlyHolding} onChange={s("monthlyHolding")} helpText="Pre-filled at $500/mo — covers utilities, insurance, etc."/>
+
+      {/* Project length + monthly holding — auto-filled from rehab and rarely touched, so
+          they sit as a small muted row until tapped, instead of taking up full-size fields. */}
+      {editingMonths ? (
+        <div className="mb-3">
+          <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+            Project Length (months)
+            {f.projectMonths!==""&&parseFloat(f.projectMonths)!==autoMonths&&(
+              <button type="button" onClick={()=>s("projectMonths")("")}
+                className="text-blue-500 hover:text-blue-700 dark:text-blue-400 text-[10px] font-semibold transition-colors normal-case">
+                ↺ Reset ({autoMonths} mo)
+              </button>
+            )}
+          </label>
+          <input type="number" step="0.5" min="0.5" autoFocus onWheel={e=>e.target.blur()}
+            value={f.projectMonths!==""?f.projectMonths:autoMonths}
+            onChange={e=>s("projectMonths")(e.target.value)}
+            onBlur={()=>setEditingMonths(false)}
+            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+          {rehab>0&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5">Formula: {Math.floor(rehab/1000)} rehab days + 60 listing days = {autoMonths} mo</p>}
+        </div>
+      ) : (
+        <button type="button" onClick={()=>setEditingMonths(true)}
+          className="w-full flex items-center justify-between px-3 py-1.5 mb-2 rounded-lg text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
+          <span>Project Length{f.projectMonths===""?" (auto from rehab)":""}</span>
+          <span className="tabular-nums font-medium">{months} mo</span>
+        </button>
+      )}
+
+      {editingHolding ? (
+        <Inp label="Monthly Utilities & Insurance ($)" money autoFocus value={f.monthlyHolding} onChange={s("monthlyHolding")}
+          onBlur={()=>setEditingHolding(false)} helpText="Pre-filled at $500/mo — covers utilities, insurance, etc."/>
+      ) : (
+        <button type="button" onClick={()=>setEditingHolding(true)}
+          className="w-full flex items-center justify-between px-3 py-1.5 mb-3 rounded-lg text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
+          <span>Monthly Utilities & Insurance</span>
+          <span className="tabular-nums font-medium">{$$(holding)}/mo</span>
+        </button>
+      )}
+
       {totalBase>0&&(
         <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs space-y-1">
           <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Estimated Capital Need</div>
