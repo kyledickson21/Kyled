@@ -3477,9 +3477,13 @@ function EditClosingModal({ prop, onSave, onClose }) {
   const [rows,setRows]=useState(()=>[
     ...atSaleLoans.map(l=>{
       const lp=(cd.lenderPayoffs||[]).find(p=>p.loanId===l.id)||{};
+      // isMonthly comes from the loan's own paymentType, not lp.isMonthly — older closings
+      // never saved that flag on the payoff record, which was silently hiding the title/
+      // monthly interest split below for any deal closed before that flag existed.
+      const isMonthly=l.paymentType==="monthly_rate"||l.paymentType==="monthly_fixed";
       return {
         loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
-        principal:l.principal||0,isMonthly:lp.isMonthly||false,isPreClosed:false,
+        principal:l.principal||0,isMonthly,isPreClosed:false,
         type:lp.type||"paidOut",
         principalPayoff:String(lp.principalPayoff??l.principal??0),
         interestPayoff:String(lp.interestPayoff??0),
