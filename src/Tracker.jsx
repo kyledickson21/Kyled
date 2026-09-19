@@ -3872,7 +3872,10 @@ function HistoryPage({ data }) {
     if (loan.loanType!=="hard" || !loan.startDate) return;
     const pt = loan.paymentType||"closing";
     if (pt!=="monthly_rate"&&pt!=="monthly_fixed") return;
-    const monthly = monthlyLoanPayment(loan);
+    // Not monthlyLoanPayment() — that helper returns 0 for any loan with an endDate
+    // (correct for "what's currently owed" on the Dashboard, wrong here: a closed loan
+    // still owes every past month's payment up to its close date).
+    const monthly = pt==="monthly_fixed" ? Math.round(loan.monthlyPayment||0) : Math.round((loan.principal||0)*(loan.interestRate||0)/100/12);
     if (monthly<=0) return;
     const endBound = loan.endDate || TODAY;
     const [sy,sm,sd] = loan.startDate.split('-').map(Number);
