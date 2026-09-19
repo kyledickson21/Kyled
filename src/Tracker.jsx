@@ -2377,7 +2377,6 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
   const [modal,setModal]=useState(null);
   const [expanded,setExpanded]=useState({});
-  const [showSold,setShowSold]=useState(false);
   const [viewMode,setViewMode]=usePersistedState("nx-propViewMode","expanded");
   const [propSort,setPropSort]=usePersistedState("nx-propSort",{col:null,dir:"asc"});
   const [propSearch,setPropSearch]=useState("");
@@ -2571,7 +2570,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     },0);
   };
   const visible=data.properties
-    .filter(p=>showSold||!p.dateSold)
+    .filter(p=>!p.dateSold)
     .filter(p=>{
       if(!propSearch)return true;
       const q=propSearch.toLowerCase();
@@ -2618,9 +2617,6 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Properties</h2>
         </div>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-zinc-400 cursor-pointer select-none">
-            <input type="checkbox" checked={showSold} onChange={e=>setShowSold(e.target.checked)} className="rounded"/> Show Sold
-          </label>
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-lg p-0.5 gap-0.5">
             {[["condensed","≡"],["grid","▦"],["expanded","⊞"]].map(([v,icon])=>(
               <button key={v} onClick={()=>setViewMode(v)} title={v==="condensed"?"Condensed view":v==="grid"?"Card view":"Expanded view"}
