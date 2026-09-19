@@ -6293,6 +6293,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
       )}
 
       {/* Payment Settings — how this lender's interest is actually billed, applied to every loan from them */}
+      {editing && (
       <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
         <div className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 mb-1">Payment Settings</div>
         <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-4">How {name}'s monthly interest payments are actually billed — applies to every loan from them, on every property.</p>
@@ -6333,6 +6334,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
           </div>
         </div>
       </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-6">
