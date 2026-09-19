@@ -4295,6 +4295,8 @@ function CloseLenderModal({ data, update, onClose }) {
   const [lenderName, setLenderName] = useState('');
   const [date, setDate] = useState(TODAY);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [interestMode, setInterestMode] = useState('split'); // 'split' | 'consolidate'
+  const [consolidateLoanId, setConsolidateLoanId] = useState('');
 
   const allActiveLoans = [
     ...(data.properties||[]).filter(p=>!p.dateSold).flatMap(p=>
@@ -4306,18 +4308,38 @@ function CloseLenderModal({ data, update, onClose }) {
   const lenderLoans=allActiveLoans.filter(l=>l.lenderName===lenderName);
   const allSelected=lenderLoans.length>0&&selectedIds.length===lenderLoans.length;
 
+  // Fixed-fee loans among the ones actually being closed — these are the ones a flat
+  // interest amount can be consolidated across (a %-rate loan's interest already scales
+  // correctly per piece, so there's nothing to consolidate there).
+  const selectedFixedLoans = lenderLoans.filter(l=>selectedIds.includes(l.id)&&l.interestType==="fixed");
+  const totalFixedInterest = selectedFixedLoans.reduce((s,l)=>s+(l.interestRate||0),0);
+
   useEffect(()=>{
     if(lenderName) setSelectedIds(lenderLoans.map(l=>l.id));
+    setInterestMode('split');
+    setConsolidateLoanId('');
   },[lenderName]);
+
+  useEffect(()=>{
+    if(consolidateLoanId && !selectedFixedLoans.some(l=>l.id===consolidateLoanId)) setConsolidateLoanId('');
+  },[selectedIds]);
 
   const toggle=id=>setSelectedIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);
 
   const handleClose=()=>{
     if(!date||!selectedIds.length) return;
+    if(interestMode==='consolidate'&&selectedFixedLoans.length>1&&!consolidateLoanId) return;
+    const consolidate = interestMode==='consolidate'&&selectedFixedLoans.length>1;
+    const applyClose = l => {
+      if(!selectedIds.includes(l.id)) return l;
+      const patch = {endDate:date};
+      if(consolidate&&l.interestType==="fixed") patch.interestRate = l.id===consolidateLoanId?totalFixedInterest:0;
+      return {...l,...patch};
+    };
     update(d=>({
       ...d,
-      properties:d.properties.map(p=>({...p,loans:p.loans.map(l=>selectedIds.includes(l.id)?{...l,endDate:date}:l)})),
-      unassigned:(d.unassigned||[]).map(l=>selectedIds.includes(l.id)?{...l,endDate:date}:l),
+      properties:d.properties.map(p=>({...p,loans:p.loans.map(applyClose)})),
+      unassigned:(d.unassigned||[]).map(applyClose),
     }));
     onClose();
   };
@@ -4355,7 +4377,38 @@ function CloseLenderModal({ data, update, onClose }) {
               ))}
             </div>
           </div>
-          <Btn onClick={handleClose} color="red" full disabled={!selectedIds.length}>
+          {selectedFixedLoans.length>1&&(
+            <div className="mt-3 p-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">
+                Fixed Interest — {$$(totalFixedInterest)} total across {selectedFixedLoans.length} pieces
+              </div>
+              <div className="flex gap-2 mb-2">
+                <button type="button" onClick={()=>setInterestMode('split')}
+                  className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-all ${interestMode==='split'?'bg-blue-600 text-white':'bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700'}`}>
+                  Keep Split
+                </button>
+                <button type="button" onClick={()=>setInterestMode('consolidate')}
+                  className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-all ${interestMode==='consolidate'?'bg-blue-600 text-white':'bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700'}`}>
+                  Put on One Property
+                </button>
+              </div>
+              {interestMode==='consolidate'&&(
+                <div className="space-y-1.5">
+                  {selectedFixedLoans.map(l=>(
+                    <button key={l.id} type="button" onClick={()=>setConsolidateLoanId(l.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg border text-xs flex items-center justify-between transition-all ${consolidateLoanId===l.id?'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700':'bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700'}`}>
+                      <span className="font-medium text-slate-800 dark:text-zinc-200">{l.propAddress||'Unassigned'}</span>
+                      <span className="text-slate-400 dark:text-zinc-500 tabular-nums">currently {$$(l.interestRate||0)}</span>
+                    </button>
+                  ))}
+                  {!consolidateLoanId&&(
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400">Pick which property gets the full {$$(totalFixedInterest)} — the rest will show $0 interest.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <Btn onClick={handleClose} color="red" full disabled={!selectedIds.length||(interestMode==='consolidate'&&selectedFixedLoans.length>1&&!consolidateLoanId)}>
             Close {allSelected?'All':selectedIds.length} Loan{selectedIds.length!==1?'s':''} →
           </Btn>
         </>
