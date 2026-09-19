@@ -244,12 +244,35 @@ const MoneyField = ({value,onChange,className,placeholder,autoFocus,onBlur}) => 
   );
 };
 
-const Inp = ({label,type="text",value,onChange,placeholder,helpText,money,autoFocus,onBlur}) => (
+// A "%" input — plain numeric entry with a fixed "%" suffix shown inside the field, so it
+// reads as a rate rather than a bare number. No live reformatting needed (rates are short),
+// just digit/decimal sanitizing like the other numeric fields.
+const PercentField = ({value,onChange,className,placeholder,autoFocus,onBlur}) => (
+  <div className="relative">
+    <input type="text" inputMode="decimal" autoFocus={autoFocus}
+      value={value??""}
+      placeholder={placeholder}
+      onBlur={onBlur}
+      onChange={e=>{
+        let raw=e.target.value.replace(/[^0-9.]/g,"");
+        const parts=raw.split(".");
+        if(parts.length>2) raw=parts[0]+"."+parts.slice(1).join("");
+        onChange(raw);
+      }}
+      className={className}/>
+    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400 dark:text-zinc-500">%</span>
+  </div>
+);
+
+const Inp = ({label,type="text",value,onChange,placeholder,helpText,money,percent,autoFocus,onBlur}) => (
   <div className="mb-3">
     <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
     {money ? (
       <MoneyField value={value} onChange={onChange} placeholder={placeholder} autoFocus={autoFocus} onBlur={onBlur}
         className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+    ) : percent ? (
+      <PercentField value={value} onChange={onChange} placeholder={placeholder} autoFocus={autoFocus} onBlur={onBlur}
+        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl pl-4 pr-9 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
     ) : (
       <input type={type} value={value??""} onChange={e=>onChange(e.target.value)}
         onWheel={e=>e.target.blur()}
@@ -260,21 +283,21 @@ const Inp = ({label,type="text",value,onChange,placeholder,helpText,money,autoFo
   </div>
 );
 
-const Sel = ({label,value,onChange,options}) => (
+const Sel = ({label,value,onChange,options,onBlur}) => (
   <div className="mb-3">
     <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
-    <select value={value??""} onChange={e=>onChange(e.target.value)}
+    <select value={value??""} onChange={e=>onChange(e.target.value)} onBlur={onBlur}
       className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none">
       {options.map(([v,l])=><option key={v} value={v}>{l}</option>)}
     </select>
   </div>
 );
 
-const DateInp = ({label,value,onChange,helpText}) => (
+const DateInp = ({label,value,onChange,helpText,autoFocus,onBlur}) => (
   <div className="mb-3">
     <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
     <div className="relative">
-      <input type="date" value={value??""} onChange={e=>onChange(e.target.value)}
+      <input type="date" value={value??""} onChange={e=>onChange(e.target.value)} autoFocus={autoFocus} onBlur={onBlur}
         className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all pr-10"/>
       {value && <button type="button" onClick={()=>onChange("")}
         className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-100 dark:bg-zinc-700 hover:bg-red-100 dark:hover:bg-red-900/50 hover:text-red-500 text-slate-400 dark:text-zinc-400 flex items-center justify-center text-[10px] font-bold transition-colors">✕</button>}
@@ -423,6 +446,9 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const [drawAmt,setDrawAmt]=useState("");
   const [blockMsg,setBlockMsg]=useState("");
   const [destPickerOpen,setDestPickerOpen]=useState(false);
+  const [editingPaymentType,setEditingPaymentType]=useState(false);
+  const [editingEndDate,setEditingEndDate]=useState(false);
+  const paymentTypeLabel = {closing:"Pay at Closing", monthly_rate:"Monthly Interest-Only", monthly_fixed:"Monthly Fixed Amount"};
   const s = k => v => sf(p=>({...p,[k]:v}));
 
   // Default "How Is Interest Paid?" by loan type — hard money to monthly interest-only,
@@ -568,6 +594,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
 
       {/* Loan details */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1">
+        <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
         <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
         <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={[
           ["percentage","% Rate — accrues daily (e.g. 10%/yr)"],
@@ -575,15 +602,28 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         ]}/>
         {isFixed
           ? <Inp label="Fixed Interest Amount ($) *" money value={f.interestRate} onChange={s("interestRate")} placeholder="5000" helpText="Total interest they receive — e.g. lend $100k, get back $105k → enter 5000."/>
-          : <Inp label="Annual Interest Rate (%) *" type="number" value={f.interestRate} onChange={s("interestRate")} placeholder="10" helpText="Enter 0 for no interest."/>
+          : <Inp label="Annual Interest Rate (%) *" percent value={f.interestRate} onChange={s("interestRate")} placeholder="10" helpText="Enter 0 for no interest."/>
         }
-        <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
         <DateInp label="Due Date (optional)" value={f.dueDate} onChange={s("dueDate")} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
-        <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"} onChange={v=>{setPaymentTypeTouched(true);s("paymentType")(v);}} options={[
-          ["closing",       "Pay at Closing — all interest owed when deal closes"],
-          ["monthly_rate",  "Monthly Interest-Only — pay rate monthly, principal at closing"],
-          ["monthly_fixed", "Monthly Fixed Amount — set dollar amount each month"],
-        ]}/>
+
+        {/* How interest is paid — auto-set by lender type (hard → monthly, private →
+            closing), so it reads as a default rather than an active choice until you
+            actually tap in and change it. */}
+        {editingPaymentType ? (
+          <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"}
+            onChange={v=>{setPaymentTypeTouched(true);s("paymentType")(v);}}
+            onBlur={()=>setEditingPaymentType(false)} options={[
+            ["closing",       "Pay at Closing — all interest owed when deal closes"],
+            ["monthly_rate",  "Monthly Interest-Only — pay rate monthly, principal at closing"],
+            ["monthly_fixed", "Monthly Fixed Amount — set dollar amount each month"],
+          ]}/>
+        ) : (
+          <button type="button" onClick={()=>setEditingPaymentType(true)}
+            className="w-full flex items-center justify-between px-3 py-1.5 mb-2 rounded-lg text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
+            <span>How Interest Is Paid{!paymentTypeTouched?" (default)":""}</span>
+            <span className="font-medium">{paymentTypeLabel[f.paymentType||"closing"]}</span>
+          </button>
+        )}
         {f.paymentType==="monthly_fixed"&&(
           <Inp label="Monthly Payment Amount ($) *" money value={f.monthlyPayment} onChange={s("monthlyPayment")} placeholder="500" helpText="Fixed dollar amount lender receives each month"/>
         )}
@@ -711,7 +751,15 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
 
       {/* End date + notes — kept at the very bottom since a loan is normally left active */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-3">
-        <DateInp label="End / Payoff Date" value={f.endDate} onChange={s("endDate")} helpText="Leave blank while the loan is active"/>
+        {editingEndDate ? (
+          <DateInp label="End / Payoff Date" value={f.endDate} onChange={s("endDate")} autoFocus onBlur={()=>setEditingEndDate(false)} helpText="Leave blank while the loan is active"/>
+        ) : (
+          <button type="button" onClick={()=>setEditingEndDate(true)}
+            className="w-full flex items-center justify-between px-3 py-1.5 mb-2 rounded-lg text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
+            <span>End / Payoff Date</span>
+            <span className="font-medium">{f.endDate||"Active (no end date)"}</span>
+          </button>
+        )}
         <Inp label="Notes (optional)" value={f.specialTerms} onChange={s("specialTerms")} placeholder="Balloon, prepayment penalty, etc."/>
       </div>
 
@@ -6314,7 +6362,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             <DateInp label="End Date (leave blank if active)" value={ef.endDate} onChange={v=>setEf(f=>({...f,endDate:v}))}/>
             <DateInp label="Due Date (optional)" value={ef.dueDate} onChange={v=>setEf(f=>({...f,dueDate:v}))} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
             <Sel label="Interest Type" value={ef.interestType} onChange={v=>setEf(f=>({...f,interestType:v}))} options={[["percentage","% Per Year"],["fixed","Fixed $ Amount"]]}/>
-            <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} money={ef.interestType==="fixed"}/>
+            <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} money={ef.interestType==="fixed"} percent={ef.interestType!=="fixed"}/>
             <Sel label="Payment Type" value={ef.paymentType} onChange={v=>setEf(f=>({...f,paymentType:v}))} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"]]}/>
             {ef.paymentType==="monthly_fixed"&&<Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={v=>setEf(f=>({...f,monthlyPayment:v}))} money/>}
             <div className="sm:col-span-2"><Inp label="Notes" value={ef.specialTerms} onChange={v=>setEf(f=>({...f,specialTerms:v}))}/></div>
