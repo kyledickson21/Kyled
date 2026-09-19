@@ -422,6 +422,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const [drawDate,setDrawDate]=useState(TODAY);
   const [drawAmt,setDrawAmt]=useState("");
   const [blockMsg,setBlockMsg]=useState("");
+  const [destPickerOpen,setDestPickerOpen]=useState(false);
   const s = k => v => sf(p=>({...p,[k]:v}));
 
   // Default "How Is Interest Paid?" by loan type — hard money to monthly interest-only,
@@ -540,10 +541,10 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         <select value={lenderSel} onChange={e=>setLenderSel(e.target.value)}
           className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none">
           <option value="">— Select a lender —</option>
-          {lenders.map(l=>(
+          <option value="_new_">➕ Add New Lender</option>
+          {[...lenders].sort((a,b)=>a.name.localeCompare(b.name)).map(l=>(
             <option key={l.id} value={l.id}>{l.name} ({l.loanType==="hard"?"Hard Money":"Private Money"})</option>
           ))}
-          <option value="_new_">➕ Add New Lender</option>
         </select>
       </div>
       {lenderSel==="_new_"&&(
@@ -565,108 +566,8 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         </div>
       )}
 
-      {/* Amount + Dates */}
+      {/* Loan details */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1">
-        <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
-        <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
-        <DateInp label="End / Payoff Date" value={f.endDate} onChange={s("endDate")} helpText="Leave blank while the loan is active"/>
-        <DateInp label="Due Date (optional)" value={f.dueDate} onChange={s("dueDate")} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
-      </div>
-
-      {mergeCandidates.length>0&&(
-        <div className="mb-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-          <div className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">🔗 Possible Duplicate{mergeCandidates.length>1?"s":""} Found</div>
-          <div className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mb-2">Same lender, start date, and rate — sitting unassigned. Merge into one loan?</div>
-          <div className="space-y-1.5">
-            {mergeCandidates.map(c=>(
-              <div key={c.id} className="flex items-center justify-between gap-2 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2">
-                <span className="text-xs text-slate-700 dark:text-zinc-200 tabular-nums">{$$(c.principal)} · started {c.startDate}</span>
-                <button type="button" onClick={()=>handleMerge(c)}
-                  className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline shrink-0">Merge →</button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Where does this money go? */}
-      <div className="mt-3 mb-1">
-        <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">
-          Where Does This Money Go?
-        </label>
-        {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-2">{blockMsg}</div>}
-        {/* Unassigned option */}
-        <button type="button" onClick={()=>{setBlockMsg("");s("destination")("unassigned");}}
-          className={`w-full text-left px-3 py-2.5 rounded-xl mb-1.5 border transition-all ${f.destination==="unassigned"?"bg-violet-50 dark:bg-violet-900/20 border-violet-400 dark:border-violet-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-violet-50/40 dark:hover:bg-violet-900/10 hover:border-violet-300 dark:hover:border-violet-700"}`}>
-          <span className={`font-medium text-[13px] ${f.destination==="unassigned"?"text-violet-700 dark:text-violet-300":"text-slate-700 dark:text-zinc-300"}`}>💼 Unassigned — not yet placed on a property</span>
-        </button>
-        {!canShowConflicts&&activeProps.length>0&&(
-          <div className="text-[11px] text-slate-400 dark:text-zinc-500 italic px-1 mb-2">Enter amount and start date above to see property availability.</div>
-        )}
-        {canShowConflicts&&(
-          <div className="space-y-3">
-            {available.length>0&&(
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Available</div>
-                <div className="space-y-1.5">
-                  {available.map(p=>(
-                    <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
-                      className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${f.destination===p.id?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700"}`}>
-                      <span className={`font-medium text-[13px] truncate ${f.destination===p.id?"text-emerald-700 dark:text-emerald-300":"text-slate-800 dark:text-zinc-200"}`}>🏠 {p.address}</span>
-                      <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {blockedSize.length>0&&(
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400 mb-1.5">No Funding Gap — Consider Splitting</div>
-                <div className="space-y-1.5">
-                  {blockedSize.map(p=>(
-                    <button key={p.id} type="button" disabled
-                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed pointer-events-none flex items-center justify-between gap-2">
-                      <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500 truncate">📐 {p.address}</span>
-                      <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {blockedDate.length>0&&(
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Timing Conflict — Cannot Place</div>
-                <div className="space-y-1.5">
-                  {blockedDate.map(p=>(
-                    <button key={p.id} type="button" disabled
-                      className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-50 cursor-not-allowed pointer-events-none flex items-center justify-between gap-2">
-                      <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500 truncate">🕐 {p.address}</span>
-                      <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {available.length===0&&blockedSize.length===0&&blockedDate.length===0&&(
-              <div className="text-[11px] text-slate-400 dark:text-zinc-500 italic px-1">No active properties. Add one first.</div>
-            )}
-          </div>
-        )}
-        {!canShowConflicts&&activeProps.length>0&&(
-          <div className="space-y-1.5">
-            {[...activeProps].sort((a,b)=>propGap(b)-propGap(a)).map(p=>(
-              <button key={p.id} type="button" onClick={()=>handleDestClick(p.id)}
-                className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${f.destination===p.id?"bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-600":"bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700"}`}>
-                <span className={`font-medium text-[13px] truncate ${f.destination===p.id?"text-emerald-700 dark:text-emerald-300":"text-slate-800 dark:text-zinc-200"}`}>🏠 {p.address}</span>
-                <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Loan terms */}
-      <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-3">
         <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={[
           ["percentage","% Rate — accrues daily (e.g. 10%/yr)"],
           ["fixed","Fixed Amount — flat dollar return (e.g. lend $100k, get back $105k)"],
@@ -675,6 +576,9 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           ? <Inp label="Fixed Interest Amount ($) *" money value={f.interestRate} onChange={s("interestRate")} placeholder="5000" helpText="Total interest they receive — e.g. lend $100k, get back $105k → enter 5000."/>
           : <Inp label="Annual Interest Rate (%) *" type="number" value={f.interestRate} onChange={s("interestRate")} placeholder="10" helpText="Enter 0 for no interest."/>
         }
+        <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
+        <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
+        <DateInp label="Due Date (optional)" value={f.dueDate} onChange={s("dueDate")} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
         <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"} onChange={v=>{setPaymentTypeTouched(true);s("paymentType")(v);}} options={[
           ["closing",       "Pay at Closing — all interest owed when deal closes"],
           ["monthly_rate",  "Monthly Interest-Only — pay rate monthly, principal at closing"],
@@ -683,10 +587,9 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         {f.paymentType==="monthly_fixed"&&(
           <Inp label="Monthly Payment Amount ($) *" money value={f.monthlyPayment} onChange={s("monthlyPayment")} placeholder="500" helpText="Fixed dollar amount lender receives each month"/>
         )}
-        <Inp label="Notes (optional)" value={f.specialTerms} onChange={s("specialTerms")} placeholder="Balloon, prepayment penalty, etc."/>
       </div>
       {currentLoanType==="hard"&&(
-        <div className="mt-2 mb-4 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
+        <div className="mt-2 mb-1 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
           <label className="flex items-center gap-3 cursor-pointer mb-1">
             <input type="checkbox" checked={!!f.drawFacility}
               onChange={e=>sf(p=>({...p,drawFacility:e.target.checked?{committed:"",draws:[]}:null}))}
@@ -722,6 +625,96 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           )}
         </div>
       )}
+
+      {mergeCandidates.length>0&&(
+        <div className="mb-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <div className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">🔗 Possible Duplicate{mergeCandidates.length>1?"s":""} Found</div>
+          <div className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mb-2">Same lender, start date, and rate — sitting unassigned. Merge into one loan?</div>
+          <div className="space-y-1.5">
+            {mergeCandidates.map(c=>(
+              <div key={c.id} className="flex items-center justify-between gap-2 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2">
+                <span className="text-xs text-slate-700 dark:text-zinc-200 tabular-nums">{$$(c.principal)} · started {c.startDate}</span>
+                <button type="button" onClick={()=>handleMerge(c)}
+                  className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline shrink-0">Merge →</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Where does this money go? — collapsed picker, same style as the split-loan picker */}
+      <div className="mt-3 mb-1 relative">
+        <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">
+          Where Does This Money Go?
+        </label>
+        {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-2">{blockMsg}</div>}
+        {destPickerOpen&&<div className="fixed inset-0 z-40" onClick={()=>setDestPickerOpen(false)}/>}
+        <button type="button" onClick={()=>setDestPickerOpen(o=>!o)}
+          className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm flex items-center justify-between gap-2 text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+          <span className="truncate">
+            {f.destination==="unassigned"
+              ? "💼 Unassigned — not yet placed on a property"
+              : (()=>{const p=activeProps.find(x=>x.id===f.destination);return p?`🏠 ${p.address}`:"— Select property —";})()}
+          </span>
+          <span className="shrink-0 text-slate-400 dark:text-zinc-500">▾</span>
+        </button>
+        {destPickerOpen&&(
+          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-800 rounded-xl shadow-xl border border-slate-200 dark:border-zinc-700 overflow-hidden max-h-72 overflow-y-auto">
+            <button type="button" onClick={()=>{setBlockMsg("");s("destination")("unassigned");setDestPickerOpen(false);}}
+              className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 border-b border-slate-100 dark:border-zinc-700 transition-colors">
+              💼 Unassigned — not yet placed on a property
+            </button>
+            {canShowConflicts ? (
+              <>
+                {available.map(p=>(
+                  <button key={p.id} type="button" onClick={()=>{handleDestClick(p.id);setDestPickerOpen(false);}}
+                    className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-between gap-2">
+                    <span className="truncate">🏠 {p.address}</span>
+                    <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                  </button>
+                ))}
+                {blockedSize.map(p=>(
+                  <button key={p.id} type="button" disabled
+                    className="w-full text-left px-3 py-2.5 text-xs font-medium opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500 flex items-center justify-between gap-2">
+                    <span className="truncate">📐 {p.address} — no funding gap</span>
+                    <span className="shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                  </button>
+                ))}
+                {blockedDate.map(p=>(
+                  <button key={p.id} type="button" disabled
+                    className="w-full text-left px-3 py-2.5 text-xs font-medium opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500 flex items-center justify-between gap-2">
+                    <span className="truncate">🕐 {p.address} — timing conflict</span>
+                    <span className="shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                  </button>
+                ))}
+                {available.length===0&&blockedSize.length===0&&blockedDate.length===0&&(
+                  <div className="px-3 py-2.5 text-xs text-slate-400 dark:text-zinc-500 italic">No active properties. Add one first.</div>
+                )}
+              </>
+            ) : activeProps.length>0 ? (
+              [...activeProps].sort((a,b)=>propGap(b)-propGap(a)).map(p=>(
+                <button key={p.id} type="button" onClick={()=>{handleDestClick(p.id);setDestPickerOpen(false);}}
+                  className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-between gap-2">
+                  <span className="truncate">🏠 {p.address}</span>
+                  <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-2.5 text-xs text-slate-400 dark:text-zinc-500 italic">No active properties. Add one first.</div>
+            )}
+          </div>
+        )}
+        {!canShowConflicts&&activeProps.length>0&&(
+          <div className="text-[11px] text-slate-400 dark:text-zinc-500 italic px-1 mt-1.5">Enter amount and start date above to see property availability.</div>
+        )}
+      </div>
+
+      {/* End date + notes — kept at the very bottom since a loan is normally left active */}
+      <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-3">
+        <DateInp label="End / Payoff Date" value={f.endDate} onChange={s("endDate")} helpText="Leave blank while the loan is active"/>
+        <Inp label="Notes (optional)" value={f.specialTerms} onChange={s("specialTerms")} placeholder="Balloon, prepayment penalty, etc."/>
+      </div>
+
       <div className="flex gap-2 pt-1">
         <Btn onClick={handleSave} color={f.destination==="unassigned"?"purple":"green"} full>
           {f.destination==="unassigned" ? "💼  Save as Unassigned" : "🏠  Place on Property"}
