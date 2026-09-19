@@ -3446,6 +3446,12 @@ function PropertyDashboard({ data }) {
 }
 
 // ─── Edit Closing Modal ───────────────────────────────────────────────────────
+const payoffTypeLabel = {
+  paidOut:"Paid Out", rollFull:"Rolled Full", rollPrincipal:"Principal Rolled",
+  payInterest:"Interest Paid — Rolled", waiveInterest:"Interest Waived — Rolled",
+  custom:"Partial Roll", alreadyPaid:"Already Paid (Early Close)",
+};
+
 function EditClosingModal({ prop, onSave, onClose }) {
   const cd=prop.closingData||{};
   const [dateSold,setDateSold]=useState(prop.dateSold||"");
@@ -3455,24 +3461,44 @@ function EditClosingModal({ prop, onSave, onClose }) {
   const [rehabIn,setRehabIn]=useState(String(cd.rehab||""));
   const [miscIn,setMiscIn]=useState(String(cd.misc||""));
   const [overageIn,setOverageIn]=useState(String(cd.overageRefund||""));
-  // Monthly-paid (mostly hard money) lender payoffs on this closing — the prorated last-
-  // partial-month interest Title pays at close is tracked separately from the loan's own
-  // terms, and older closings never captured it at all, so it needs to be fixable here.
-  const monthlyPayoffs=(cd.lenderPayoffs||[]).filter(lp=>{
-    const loan=(prop.loans||[]).find(l=>l.id===lp.loanId);
-    return loan&&(loan.paymentType==="monthly_rate"||loan.paymentType==="monthly_fixed");
-  });
-  const [titleInterestIn,setTitleInterestIn]=useState(()=>Object.fromEntries(
-    monthlyPayoffs.map(lp=>[lp.loanId,String(lp.titleInterestPayoff||"")])
-  ));
+  // Full per-lender payoff breakdown — everything typed in when this deal was closed
+  // (principal, interest, fees, whether it was paid at title) is editable here in case a
+  // mistake needs fixing later. Disposition type (paid out / rolled / waived / …) stays
+  // read-only: changing it would need to replay loan-creation/rollover side effects that
+  // already happened, which this editor doesn't attempt.
+  const [rows,setRows]=useState(()=>(cd.lenderPayoffs||[]).map(lp=>({
+    loanId:lp.loanId, lenderName:lp.lenderName, type:lp.type, isMonthly:lp.isMonthly||false,
+    principalPayoff:String(lp.principalPayoff||0),
+    interestPayoff:String(lp.interestPayoff||0),
+    titleInterestPayoff:String(lp.titleInterestPayoff||""),
+    lenderFees:String(lp.lenderFees||0),
+    paidAtTitle:lp.paidAtTitle||false,
+    wireAmount:String(lp.wireAmount||0),
+  })));
+  const updRow=(loanId,patch)=>setRows(rs=>rs.map(r=>r.loanId===loanId?{...r,...patch}:r));
 
   const wire=parseFloat(wireIn)||0;
   const cashToClose=parseFloat(cashToCloseIn)||0;
   const rehab=parseFloat(rehabIn)||0;
   const misc=parseFloat(miscIn)||0;
   const overage=parseFloat(overageIn)||0;
-  const moneyCosts=cd.moneyCosts||0;
-  const titleTotal=cd.titleTotal||0;
+  // Money Costs = interest + lender fees, using the same rule applied when the deal was
+  // originally closed (rollPrincipal/waiveInterest: fees only; everything else: interest + fees) —
+  // recalculated here so a fee/interest correction above actually flows through to profit.
+  const moneyCosts=Math.round(rows.reduce((s,r)=>{
+    const fees=parseFloat(r.lenderFees)||0;
+    const interest=parseFloat(r.interestPayoff)||0;
+    if(r.type==="rollPrincipal"||r.type==="waiveInterest") return s+fees;
+    if(r.isMonthly||r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull"||r.type==="alreadyPaid") return s+interest+fees;
+    return s+fees;
+  },0)*100)/100;
+  const titleTotal=Math.round(rows.reduce((s,r)=>{
+    if(!r.paidAtTitle) return s;
+    const principal=parseFloat(r.principalPayoff)||0;
+    const fees=parseFloat(r.lenderFees)||0;
+    if(r.isMonthly) return s+principal+(parseFloat(r.titleInterestPayoff)||0)+fees;
+    return s+principal+(parseFloat(r.interestPayoff)||0)+fees;
+  },0)*100)/100;
   const totalCosts=cashToClose+rehab+moneyCosts+misc;
   const profit=(wire+titleTotal)-totalCosts+overage;
 
@@ -3507,24 +3533,60 @@ function EditClosingModal({ prop, onSave, onClose }) {
         {row("Misc / Holding",miscIn,setMiscIn)}
         {row("Overage Refund (post-close)",overageIn,setOverageIn)}
 
-        {moneyCosts>0&&(
-          <div className="flex justify-between text-sm bg-slate-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3">
-            <span className="text-slate-500 dark:text-zinc-400">Money costs (int. + fees) — from lender settlement</span>
-            <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$p(moneyCosts)}</span>
+        {rows.length>0&&(
+          <div className="space-y-2.5">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Lender Payoffs</div>
+            {rows.map(r=>(
+              <div key={r.loanId||r.lenderName} className="rounded-xl border border-slate-200 dark:border-zinc-700 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-slate-800 dark:text-zinc-100 truncate">{r.lenderName}</span>
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 shrink-0">{payoffTypeLabel[r.type]||r.type}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">Principal</label>
+                    <input type="number" value={r.principalPayoff} onChange={e=>updRow(r.loanId,{principalPayoff:e.target.value})} className={numCls} placeholder="0"/>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">Interest</label>
+                    <input type="number" value={r.interestPayoff} onChange={e=>updRow(r.loanId,{interestPayoff:e.target.value})} className={numCls} placeholder="0"/>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">Fees</label>
+                    <input type="number" value={r.lenderFees} onChange={e=>updRow(r.loanId,{lenderFees:e.target.value})} className={numCls} placeholder="0"/>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div onClick={()=>updRow(r.loanId,{paidAtTitle:!r.paidAtTitle})}
+                      className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 ${r.paidAtTitle?"bg-blue-500":"bg-slate-200 dark:bg-zinc-600"}`}>
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${r.paidAtTitle?"translate-x-4":""}`}/>
+                    </div>
+                    <span className="text-xs font-medium text-slate-600 dark:text-zinc-300">Paid at Title</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase">Wire Amount</label>
+                    <input type="number" value={r.wireAmount} onChange={e=>updRow(r.loanId,{wireAmount:e.target.value})}
+                      className="w-28 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2.5 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums text-slate-800 dark:text-zinc-100" placeholder="0"/>
+                  </div>
+                </div>
+                {r.isMonthly&&(
+                  <div className="pt-1.5 border-t border-slate-100 dark:border-zinc-800">
+                    <label className="block text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase mb-1">Prorated Interest Paid by Title</label>
+                    <input type="number" value={r.titleInterestPayoff} onChange={e=>updRow(r.loanId,{titleInterestPayoff:e.target.value})}
+                      placeholder="0" className="w-full border border-amber-200 dark:border-amber-800/50 bg-white dark:bg-zinc-800 rounded-lg px-2.5 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400 tabular-nums text-amber-700 dark:text-amber-400"/>
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">The last partial month's interest Title paid directly, separate from what was already paid monthly — this is what shows in History.</p>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
-        {monthlyPayoffs.length>0&&(
-          <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 p-3.5 space-y-2.5">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400">Prorated Interest Paid by Title</div>
-            {monthlyPayoffs.map(lp=>(
-              <div key={lp.loanId} className="flex items-center justify-between gap-3">
-                <span className="text-xs font-medium text-slate-700 dark:text-zinc-200 truncate">{lp.lenderName}</span>
-                <input type="number" value={titleInterestIn[lp.loanId]??""} onChange={e=>setTitleInterestIn(v=>({...v,[lp.loanId]:e.target.value}))}
-                  placeholder="0" className="w-28 border border-amber-200 dark:border-amber-800/50 bg-white dark:bg-zinc-800 rounded-lg px-2.5 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400 tabular-nums text-amber-700 dark:text-amber-400"/>
-              </div>
-            ))}
-            <p className="text-[10px] text-amber-600 dark:text-amber-400">The last partial month's interest Title paid directly, separate from what was already paid monthly — this is what shows in History.</p>
+        {moneyCosts>0&&(
+          <div className="flex justify-between text-sm bg-slate-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3">
+            <span className="text-slate-500 dark:text-zinc-400">Money costs (int. + fees) — from lender payoffs above</span>
+            <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$p(moneyCosts)}</span>
           </div>
         )}
 
@@ -3535,10 +3597,17 @@ function EditClosingModal({ prop, onSave, onClose }) {
 
         <div className="flex gap-2 pt-1">
           <Btn onClick={()=>{
-            const updatedPayoffs=(cd.lenderPayoffs||[]).map(lp=>
-              titleInterestIn.hasOwnProperty(lp.loanId)?{...lp,titleInterestPayoff:parseFloat(titleInterestIn[lp.loanId])||0}:lp
-            );
-            onSave({dateSold,isRental,closingData:{...cd,wire,cashToClose,rehab,misc,totalCosts,overageRefund:overage,profit,lenderPayoffs:updatedPayoffs}});
+            const updatedPayoffs=rows.map(r=>({
+              loanId:r.loanId, lenderName:r.lenderName, type:r.type, isMonthly:r.isMonthly,
+              paidAtTitle:r.paidAtTitle,
+              principalPayoff:parseFloat(r.principalPayoff)||0,
+              interestPayoff:parseFloat(r.interestPayoff)||0,
+              titleInterestPayoff:r.isMonthly&&r.paidAtTitle?(parseFloat(r.titleInterestPayoff)||0):0,
+              lenderFees:parseFloat(r.lenderFees)||0,
+              wireAmount:parseFloat(r.wireAmount)||0,
+              totalPayoff:(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0),
+            }));
+            onSave({dateSold,isRental,closingData:{...cd,wire,cashToClose,rehab,misc,moneyCosts,titleTotal,totalCosts,overageRefund:overage,profit,lenderPayoffs:updatedPayoffs}});
           }} color="navy" full>Save Changes</Btn>
           <Btn onClick={onClose} color="ghost">Cancel</Btn>
         </div>
@@ -5069,7 +5138,15 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
           </button>
         </div>
       </div>
-      {editing&&(
+      {editing && prop.dateSold && (
+        <EditClosingModal prop={prop} onSave={updates=>{
+          update(d=>({...d,
+            properties:d.properties.map(p=>p.id!==propId?p:{...p,dateSold:updates.dateSold,isRental:updates.isRental,closingData:updates.closingData})
+          }));
+          setEditing(false);
+        }} onClose={()=>setEditing(false)}/>
+      )}
+      {editing && !prop.dateSold && (
         <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
           <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-4">Edit Property Details</div>
           <PropertyForm init={prop} onSave={f=>{
