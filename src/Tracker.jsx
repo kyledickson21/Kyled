@@ -4500,8 +4500,10 @@ function ClosedDealsPage({ data, update }) {
 function HistoryPage({ data }) {
   const prv=usePrivacy();
   const openPanel=usePanel();
-  const h$=v=>prv?maskMoney($$(v)):$$(v);
-  const hs=v=>prv?maskMoney($$s(v)):$$s(v);
+  // Penny-precise everywhere on this page (not the rounded $$/$$s used elsewhere) so amounts
+  // can be matched exactly against a bank statement.
+  const h$=v=>prv?maskMoney($$p(v)):$$p(v);
+  const hs=v=>prv?maskMoney($$ps(v)):$$ps(v);
   const hn=n=>n??"";
   const [view,setView]=usePersistedState("nx-histView","trail");
   const [lf,setLf]=usePersistedState("nx-histLender","all");
@@ -4575,7 +4577,7 @@ function HistoryPage({ data }) {
     const feeFor = (periodStart, periodEndExclusive) =>
       (loan.drawFacility?.draws||[]).filter(d=>d.date&&d.date>=periodStart&&d.date<periodEndExclusive).length*(settings.drawFee||0);
     const pushPayment = (dateStr, amount) => {
-      amount = Math.round(amount);
+      amount = Math.round(amount*100)/100; // to the cent, not the whole dollar — needed to match a bank statement
       if (amount>0) {
         raw.push({date:firstBusinessDay(dateStr), sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount, principal:loan.principal||0, property:propAddress, propId, rate:loan.interestRate||0, loanId:`${loan.id}-pay-${dateStr}`});
       }
