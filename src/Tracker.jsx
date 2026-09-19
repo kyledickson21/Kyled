@@ -4595,7 +4595,14 @@ function HistoryPage({ data }) {
       let prevDate = `${cy}-${String(cm).padStart(2,'0')}-01`; // start of the first period not already prepaid
       while (true) {
         const periodStart = `${cy}-${String(cm).padStart(2,'0')}-01`;
-        if (periodStart>endBound) break;
+        // Arrears means the bill posts a month AFTER the period it covers — so whether an
+        // entry belongs in History has to check the bill date against endBound, not the
+        // period's own start. Checking periodStart here let an already-passed period whose
+        // bill hadn't posted yet (e.g. today is Sept 15, period is September, bill is Oct 1)
+        // show up as a future-dated "payment" that hasn't happened.
+        let billY=cy, billM=cm+1; if(billM>12){billM=1;billY+=1;} // always arrears
+        const dateStr = `${billY}-${String(billM).padStart(2,'0')}-01`;
+        if (dateStr>endBound) break;
         const lastDay = new Date(cy,cm,0).getDate();
         let amount = settings.monthlyMethod==="flat" ? flatMonthly : (loan.principal||0)*dailyRate*lastDay;
         // A draw dated before this period (e.g. taken the same day as closing) is clamped
@@ -4607,8 +4614,6 @@ function HistoryPage({ data }) {
           const drawStart = d.date>prevDate ? d.date : prevDate;
           amount += settings.monthlyMethod==="flat" ? (d.amount||0)*(loan.interestRate||0)/1200 : (d.amount||0)*dailyRate*daysBetween(drawStart,periodStart);
         });
-        let billY=cy, billM=cm+1; if(billM>12){billM=1;billY+=1;} // always arrears
-        const dateStr = `${billY}-${String(billM).padStart(2,'0')}-01`;
         pushPayment(dateStr, amount+feeFor(prevDate,periodStart));
         prevDate = periodStart;
         cm+=1; if(cm>12){cm=1;cy+=1;}
