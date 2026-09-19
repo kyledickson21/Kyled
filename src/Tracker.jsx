@@ -3861,6 +3861,35 @@ function HistoryPage({ data }) {
     const q=propSearch.toLowerCase();
     return[e.property,e.lender,e.date,e.etype,e.loanType,e.disposition,e.interestType].filter(Boolean).join(" ").toLowerCase().includes(q);
   });
+  // Combine same-day, same-lender, same-type events (e.g. one loan split across several
+  // properties all starting/closing the same day) into a single row, listing every
+  // property underneath instead of repeating a near-identical row per piece.
+  const groupedTrail = (() => {
+    const groups=new Map();
+    filtered.forEach(ev=>{
+      const key = ev.etype==="saleSummary" ? `solo-${ev.loanId}` : `${ev.lender}||${ev.date}||${ev.etype}`;
+      if(!groups.has(key)) groups.set(key,[]);
+      groups.get(key).push(ev);
+    });
+    return [...groups.entries()].map(([key,group])=>{
+      if(group.length===1) return group[0];
+      const first=group[0];
+      const sameRate = group.every(e=>e.rate===first.rate&&e.interestType===first.interestType);
+      return {
+        ...first,
+        _group: group,
+        amount: group.reduce((s,e)=>s+(e.amount||0),0),
+        nc: group.reduce((s,e)=>s+(e.nc||0),0),
+        principal: group.reduce((s,e)=>s+(e.principal||0),0),
+        interest: group.reduce((s,e)=>s+(e.interest||0),0),
+        pp: group.reduce((s,e)=>s+(e.pp||0),0),
+        rate: sameRate ? first.rate : null,
+        property: `${group.length} properties`,
+        propId: null,
+        loanId: `group-${key}`,
+      };
+    });
+  })();
   const cfg={
     start:       {label:"Loan Started",  icon:"↙", cls:"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"},
     closed:      {label:"Paid Back",     icon:"↗", cls:"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"},
@@ -3916,7 +3945,7 @@ function HistoryPage({ data }) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">History</h2>
-        <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{view==="trail"?`${filtered.length} events`:`${ledgerRows.length} loans`}</span>
+        <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{view==="trail"?`${groupedTrail.length} events`:`${ledgerRows.length} loans`}</span>
       </div>
       <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 mb-4 self-start gap-1">
         {[["trail","📋 Money Trail"],["ledger","🗂 Loan Ledger"]].map(([v,l])=>(
@@ -4001,11 +4030,11 @@ function HistoryPage({ data }) {
         </div>
       )}
       {view==="trail"&&<>
-      {!filtered.length&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">📋</div><p className="font-semibold">No transactions yet</p></div>}
+      {!groupedTrail.length&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">📋</div><p className="font-semibold">No transactions yet</p></div>}
       <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none divide-y divide-black/[0.05] dark:divide-white/[0.05]">
-        {[...filtered].reverse().map((ev,i)=>{
+        {[...groupedTrail].reverse().map((ev,i)=>{
           const c=cfg[ev.etype]??cfg.closed;const pos=ev.nc>=0;const roll=ev.etype==="start"&&ev.pp>0;
-          const rateLabel=ev.interestType==="fixed"?"$"+Math.round(ev.rate).toLocaleString()+" fixed":ev.rate+"%/yr";
+          const rateLabel=ev.rate==null?"mixed rates":ev.interestType==="fixed"?"$"+Math.round(ev.rate).toLocaleString()+" fixed":ev.rate+"%/yr";
           if(ev.etype==="saleSummary"){
             const cd=ev.closingData;
             const lenderPrincipals=(cd.lenderPayoffs||[]).reduce((s,lp)=>s+(lp.principalPayoff||0),0);
@@ -4094,6 +4123,16 @@ function HistoryPage({ data }) {
                       )
                     )}
                     {roll&&ev.pp>0&&<div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">Rolled from {h$(ev.pp)}</div>}
+                    {ev._group&&(
+                      <div className="mt-2 space-y-1 border-t border-black/[0.05] dark:border-white/[0.05] pt-1.5">
+                        {ev._group.map(g=>(
+                          <div key={g.loanId} className="flex items-center justify-between gap-2 text-[11px] text-slate-400 dark:text-zinc-500">
+                            <button onClick={()=>g.propId&&openPanel?.({type:'property',id:g.propId})} className={`${g.propId?"hover:text-blue-600 dark:hover:text-blue-400 transition-colors":""} text-left truncate`}>{g.property}</button>
+                            <span className="tabular-nums shrink-0">{h$(g.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right shrink-0 min-w-[90px]">
                     {ev.etype==="start"?(
