@@ -5510,7 +5510,7 @@ function DrawsPage({ data }) {
   const totalAvailableAll = rows.reduce((s,r)=>s+r.totalAvailable, 0);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Draws</h2>
       </div>
@@ -5525,17 +5525,18 @@ function DrawsPage({ data }) {
           placeholder="Search by address…" className={SEARCH_CLS}/>
       </div>
       {/* Summary bar */}
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4 flex items-center justify-between">
+      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3 flex items-center justify-between">
         <div>
-          <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Available Draws</div>
-          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">{h$(totalAvailableAll)}</div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Available Draws</div>
+          <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">{h$(totalAvailableAll)}</div>
         </div>
         <div className="text-right">
-          <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Properties</div>
-          <div className="text-2xl font-black text-slate-700 dark:text-zinc-200">{rows.length}</div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Properties</div>
+          <div className="text-xl font-black text-slate-700 dark:text-zinc-200">{rows.length}</div>
         </div>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {rows.map(({ prop, drawLoans, totalCommitted, totalDrawn, totalAvailable, lastDrawDate, daysSinceDraw, lastEventDate, daysSinceEvent, eligible }) => {
         const pct_drawn = totalCommitted > 0 ? Math.min(100, Math.round(totalDrawn/totalCommitted*100)) : 0;
         // urgency based on time since last event (draw or purchase)
@@ -5566,52 +5567,48 @@ function DrawsPage({ data }) {
         return (
           <div key={prop.id} className={`bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${!eligible?"opacity-60":""}`}>
             {/* Property header */}
-            <div className="px-4 pt-4 pb-3 border-b border-slate-100 dark:border-zinc-800">
+            <div className="px-3.5 pt-2.5 pb-2 border-b border-slate-100 dark:border-zinc-800">
               <div className="flex items-start justify-between gap-2">
-                <div className="font-semibold text-[14px] text-slate-900 dark:text-zinc-100 leading-snug flex-1">{prop.address}</div>
-                <div className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${urgencyColor}`}>
+                <div className="font-semibold text-[13px] text-slate-900 dark:text-zinc-100 leading-snug flex-1 truncate">{prop.address}</div>
+                <div className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${urgencyColor}`}>
                   {eventLabel}
                 </div>
               </div>
               {eventSub && (
-                <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{eventSub}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">{eventSub}</div>
               )}
             </div>
 
             {/* Available amount */}
-            <div className="px-4 py-3">
-              <div className="flex items-end justify-between mb-2">
+            <div className="px-3.5 py-2.5">
+              <div className="flex items-end justify-between mb-1.5">
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Available to Draw</div>
-                  <div className={`text-2xl font-black tabular-nums ${totalAvailable > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-300 dark:text-zinc-600"}`}>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Available</div>
+                  <div className={`text-lg font-black tabular-nums ${totalAvailable > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-300 dark:text-zinc-600"}`}>
                     {h$(totalAvailable)}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Drawn / Committed</div>
-                  <div className="text-[13px] font-semibold text-slate-500 dark:text-zinc-400 tabular-nums">{h$(totalDrawn)} / {h$(totalCommitted)}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Drawn / Committed</div>
+                  <div className="text-[12px] font-semibold text-slate-500 dark:text-zinc-400 tabular-nums">{h$(totalDrawn)} / {h$(totalCommitted)}</div>
                 </div>
               </div>
               {/* Progress bar */}
-              <div className="h-2 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                 <div className={`h-full rounded-full transition-all ${pct_drawn>=90?"bg-red-500":pct_drawn>=60?"bg-amber-500":"bg-emerald-500"}`}
                   style={{width:`${pct_drawn}%`}}/>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-400 dark:text-zinc-600 mt-1">
-                <span>{pct_drawn}% drawn</span>
-                <span>{100-pct_drawn}% remaining</span>
               </div>
             </div>
 
             {/* Per-loan breakdown */}
             {drawLoans.length > 1 && (
-              <div className="px-4 pb-3 space-y-1.5">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">By Lender</div>
+              <div className="px-3.5 pb-2.5 space-y-1">
+                <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">By Lender</div>
                 {drawLoans.map(l => {
                   const drawn = (l.drawFacility.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
                   const avail = Math.max(0,(l.drawFacility.committed||0)-drawn);
                   return (
-                    <div key={l.id} className="flex items-center justify-between text-[12px]">
+                    <div key={l.id} className="flex items-center justify-between text-[11px]">
                       <span className="text-slate-600 dark:text-zinc-400 font-medium">{l.lenderName}</span>
                       <span className={`font-semibold tabular-nums ${avail>0?"text-emerald-600 dark:text-emerald-400":"text-slate-300 dark:text-zinc-600"}`}>
                         {h$(avail)} avail
@@ -5624,6 +5621,7 @@ function DrawsPage({ data }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
