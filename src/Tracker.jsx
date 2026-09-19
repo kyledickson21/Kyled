@@ -3824,6 +3824,29 @@ function HistoryPage({ data }) {
       raw.push({date:prop.dateSold,sx:"c",etype:"saleSummary",property:prop.address,propId:prop.id,closingData:prop.closingData,loanId:`sale-${prop.id}`});
     }
   });
+  // Recurring hard-money interest payments, due the 1st of every month the loan was
+  // active — generated for the loan's whole life (past through today) so bookkeepers
+  // can map every payment, not just the loan's start/close events.
+  const addHardPayments = (loan, propAddress, propId) => {
+    if (loan.loanType!=="hard" || !loan.startDate) return;
+    const pt = loan.paymentType||"closing";
+    if (pt!=="monthly_rate"&&pt!=="monthly_fixed") return;
+    const monthly = monthlyLoanPayment(loan);
+    if (monthly<=0) return;
+    const endBound = loan.endDate || TODAY;
+    const [sy,sm,sd] = loan.startDate.split('-').map(Number);
+    let cy=sy, cm=sm;
+    if (sd>1) { cm+=1; if(cm>12){cm=1;cy+=1;} }
+    while (true) {
+      const dateStr = `${cy}-${String(cm).padStart(2,'0')}-01`;
+      if (dateStr>endBound) break;
+      raw.push({date:dateStr, sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount:monthly, principal:loan.principal||0, property:propAddress, propId, rate:loan.interestRate||0, loanId:`${loan.id}-pay-${dateStr}`});
+      cm+=1; if(cm>12){cm=1;cy+=1;}
+    }
+  };
+  data.properties.forEach(prop=>{
+    prop.loans.forEach(loan=>addHardPayments(loan, prop.address, prop.id));
+  });
   // Detect implicit rollovers: loan closed → same lender starts next day (no explicit disposition)
   const startMap={};
   raw.forEach(ev=>{if(ev.etype==="start"&&ev.lender)startMap[`${ev.lender}||${ev.date}`]=ev;});
@@ -3837,10 +3860,14 @@ function HistoryPage({ data }) {
   });
   raw.sort((a,b)=>((a.date||"")+a.sx).localeCompare((b.date||"")+b.sx));
   const lp={},lc={};
+  // Running outstanding-principal balance per lender (all properties) and per
+  // lender+property (for hard money, which is tracked per deal, not pooled).
+  const outstanding={},outstandingByProp={};
   const events=raw.map(ev=>{
     lp[ev.lender]=lp[ev.lender]??0;lc[ev.lender]=lc[ev.lender]??0;
     let nc,pp;
     if(ev.etype==="saleSummary"){nc=ev.closingData?.profit??0;}
+    else if(ev.etype==="hardPayment"){nc=0;} // interest paid, principal outstanding unchanged
     else if(ev.etype==="start"){lc[ev.lender]+=ev.amount;pp=lp[ev.lender];nc=pp>0?ev.amount-pp:ev.amount;lp[ev.lender]=0;}
     else{
       const waived=ev.disposition==="waiveInterest";
@@ -3851,7 +3878,14 @@ function HistoryPage({ data }) {
         nc=-(ev.principal||0); // principal returned to lender (negative = cash out)
       }
     }
-    return{...ev,nc,pp,cumLent:lc[ev.lender]};
+    if(ev.etype!=="saleSummary"){
+      outstanding[ev.lender]=(outstanding[ev.lender]||0)+nc;
+      const propKey=`${ev.lender}||${ev.propId??"unassigned"}`;
+      outstandingByProp[propKey]=(outstandingByProp[propKey]||0)+nc;
+    }
+    return{...ev,nc,pp,cumLent:lc[ev.lender],
+      runningTotal:outstanding[ev.lender],
+      runningTotalThisProperty:outstandingByProp[`${ev.lender}||${ev.propId??"unassigned"}`]};
   });
   const allL=[...new Set(events.map(e=>e.lender))].sort();
   const filtered=events.filter(e=>{
@@ -3867,14 +3901,22 @@ function HistoryPage({ data }) {
   const groupedTrail = (() => {
     const groups=new Map();
     filtered.forEach(ev=>{
-      const key = ev.etype==="saleSummary" ? `solo-${ev.loanId}` : `${ev.lender}||${ev.date}||${ev.etype}`;
+      // Hard money stays scoped per-property even when grouping (its running total is
+      // per-house, not pooled), so it only groups with same-day/type events on the SAME
+      // property. Private money can still combine across properties (e.g. one loan split
+      // several ways the same day).
+      const key = ev.etype==="saleSummary" ? `solo-${ev.loanId}`
+        : ev.loanType==="hard" ? `${ev.lender}||${ev.date}||${ev.etype}||${ev.propId??"unassigned"}`
+        : `${ev.lender}||${ev.date}||${ev.etype}`;
       if(!groups.has(key)) groups.set(key,[]);
       groups.get(key).push(ev);
     });
     return [...groups.entries()].map(([key,group])=>{
       if(group.length===1) return group[0];
       const first=group[0];
+      const last=group[group.length-1];
       const sameRate = group.every(e=>e.rate===first.rate&&e.interestType===first.interestType);
+      const sameProp = group.every(e=>e.propId===first.propId);
       return {
         ...first,
         _group: group,
@@ -3884,8 +3926,10 @@ function HistoryPage({ data }) {
         interest: group.reduce((s,e)=>s+(e.interest||0),0),
         pp: group.reduce((s,e)=>s+(e.pp||0),0),
         rate: sameRate ? first.rate : null,
-        property: `${group.length} properties`,
-        propId: null,
+        property: sameProp ? first.property : `${group.length} properties`,
+        propId: sameProp ? first.propId : null,
+        runningTotal: last.runningTotal,
+        runningTotalThisProperty: last.runningTotalThisProperty,
         loanId: `group-${key}`,
       };
     });
@@ -3896,6 +3940,7 @@ function HistoryPage({ data }) {
     sold:        {label:"Paid Back",     icon:"↗", cls:"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"},
     saleSummary: {label:"Sale Closed",   icon:"🏡",cls:"bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"},
     rolled:      {label:"Rolled",        icon:"🔄",cls:"bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"},
+    hardPayment: {label:"Interest Payment",icon:"📅",cls:"bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"},
   };
   const rollLabel={rollFull:"Rolled Full",rollPrincipal:"Principal Rolled",payInterest:"Interest Paid — Rolled",waiveInterest:"Interest Waived — Rolled",custom:"Partial Roll"};
   const rollingTypes=["rollFull","rollPrincipal","payInterest","waiveInterest","custom"];
@@ -4150,12 +4195,22 @@ function HistoryPage({ data }) {
                         <div className="text-sm font-bold tabular-nums text-violet-500 dark:text-violet-400">→ Continues</div>
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">no cash out</div>
                       </>
+                    ):ev.etype==="hardPayment"?(
+                      <>
+                        <div className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">−{h$(ev.amount)}</div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">interest paid</div>
+                      </>
                     ):(
                       <>
                         <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{h$(ev.amount)}</div>
                         <div className="text-sm font-bold tabular-nums text-red-500 dark:text-red-400">{hs(ev.nc)}</div>
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">returned</div>
                       </>
+                    )}
+                    {ev.etype!=="saleSummary"&&(
+                      <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1.5 pt-1.5 border-t border-black/[0.05] dark:border-white/[0.05] tabular-nums">
+                        {ev.loanType==="hard"?"This house":"New total"}: {h$(ev.loanType==="hard"?ev.runningTotalThisProperty:ev.runningTotal)}
+                      </div>
                     )}
                   </div>
                 </div>
