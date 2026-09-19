@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext, Fragment } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, Fragment } from "react";
 import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, deleteLenderAccount } from './supabase'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -184,26 +184,60 @@ function AddressField({ value, onChange }) {
 }
 
 // ─── UI primitives ────────────────────────────────────────────────────────────
-// A "$" input that shows a comma + 2-decimal formatted value (150,000.00) once you click
-// away, and the raw editable number while focused, so typing isn't fighting live comma
-// insertion. Passes plain numeric strings to onChange — same contract as a plain number
-// input, so callers don't need to change how they store, parse, or validate the value.
+// A "$" input that adds thousands commas live as you type (the decimal part is left
+// exactly as typed — no padding), and snaps to a full comma + 2-decimal format
+// (150,000.00) once you click away. Passes plain numeric strings to onChange — same
+// contract as a plain number input, so callers don't need to change how they store,
+// parse, or validate the value.
+const moneyLiveFormat = raw => {
+  if (raw==="") return "";
+  const [intPart,...rest] = raw.split(".");
+  const intFmt = intPart===""? "" : Number(intPart).toLocaleString("en-US");
+  if (rest.length>0) return `${intFmt}.${rest.join("")}`;
+  return raw.endsWith(".") ? intFmt+"." : intFmt;
+};
 const MoneyField = ({value,onChange,className,placeholder,autoFocus}) => {
   const [focused,setFocused] = useState(false);
+  const ref = useRef(null);
+  const nextCursor = useRef(null);
   const n = parseFloat(value);
-  const display = (focused || value===""||value==null||isNaN(n))
-    ? (value ?? "")
-    : n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const display = focused
+    ? moneyLiveFormat(value ?? "")
+    : (value===""||value==null||isNaN(n)
+        ? ""
+        : n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}));
+
+  useLayoutEffect(()=>{
+    if (nextCursor.current!=null && ref.current) {
+      ref.current.setSelectionRange(nextCursor.current,nextCursor.current);
+      nextCursor.current = null;
+    }
+  },[display]);
+
   return (
-    <input type="text" inputMode="decimal" autoFocus={autoFocus}
+    <input ref={ref} type="text" inputMode="decimal" autoFocus={autoFocus}
       value={display}
       placeholder={placeholder}
       onFocus={()=>setFocused(true)}
       onBlur={()=>setFocused(false)}
       onChange={e=>{
-        let raw=e.target.value.replace(/[^0-9.]/g,"");
+        const el=e.target;
+        const cursorPos=el.selectionStart??el.value.length;
+        // Count only digits/decimal-point characters before the cursor — commas are pure
+        // formatting, so they don't count toward "how far into the number" the cursor is.
+        const digitsBefore=(el.value.slice(0,cursorPos).match(/[0-9.]/g)||[]).length;
+
+        let raw=el.value.replace(/[^0-9.]/g,"");
         const parts=raw.split(".");
         if(parts.length>2) raw=parts[0]+"."+parts.slice(1).join("");
+
+        const formatted=moneyLiveFormat(raw);
+        let count=0,pos=formatted.length;
+        for(let i=0;i<formatted.length;i++){
+          if(/[0-9.]/.test(formatted[i])) count++;
+          if(count===digitsBefore){ pos=i+1; break; }
+        }
+        nextCursor.current=pos;
         onChange(raw);
       }}
       className={className}/>
