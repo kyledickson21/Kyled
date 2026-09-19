@@ -618,7 +618,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         {f.paymentType==="monthly_fixed"&&(
           <Inp label="Monthly Payment Amount ($) *" type="number" value={f.monthlyPayment} onChange={s("monthlyPayment")} placeholder="500" helpText="Fixed dollar amount lender receives each month"/>
         )}
-        <Inp label="Special Terms (optional)" value={f.specialTerms} onChange={s("specialTerms")} placeholder="Balloon, prepayment penalty, etc."/>
+        <Inp label="Notes (optional)" value={f.specialTerms} onChange={s("specialTerms")} placeholder="Balloon, prepayment penalty, etc."/>
       </div>
       {currentLoanType==="hard"&&(
         <div className="mt-2 mb-4 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
@@ -6237,7 +6237,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} type="number"/>
             <Sel label="Payment Type" value={ef.paymentType} onChange={v=>setEf(f=>({...f,paymentType:v}))} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"]]}/>
             {ef.paymentType==="monthly_fixed"&&<Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={v=>setEf(f=>({...f,monthlyPayment:v}))} type="number"/>}
-            <div className="sm:col-span-2"><Inp label="Special Terms" value={ef.specialTerms} onChange={v=>setEf(f=>({...f,specialTerms:v}))}/></div>
+            <div className="sm:col-span-2"><Inp label="Notes" value={ef.specialTerms} onChange={v=>setEf(f=>({...f,specialTerms:v}))}/></div>
           </div>
           {loan.loanType==="hard"&&(
             <div className="mt-3 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
@@ -6315,7 +6315,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             ["Rate / Terms", hr(loan)],
             ["Start Date", loan.startDate||"—"],
             ["End Date", loan.endDate||"Active"],
-            ...(loan.specialTerms ? [["Special Terms", loan.specialTerms]] : []),
+            ...(loan.specialTerms ? [["Notes", loan.specialTerms]] : []),
             ...(loan.drawFacility ? [
               ["Draw Committed", h$(loan.drawFacility.committed||0)],
               ["Total Drawn", h$(drawn)],
