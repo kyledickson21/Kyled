@@ -3934,13 +3934,15 @@ function HistoryPage({ data }) {
       };
     });
   })();
+  const inCls="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400";
+  const outCls="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400";
   const cfg={
-    start:       {label:"Loan Started",  icon:"↙", cls:"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"},
-    closed:      {label:"Paid Back",     icon:"↗", cls:"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"},
-    sold:        {label:"Paid Back",     icon:"↗", cls:"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"},
-    saleSummary: {label:"Sale Closed",   icon:"↙", cls:"bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"},
-    rolled:      {label:"Rolled",        icon:"↙", cls:"bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"},
-    hardPayment: {label:"Interest Payment",icon:"↗",cls:"bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"},
+    start:       {label:"Loan Started",  icon:"↙", cls:inCls},
+    closed:      {label:"Paid Back",     icon:"↗", cls:outCls},
+    sold:        {label:"Paid Back",     icon:"↗", cls:outCls},
+    saleSummary: {label:"Sale Closed",   icon:"↙", cls:inCls},
+    rolled:      {label:"Rolled",        icon:"↙", cls:inCls},
+    hardPayment: {label:"Interest Payment",icon:"↗",cls:outCls},
   };
   const rollLabel={rollFull:"Rolled Full",rollPrincipal:"Principal Rolled",payInterest:"Interest Paid — Rolled",waiveInterest:"Interest Waived — Rolled",custom:"Partial Roll"};
   const rollingTypes=["rollFull","rollPrincipal","payInterest","waiveInterest","custom"];
@@ -4089,7 +4091,7 @@ function HistoryPage({ data }) {
             return(
               <div key={ev.loanId} className="bg-blue-50/70 dark:bg-blue-950/15 border-l-4 border-blue-400 dark:border-blue-500 px-5 py-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">↙</span>
+                  <span className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 ${inCls}`}>↙</span>
                   <div>
                     <div className="font-bold text-blue-900 dark:text-blue-100">Sale Closed — <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="hover:underline text-left">{ev.property}</button></div>
                     <div className="text-xs text-blue-500 dark:text-blue-400">{ev.date} · For Bookkeepers</div>
