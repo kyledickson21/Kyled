@@ -34,6 +34,22 @@ const daysBetween = (d1, d2) => {
 const nextDay = d => { const [y,m,day]=d.split('-').map(Number); const dt=new Date(y,m-1,day+1); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
 const yearDays = l => l?.loanType==="hard" ? 360 : 365;
 
+// Per-lender hard-money billing settings, editable on the lender's own page and applied
+// to every loan from that lender. Defaults reproduce the app's existing behavior exactly
+// (a loan's own loanType decides the defaults), so nothing changes for a lender until it's
+// explicitly customized — see the History tab's addHardPayments for how these are used.
+const defaultLenderPaymentSettings = loanType => ({
+  graceMonth: loanType==="hard",   // skip the first month before billing starts
+  payFirstAtClosing: false,         // first month + prorated stub charged at closing instead
+  dayCountBasis: loanType==="hard" ? 360 : 365,
+  monthlyMethod: "perDiem",         // "perDiem" (actual days that month) or "flat" (rate/12 every time)
+  drawFee: 0,                       // flat $ fee added for each draw captured in a payment
+});
+const resolveLenderSettings = (data, lenderName, loanType) => {
+  const rec = (data?.lenders||[]).find(l=>l.name===lenderName);
+  return {...defaultLenderPaymentSettings(loanType), ...(rec?.paymentSettings||{})};
+};
+
 const calcBalance = (l, asOf=TODAY) => {
   if (!l?.startDate||!l?.principal) return l?.principal??0;
   const pt = l.paymentType||"closing";
@@ -4528,20 +4544,63 @@ function HistoryPage({ data }) {
   // every payment, not just the loan's start/close events. Any loan can be set up with
   // monthly-paid interest, private or hard money, so this isn't restricted by loanType
   // (a loanType==="hard" restriction here previously caused every monthly-paid PRIVATE
-  // loan to be silently skipped).
+  // loan to be silently skipped). Actual billing mechanics (grace period, day-count basis,
+  // flat vs. per-diem monthly amount, whether the first month is prepaid at closing, a
+  // per-draw fee) come from the lender's own Payment Settings — editable on their page —
+  // and default to exactly this function's original behavior when unset.
   const addHardPayments = (loan, propAddress, propId) => {
     if (!loan.startDate) return;
     const pt = loan.paymentType||"closing";
     if (pt!=="monthly_rate"&&pt!=="monthly_fixed") return;
     const endBound = loan.endDate || TODAY;
     const [sy,sm,sd] = loan.startDate.split('-').map(Number);
-    // Hard money loans get a free first month: no payment is due on a 1st that falls
-    // before the one-month anniversary of origination. E.g. a loan originated Jan 15
-    // doesn't owe on Feb 1 (only 17 days in) — its first payment is Mar 1, and it's
-    // prorated back to Jan 15 to cover everything accrued since origination. Private
-    // monthly-paid loans don't follow this convention; their first payment is simply
-    // the next 1st after origination.
-    const firstDue = loan.loanType==="hard" ? monthsLater(sy,sm,sd,1) : loan.startDate;
+    const settings = resolveLenderSettings(data, loan.lenderName, loan.loanType);
+    const dailyRate = (loan.interestRate||0)/100/settings.dayCountBasis;
+    const flatMonthly = pt==="monthly_fixed" ? (loan.monthlyPayment||0) : (loan.principal||0)*(loan.interestRate||0)/1200;
+    // One-time $ fee for each draw whose date falls in [periodStart, periodEnd) — half-open
+    // so a draw dated exactly on a schedule boundary is counted in exactly one period.
+    const feeFor = (periodStart, periodEndExclusive) =>
+      (loan.drawFacility?.draws||[]).filter(d=>d.date&&d.date>=periodStart&&d.date<periodEndExclusive).length*(settings.drawFee||0);
+    const pushPayment = (dateStr, amount) => {
+      amount = Math.round(amount);
+      if (amount>0) {
+        raw.push({date:firstBusinessDay(dateStr), sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount, principal:loan.principal||0, property:propAddress, propId, rate:loan.interestRate||0, loanId:`${loan.id}-pay-${dateStr}`});
+      }
+    };
+
+    if (settings.payFirstAtClosing) {
+      // The prorated stub (closing day through end of that month) and the first full
+      // month's payment are both charged at closing, outside the recurring cycle — so the
+      // schedule here starts with the SECOND calendar month, billed in advance on its own
+      // 1st, and every entry covers one clean full month (no catch-up proration needed).
+      let cy=sy, cm=sm+2; while(cm>12){cm-=12;cy+=1;}
+      let prevDate = monthsLater(sy,sm,1,1); // 1st of the month right after closing (already paid)
+      while (true) {
+        const dateStr = `${cy}-${String(cm).padStart(2,'0')}-01`;
+        if (dateStr>endBound) break;
+        const lastDay = new Date(cy,cm,0).getDate();
+        let amount = settings.monthlyMethod==="flat" ? flatMonthly : (loan.principal||0)*dailyRate*lastDay;
+        // A draw dated before this period (e.g. taken the same day as closing) is clamped
+        // to start accruing at prevDate rather than dropped — its own closing-time stub is
+        // assumed covered the same way the base loan's was, but every dollar from prevDate
+        // forward still has to show up in a payment somewhere.
+        (loan.drawFacility?.draws||[]).forEach(d=>{
+          if (!d.date||d.date>=dateStr) return;
+          const drawStart = d.date>prevDate ? d.date : prevDate;
+          amount += settings.monthlyMethod==="flat" ? (d.amount||0)*(loan.interestRate||0)/1200 : (d.amount||0)*dailyRate*daysBetween(drawStart,dateStr);
+        });
+        pushPayment(dateStr, amount+feeFor(prevDate,dateStr));
+        prevDate = dateStr;
+        cm+=1; if(cm>12){cm=1;cy+=1;}
+      }
+      return;
+    }
+
+    // Standard model: optional grace month (no payment due until the loan's one-month
+    // anniversary — see settings.graceMonth), then a prorated catch-up first payment, then
+    // regular payments computed per-diem (actual days that month) or flat (rate/12 flat
+    // every time), per settings.monthlyMethod.
+    const firstDue = settings.graceMonth ? monthsLater(sy,sm,sd,1) : loan.startDate;
     let cy=sy, cm=sm+1; if(cm>12){cm=1;cy+=1;}
     const schedule=[];
     while (true) {
@@ -4550,16 +4609,17 @@ function HistoryPage({ data }) {
       if (dateStr>=firstDue) schedule.push(dateStr);
       cm+=1; if(cm>12){cm=1;cy+=1;}
     }
-    // Per-diem, not a flat 1/12 — a 28-day February and a 31-day month owe different
-    // interest even at the same rate, and this is also what lets a stub period (the
-    // first payment after a mid-month start, or a mid-period rehab draw) prorate
-    // correctly instead of billing a full month for a partial one.
-    const dailyRate = (loan.interestRate||0)/100/yearDays(loan);
     let prevDate = loan.startDate;
     schedule.forEach(dateStr=>{
       const days = daysBetween(prevDate,dateStr);
       let amount;
-      if (pt==="monthly_fixed") {
+      if (settings.monthlyMethod==="flat") {
+        amount = flatMonthly;
+        (loan.drawFacility?.draws||[]).forEach(d=>{
+          if (!d.date||d.date>=dateStr||d.date<prevDate) return;
+          amount += (d.amount||0)*(loan.interestRate||0)/1200;
+        });
+      } else if (pt==="monthly_fixed") {
         amount = (loan.monthlyPayment||0)*days/30.44;
       } else {
         amount = (loan.principal||0)*dailyRate*days;
@@ -4572,10 +4632,7 @@ function HistoryPage({ data }) {
           amount += (d.amount||0)*dailyRate*daysBetween(drawStart,dateStr);
         });
       }
-      amount = Math.round(amount);
-      if (amount>0) {
-        raw.push({date:firstBusinessDay(dateStr), sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount, principal:loan.principal||0, property:propAddress, propId, rate:loan.interestRate||0, loanId:`${loan.id}-pay-${dateStr}`});
-      }
+      pushPayment(dateStr, amount+feeFor(prevDate,dateStr));
       prevDate = dateStr;
     });
   };
@@ -6059,6 +6116,23 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
     ...data.properties.flatMap(p => p.loans.map(l => ({...l, prop:p}))),
     ...(data.unassigned||[]).map(l => ({...l, prop:null})),
   ].filter(l => l.lenderName === name);
+
+  // Payment settings — how this lender's interest is actually billed (grace period, day
+  // count, flat vs. per-diem monthly amount, first month prepaid at closing, per-draw fee).
+  // Seeded from whatever's saved, falling back to the defaults that match current app
+  // behavior for this lender's loan type, so nothing changes until explicitly adjusted.
+  const currentLoanType = allLoans[0]?.loanType || "private";
+  const [psForm, setPsForm] = useState(() => resolveLenderSettings(data, name, currentLoanType));
+  const [psSaved, setPsSaved] = useState(false);
+  const savePaymentSettings = () => {
+    update(d => {
+      const existing = (d.lenders||[]).find(l => l.name===name);
+      const rec = existing ? {...existing, paymentSettings:psForm} : {id:uid(), name, loanType:currentLoanType, paymentSettings:psForm};
+      return {...d, lenders:[...(d.lenders||[]).filter(l=>l.name!==name), rec]};
+    });
+    setPsSaved(true);
+    setTimeout(()=>setPsSaved(false), 1500);
+  };
   const active = allLoans.filter(l => !l.endDate);
   const hist = allLoans.filter(l => l.endDate).sort((a,b) => (b.endDate||"").localeCompare(a.endDate||""));
 
@@ -6217,6 +6291,48 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
           </div>
         </div>
       )}
+
+      {/* Payment Settings — how this lender's interest is actually billed, applied to every loan from them */}
+      <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 mb-1">Payment Settings</div>
+        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-4">How {name}'s monthly interest payments are actually billed — applies to every loan from them, on every property.</p>
+        <div className="space-y-3">
+          <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3 cursor-pointer">
+            <div>
+              <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Pays first month up front</div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Prorated stub interest + the first full month are charged at closing, not billed later</div>
+            </div>
+            <div onClick={()=>setPsForm(f=>({...f,payFirstAtClosing:!f.payFirstAtClosing}))}
+              className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer shrink-0 ${psForm.payFirstAtClosing?"bg-blue-500":"bg-slate-200 dark:bg-zinc-600"}`}>
+              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${psForm.payFirstAtClosing?"translate-x-5":""}`}/>
+            </div>
+          </label>
+
+          <label className={`flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3 ${psForm.payFirstAtClosing?"opacity-40 pointer-events-none":"cursor-pointer"}`}>
+            <div>
+              <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Gives a grace period month</div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">No payment due on a 1st before the loan's one-month anniversary; the first payment prorates back to origination</div>
+            </div>
+            <div onClick={()=>!psForm.payFirstAtClosing&&setPsForm(f=>({...f,graceMonth:!f.graceMonth}))}
+              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${psForm.graceMonth?"bg-blue-500":"bg-slate-200 dark:bg-zinc-600"}`}>
+              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${psForm.graceMonth?"translate-x-5":""}`}/>
+            </div>
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Sel label="Day-Count Basis" value={String(psForm.dayCountBasis)} onChange={v=>setPsForm(f=>({...f,dayCountBasis:parseInt(v)}))}
+              options={[["360","360-day year"],["365","365-day year"]]}/>
+            <Sel label="Monthly Amount" value={psForm.monthlyMethod} onChange={v=>setPsForm(f=>({...f,monthlyMethod:v}))}
+              options={[["perDiem","Per-Diem (actual days)"],["flat","Flat (rate ÷ 12)"]]}/>
+          </div>
+
+          <Inp label="Fee Per Draw ($)" money value={String(psForm.drawFee||"")} onChange={v=>setPsForm(f=>({...f,drawFee:parseFloat(v)||0}))} placeholder="0"/>
+
+          <div className="flex gap-2 pt-1">
+            <Btn color="blue" onClick={savePaymentSettings}>{psSaved?"✓ Saved":"Save Settings"}</Btn>
+          </div>
+        </div>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-6">
