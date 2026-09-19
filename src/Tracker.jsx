@@ -206,6 +206,12 @@ const MoneyField = ({value,onChange,className,placeholder,autoFocus,onBlur}) => 
     : (value===""||value==null||isNaN(n)
         ? ""
         : n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}));
+  // A bare "100000" placeholder reads like a real typed value with no formatting — show it
+  // as an actual dollar amount ($100,000) so it's clearly an example, not live data.
+  const pn = parseFloat(placeholder);
+  const displayPlaceholder = placeholder!=null && placeholder!=="" && !isNaN(pn)
+    ? "$"+pn.toLocaleString()
+    : placeholder;
 
   useLayoutEffect(()=>{
     if (nextCursor.current!=null && ref.current) {
@@ -217,7 +223,7 @@ const MoneyField = ({value,onChange,className,placeholder,autoFocus,onBlur}) => 
   return (
     <input ref={ref} type="text" inputMode="decimal" autoFocus={autoFocus}
       value={display}
-      placeholder={placeholder}
+      placeholder={displayPlaceholder}
       onFocus={()=>setFocused(true)}
       onBlur={()=>{setFocused(false);onBlur&&onBlur();}}
       onChange={e=>{
@@ -397,7 +403,7 @@ function LenderAutocomplete({ value, onChange, properties }) {
         Lender Name <span className="text-red-400">*</span>
       </label>
       <input value={value} onChange={e=>{ onChange(e.target.value); setShow(true); }} onFocus={()=>setShow(true)}
-        placeholder="Mike Dixon"
+        placeholder="John Doe"
         className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
       {show && matches.length > 0 && (
         <div className="absolute z-50 mt-1 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden">
@@ -576,7 +582,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
       {lenderSel==="_new_"&&(
         <div className="mb-3 p-3.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 space-y-2">
           <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-2">New Lender Info</div>
-          <Inp label="Lender Name *" value={newName} onChange={setNewName} placeholder="Mike Dixon"/>
+          <Inp label="Lender Name *" value={newName} onChange={setNewName} placeholder="John Doe"/>
           <Sel label="Lender Type *" value={newType} onChange={setNewType} options={[
             ["private","Private Money — individual lender"],
             ["hard","Hard Money — institutional / company lender"],
