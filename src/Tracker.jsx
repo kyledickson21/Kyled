@@ -6801,8 +6801,8 @@ function DashboardPage({ data, update, onNavigateTab }) {
         {[
           { label: "Active Properties", value: activePropsData.length, sub: "tap to view",        color: "blue",   icon: "🏠", tab: "Properties"  },
           { label: "Active Lenders",    value: activeLendersCount,    sub: "tap to view",         color: "indigo", icon: "👥", tab: "LenderDash"  },
-          { label: "Draws Available",   value: h$(drawsAvailable),   sub: "14d+ since last event",color: "amber",  icon: "🏗️", tab: "Draws"       },
           { label: "Total Active Loans",value: totalLoansCount,      sub: "across all",           color: "slate",  icon: "📋", tab: "AllLoans"    },
+          { label: "Draws Available",   value: h$(drawsAvailable),   sub: "14d+ since last event",color: "amber",  icon: "🏗️", tab: "Draws"       },
           { label: "Funding Gap",       value: h$(totalFundingGap),  sub: "short of 100%",        color: "orange", icon: "📉", tab: "PropDash"    },
           { label: "Total Payoff",      value: h$(totalPayoff),      sub: "all active balances",  color: "slate",  icon: "💰", tab: "LenderDash"  },
         ].map(({ label, value, sub, color, icon, tab }) => (
