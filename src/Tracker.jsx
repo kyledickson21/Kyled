@@ -568,6 +568,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
 
       {/* Loan details */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1">
+        <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
         <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={[
           ["percentage","% Rate — accrues daily (e.g. 10%/yr)"],
           ["fixed","Fixed Amount — flat dollar return (e.g. lend $100k, get back $105k)"],
@@ -576,7 +577,6 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           ? <Inp label="Fixed Interest Amount ($) *" money value={f.interestRate} onChange={s("interestRate")} placeholder="5000" helpText="Total interest they receive — e.g. lend $100k, get back $105k → enter 5000."/>
           : <Inp label="Annual Interest Rate (%) *" type="number" value={f.interestRate} onChange={s("interestRate")} placeholder="10" helpText="Enter 0 for no interest."/>
         }
-        <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
         <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
         <DateInp label="Due Date (optional)" value={f.dueDate} onChange={s("dueDate")} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
         <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"} onChange={v=>{setPaymentTypeTouched(true);s("paymentType")(v);}} options={[
