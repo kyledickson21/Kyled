@@ -3452,15 +3452,16 @@ const payoffTypeLabel = {
   custom:"✏️ Custom Split", alreadyPaid:"Already Paid (Early Close)",
 };
 
-// Mirrors MarkSoldModal field-for-field so a closing can be corrected after the fact using
-// the exact same form it was originally entered on, seeded from the saved closingData
-// instead of live loan balances. One thing intentionally stays locked: the disposition type
-// (paid out / rolled / waived / custom) and where a rolled loan went. Changing those at close
-// time creates or moves actual loan records (see handleMarkSold) — replaying that safely after
-// the fact isn't possible (there's no stored link from a closed loan back to the new loan it
-// became, and a custom split's exact rolled amount was never persisted), so re-editing the
-// type here could silently desync from what actually exists. Every dollar figure typed in at
-// closing (principal, interest, fees, paid-at-title, wire, costs) is fully editable.
+// Mirrors MarkSoldModal field-for-field, panel-for-panel, so a closing can be corrected
+// after the fact on the exact same form it was originally entered on — seeded from the
+// saved closingData instead of live loan balances. The one piece intentionally removed is
+// the disposition type itself (paid out / rolled / waived / custom) and the roll
+// destination/new-start-date picker: choosing a disposition at close time creates or moves
+// actual loan records (see handleMarkSold), and there's no stored link from a closed loan
+// back to whatever it became, so replaying that safely after the fact isn't possible —
+// re-picking it here would just relabel the record without moving anything, silently
+// desyncing the app from what actually exists. Every dollar figure is still fully editable,
+// including the per-lender overage refund the original form has (this was missing before).
 function EditClosingModal({ prop, onSave, onClose }) {
   const cd=prop.closingData||{};
   const [step,setStep]=useState(1);
@@ -3482,10 +3483,12 @@ function EditClosingModal({ prop, onSave, onClose }) {
         type:lp.type||"paidOut",
         principalPayoff:String(lp.principalPayoff??l.principal??0),
         interestPayoff:String(lp.interestPayoff??0),
-        titleInterestPayoff:String(lp.titleInterestPayoff||""),
+        titleMoneyCosts:String(lp.titleInterestPayoff||""),
         lenderFees:String(lp.lenderFees??0),
+        overageRefund:"0", // not stored per lender historically — only the combined total was saved
         paidAtTitle:lp.paidAtTitle||false,
         wireAmount:String(lp.wireAmount??0),
+        customRolling:String(lp.principalPayoff??l.principal??0),
       };
     }),
     ...earlyClosedLoans.map(l=>{
@@ -3494,15 +3497,15 @@ function EditClosingModal({ prop, onSave, onClose }) {
         loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
         principal:l.principal||0,isMonthly:false,isPreClosed:true,type:"alreadyPaid",
         principalPayoff:"0",interestPayoff:String(lp.interestPayoff??0),
-        titleInterestPayoff:"",lenderFees:String(lp.lenderFees??0),
-        paidAtTitle:false,wireAmount:"0",
+        titleMoneyCosts:"",lenderFees:String(lp.lenderFees??0),overageRefund:"0",
+        paidAtTitle:false,wireAmount:"0",customRolling:"0",
       };
     }),
   ]);
   const upd=(loanId,patch)=>setRows(rs=>rs.map(r=>r.loanId===loanId?{...r,...patch}:r));
 
   // Same formula as MarkSoldModal's wireContrib — reconstructed from the recoverable stored
-  // fields for every type except "custom", whose original split amount was never persisted;
+  // fields for every type except "custom", whose original split amount wasn't persisted;
   // that one falls back to the saved/editable wireAmount directly.
   const wireContrib=r=>{
     if(r.type==="alreadyPaid") return 0;
@@ -3518,13 +3521,14 @@ function EditClosingModal({ prop, onSave, onClose }) {
     if(r.type==="custom") return parseFloat(r.wireAmount)||0;
     return 0;
   };
-  const titleTotal=Math.round(rows.reduce((s,r)=>{
+  const titleTotal=rows.reduce((s,r)=>{
     if(!r.paidAtTitle) return s;
     const principal=parseFloat(r.principalPayoff)||0;
     const fees=parseFloat(r.lenderFees)||0;
-    if(r.isMonthly) return s+principal+(parseFloat(r.titleInterestPayoff)||0)+fees;
-    return s+principal+(parseFloat(r.interestPayoff)||0)+fees;
-  },0)*100)/100;
+    const overage=parseFloat(r.overageRefund)||0;
+    if(r.isMonthly) return s+principal+(parseFloat(r.titleMoneyCosts)||0)+fees+overage;
+    return s+principal+(parseFloat(r.interestPayoff)||0)+fees+overage;
+  },0);
   const lenderTotal=rows.reduce((s,r)=>s+wireContrib(r),0);
   const moneyCosts=Math.round(rows.reduce((s,r)=>{
     const fees=parseFloat(r.lenderFees)||0;
@@ -3538,43 +3542,50 @@ function EditClosingModal({ prop, onSave, onClose }) {
   const [rehabIn,setRehabIn]=useState(String(cd.rehab||""));
   const [miscIn,setMiscIn]=useState(String(cd.misc||""));
   const [wireIn,setWireIn]=useState(String(cd.wire||""));
-  const [overageIn,setOverageIn]=useState(String(cd.overageRefund||""));
 
   const cashToClose=parseFloat(cashToCloseIn)||0;
   const rehab=parseFloat(rehabIn)||0;
+  const baseCosts=cashToClose+rehab+moneyCosts;
   const wire=parseFloat(wireIn)||0;
   const misc=parseFloat(miscIn)||0;
-  const overageRefund=parseFloat(overageIn)||0;
-  const totalCosts=cashToClose+rehab+moneyCosts+misc;
+  const totalCosts=baseCosts+misc;
+  const overageRefund=Math.round(rows.reduce((s,r)=>s+(parseFloat(r.overageRefund)||0),0)*100)/100;
   const nexusCapital=totalCosts-titleTotal-lenderTotal;
   const dealProfit=(wire+titleTotal)-totalCosts+overageRefund;
   const balanced=wire>0&&nexusCapital>=-0.01;
 
-  const inputCls="flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums";
-  const autoCls="flex-1 border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-right text-slate-400 dark:text-zinc-500 tabular-nums select-none";
-  const labelCls="w-40 text-sm text-slate-600 dark:text-zinc-300 shrink-0 leading-tight";
-  const numIn="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums text-slate-800 dark:text-zinc-100";
+  const handleWireChange=v=>setWireIn(v);
+  const handleMiscChange=v=>setMiscIn(v);
 
   const handleConfirm=()=>{
     const updatedPayoffs=rows.map(r=>({
-      loanId:r.loanId,lenderName:r.lenderName,type:r.type,isMonthly:r.isMonthly,
-      paidAtTitle:r.paidAtTitle,
+      loanId:r.loanId,lenderName:r.lenderName,type:r.type,
+      paidAtTitle:r.paidAtTitle||false,
+      isMonthly:r.isMonthly||false,
       principalPayoff:parseFloat(r.principalPayoff)||0,
       interestPayoff:parseFloat(r.interestPayoff)||0,
-      titleInterestPayoff:r.isMonthly&&r.paidAtTitle?(parseFloat(r.titleInterestPayoff)||0):0,
+      titleInterestPayoff:r.isMonthly&&r.paidAtTitle?(parseFloat(r.titleMoneyCosts)||0):0,
       lenderFees:parseFloat(r.lenderFees)||0,
       wireAmount:wireContrib(r),
       totalPayoff:(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0),
     }));
     onSave({dateSold,isRental,closingData:{
-      ...cd,wire,cashToClose,rehab,moneyCosts,misc,totalCosts,overageRefund,
-      profit:dealProfit,selfFunded:nexusCapital,titleTotal,lenderPayoffs:updatedPayoffs,
+      ...cd,wire,cashToClose,rehab,moneyCosts,misc,totalCosts,
+      overageRefund,profit:dealProfit,selfFunded:nexusCapital,titleTotal,
+      lenderPayoffs:updatedPayoffs,
     }});
   };
+
+  const inputCls="flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums";
+  const autoCls="flex-1 border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-right text-slate-400 dark:text-zinc-500 tabular-nums select-none";
+  const labelCls="w-40 text-sm text-slate-600 dark:text-zinc-300 shrink-0 leading-tight";
+  const numIn="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums text-slate-800 dark:text-zinc-100";
+  const autoNum="w-full border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-right text-slate-400 dark:text-zinc-500 tabular-nums select-none";
 
   return (
     <Modal title={`Edit Closing: ${prop.address}`} onClose={onClose}>
       <div>
+
         {/* Step tabs */}
         <div className="flex gap-2 mb-5">
           {[["1 · Settle Lenders",1],["2 · Wire & Costs",2]].map(([label,s])=>(
@@ -3592,8 +3603,14 @@ function EditClosingModal({ prop, onSave, onClose }) {
 
             <div>
               <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Settle Lenders</div>
+              {rows.filter(r=>!r.isPreClosed).length===0&&(
+                <p className="text-sm text-slate-400 dark:text-zinc-500 text-center py-4">No lenders settled at this sale.</p>
+              )}
               <div className="space-y-3">
                 {rows.filter(r=>!r.isPreClosed).map(r=>{
+                  const calcInterest=r.isMonthly?0:(parseFloat(r.interestPayoff)||0);
+                  const calcPayoff=(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0);
+                  const autoWireForCustom=Math.max(0,calcPayoff-(parseFloat(r.customRolling)||0));
                   const totalFromWire=wireContrib(r);
                   return (
                     <div key={r.loanId} className="rounded-xl border border-slate-200 dark:border-zinc-700 p-4 bg-white dark:bg-zinc-900">
@@ -3604,6 +3621,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                             <span className="font-bold text-slate-900 dark:text-zinc-100 truncate">{r.lenderName}</span>
                             <TypeLabel type={r.loanType}/>
                           </div>
+                          {/* Paid at title toggle */}
                           <label className="flex items-center gap-2 cursor-pointer select-none">
                             <div onClick={()=>upd(r.loanId,{paidAtTitle:!r.paidAtTitle})}
                               className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${r.paidAtTitle?"bg-amber-500":"bg-slate-200 dark:bg-zinc-600"}`}>
@@ -3616,13 +3634,15 @@ function EditClosingModal({ prop, onSave, onClose }) {
                         </div>
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500 tabular-nums text-right leading-tight shrink-0">
                           <div>Principal: {$$p(r.principal)}</div>
+                          {calcInterest>0&&<div>Accrued Int: {$$p(calcInterest)}</div>}
+                          <div className="font-semibold text-slate-600 dark:text-zinc-300">Payoff: {$$p(calcPayoff)}</div>
                         </div>
                       </div>
 
-                      {/* Disposition — read-only; see note at top of this file */}
+                      {/* Disposition — set at closing, not editable here; see note at top of file */}
                       <div className="mb-3">
-                        <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Disposition (set at closing)</label>
-                        <div className="w-full border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                        <label className="block text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">Disposition</label>
+                        <div className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 rounded-lg px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
                           {payoffTypeLabel[r.type]||r.type}
                         </div>
                       </div>
@@ -3655,11 +3675,11 @@ function EditClosingModal({ prop, onSave, onClose }) {
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
                                   <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Prorated interest from title</div>
-                                  <input type="number" value={r.titleInterestPayoff} onChange={e=>upd(r.loanId,{titleInterestPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                                  <input type="number" value={r.titleMoneyCosts} onChange={e=>upd(r.loanId,{titleMoneyCosts:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
                                 </div>
                                 <div>
                                   <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Already paid monthly</div>
-                                  <div className={autoCls}>{$$p(Math.max(0,(parseFloat(r.interestPayoff)||0)-(parseFloat(r.titleInterestPayoff)||0)))}</div>
+                                  <div className={autoNum}>{$$p(Math.max(0,(parseFloat(r.interestPayoff)||0)-(parseFloat(r.titleMoneyCosts)||0)))}</div>
                                 </div>
                               </div>
                             </div>
@@ -3685,56 +3705,38 @@ function EditClosingModal({ prop, onSave, onClose }) {
                               <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
                             </div>
                           </div>
-                          <div className="text-[10px] text-slate-400 dark:text-zinc-500">Principal {$$p(parseFloat(r.principalPayoff)||0)} rolled to next deal</div>
+                          <div className="text-[10px] text-slate-400 dark:text-zinc-500">Principal {$$p(r.principal)} rolls to next deal</div>
                         </div>
                       )}
 
-                      {/* Custom split — exact original split amount wasn't persisted; every
-                          dollar field here is still fully editable, just not auto-derived */}
+                      {/* Custom split */}
                       {r.type==="custom"&&(
                         <div className="space-y-2 mb-3 p-3 bg-slate-50 dark:bg-zinc-800/40 rounded-lg">
                           <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Custom Split</div>
                           <div className="grid grid-cols-3 gap-2">
                             <div>
-                              <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Principal</div>
-                              <input type="number" value={r.principalPayoff} onChange={e=>upd(r.loanId,{principalPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Amount Rolling</div>
+                              <input type="number" value={r.customRolling} onChange={e=>upd(r.loanId,{customRolling:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
                             </div>
                             <div>
-                              <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Interest</div>
-                              <input type="number" value={r.interestPayoff} onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">From Wire</div>
+                              <div className={autoNum}>{$$p(autoWireForCustom)}</div>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
                               <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
                             </div>
                           </div>
-                          <div className="flex items-center justify-between pt-1">
-                            <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400">From Wire</span>
-                            <input type="number" value={r.wireAmount} onChange={e=>upd(r.loanId,{wireAmount:e.target.value})} onWheel={e=>e.target.blur()}
-                              className="w-28 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2.5 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums text-slate-800 dark:text-zinc-100"/>
-                          </div>
                         </div>
                       )}
 
-                      {/* Rolling type: principal (+interest for rollFull) and fees */}
+                      {/* Rolling type: show wire amount and optional fees */}
                       {(r.type==="rollFull"||r.type==="rollPrincipal"||r.type==="waiveInterest")&&(
                         <div className="mb-3 p-3 bg-slate-50 dark:bg-zinc-800/40 rounded-lg space-y-2">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Principal</div>
-                              <input type="number" value={r.principalPayoff} onChange={e=>upd(r.loanId,{principalPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
-                            </div>
-                            {r.type==="rollFull"&&(
-                              <div>
-                                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Interest</div>
-                                <input type="number" value={r.interestPayoff} onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
-                              </div>
-                            )}
-                          </div>
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Flows Through Wire</span>
                             <span className="text-sm font-bold tabular-nums text-slate-800 dark:text-zinc-100">
-                              {$$p(totalFromWire)}
+                              {$$p(r.type==="rollFull"?calcPayoff:r.principal)}
                               {r.type==="rollPrincipal"&&<span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500 ml-1">(principal; Nexus keeps int)</span>}
                               {r.type==="waiveInterest"&&<span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500 ml-1">(principal; interest forgiven)</span>}
                             </span>
@@ -3745,6 +3747,12 @@ function EditClosingModal({ prop, onSave, onClose }) {
                           </div>
                         </div>
                       )}
+
+                      {/* Overage refund (post-close) */}
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-3">
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight">Overage Refund<br/><span className="text-[9px]">(post-close, from this lender)</span></div>
+                        <input type="number" value={r.overageRefund} onChange={e=>upd(r.loanId,{overageRefund:e.target.value})} onWheel={e=>e.target.blur()} placeholder="0" className={numIn}/>
+                      </div>
                     </div>
                   );
                 })}
@@ -3779,18 +3787,31 @@ function EditClosingModal({ prop, onSave, onClose }) {
               )}
             </div>
 
-            <div className="rounded-xl bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700 px-4 py-4 space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500 dark:text-zinc-400">Lenders (from wire)</span>
-                <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$p(lenderTotal)}</span>
-              </div>
-              {titleTotal>0&&(
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500 dark:text-zinc-400">Paid at title</span>
-                  <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$p(titleTotal)}</span>
+            {/* Step 1 summary: lenders + project costs */}
+            {(()=>{
+              const estC2C=parseFloat(prop.purchasePrice)||cashToClose;
+              const estRehab=parseFloat(prop.rehabBudget)||rehab;
+              const estMoney=moneyCosts;
+              const estMisc=misc||Math.round((prop.monthlyHolding??500)*effectiveMonths(prop));
+              const estCosts=estC2C+estRehab+estMoney+estMisc;
+              const minWire=estCosts-titleTotal;
+              return (
+                <div className="rounded-xl bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700 px-4 py-4 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500 dark:text-zinc-400">Lenders (from wire)</span>
+                    <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$p(lenderTotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500 dark:text-zinc-400">Project costs</span>
+                    <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{$$p(estCosts)}</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-zinc-700">
+                    <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">Break-even wire</span>
+                    <span className="font-bold text-base tabular-nums text-slate-900 dark:text-zinc-100">{$$p(minWire)}</span>
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })()}
 
             <div className="flex gap-2 pt-1">
               <Btn onClick={()=>setStep(2)} color="navy" full>Next: Wire &amp; Costs →</Btn>
@@ -3817,8 +3838,9 @@ function EditClosingModal({ prop, onSave, onClose }) {
                   let label;
                   if(r.paidAtTitle){
                     const principal=parseFloat(r.principalPayoff)||0;
-                    const atTitleCosts=r.isMonthly?(parseFloat(r.titleInterestPayoff)||0)+(parseFloat(r.lenderFees)||0):(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0);
-                    label=`${$$p(principal+atTitleCosts)} at title 🏛`;
+                    const atTitleCosts=r.isMonthly?(parseFloat(r.titleMoneyCosts)||0)+(parseFloat(r.lenderFees)||0):(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0);
+                    const overage=parseFloat(r.overageRefund)||0;
+                    label=`${$$p(principal+atTitleCosts+overage)} at title 🏛${overage>0?` (incl. ${$$p(overage)} overage)`:""}`;
                   }
                   else if(r.type==="rollFull") label=`${$$p(wireContrib(r))} → rolls full`;
                   else if(r.type==="rollPrincipal") label=`${$$p(wireContrib(r))} → principal rolls`;
@@ -3854,11 +3876,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
-                  <input type="number" value={miscIn} onChange={e=>setMiscIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={labelCls}>Overage Refund <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(post-close)</span></span>
-                  <input type="number" value={overageIn} onChange={e=>setOverageIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
+                  <input type="number" value={miscIn} onChange={e=>handleMiscChange(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-3 pt-2 border-t border-slate-200 dark:border-zinc-700">
                   <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Total Deployed</span>
@@ -3870,7 +3888,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
             {/* Wire Received */}
             <div className="flex items-center gap-3">
               <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Wire Received</span>
-              <input type="number" value={wireIn} onChange={e=>setWireIn(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0"
+              <input type="number" value={wireIn} onChange={e=>handleWireChange(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0"
                   className="flex-1 border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
             </div>
 
@@ -3878,6 +3896,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
             {wire>0?(
               <div className={`rounded-xl p-4 ${dealProfit>=0?"bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900":"bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900"}`}>
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">Profit Calculation</div>
+                {/* Proceeds side */}
                 <div className="space-y-1 mb-2">
                   <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
                     <span>Wire received</span>
@@ -3894,6 +3913,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                     <span className="tabular-nums">{$$p(wire+titleTotal)}</span>
                   </div>
                 </div>
+                {/* Costs side */}
                 <div className="space-y-1 mb-2">
                   <div className="flex justify-between text-sm text-slate-600 dark:text-zinc-300">
                     <span>− Cash to close</span>
@@ -3916,12 +3936,14 @@ function EditClosingModal({ prop, onSave, onClose }) {
                     <span className="tabular-nums">{$$p(totalCosts)}</span>
                   </div>
                 </div>
+                {/* Overage refund added to profit */}
                 {overageRefund>0&&(
                   <div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400 mb-1">
                     <span>+ Overage refund <span className="text-[10px] font-normal opacity-70">(post-close)</span></span>
                     <span className="tabular-nums font-medium">{$$p(overageRefund)}</span>
                   </div>
                 )}
+                {/* Result */}
                 <div className="flex justify-between items-center border-t-2 border-slate-300 dark:border-zinc-600 pt-2 mt-1">
                   <span className="font-bold text-slate-800 dark:text-zinc-100">Deal Profit</span>
                   <span className={`text-2xl font-bold tabular-nums ${dealProfit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$ps(dealProfit)}</span>
@@ -3931,7 +3953,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
               <div className="rounded-xl p-3 text-center bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700">
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Deal Profit</div>
                 <div className="text-lg font-bold text-slate-400 dark:text-zinc-500">— Enter wire above —</div>
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">Break-even wire: {$$p(cashToClose+rehab+moneyCosts+misc-titleTotal)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">Break-even wire: {$$p(baseCosts-titleTotal)}</div>
               </div>
             )}
 
