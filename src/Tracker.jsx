@@ -3865,11 +3865,14 @@ function HistoryPage({ data }) {
       raw.push({date:prop.dateSold,sx:"c",etype:"saleSummary",property:prop.address,propId:prop.id,closingData:prop.closingData,loanId:`sale-${prop.id}`});
     }
   });
-  // Recurring hard-money interest payments, due the 1st of every month the loan was
-  // active — generated for the loan's whole life (past through today) so bookkeepers
-  // can map every payment, not just the loan's start/close events.
+  // Recurring monthly interest payments, due the 1st of every month the loan was active
+  // — generated for the loan's whole life (past through today) so bookkeepers can map
+  // every payment, not just the loan's start/close events. Any loan can be set up with
+  // monthly-paid interest, private or hard money, so this isn't restricted by loanType
+  // (a loanType==="hard" restriction here previously caused every monthly-paid PRIVATE
+  // loan to be silently skipped).
   const addHardPayments = (loan, propAddress, propId) => {
-    if (loan.loanType!=="hard" || !loan.startDate) return;
+    if (!loan.startDate) return;
     const pt = loan.paymentType||"closing";
     if (pt!=="monthly_rate"&&pt!=="monthly_fixed") return;
     // Not monthlyLoanPayment() — that helper returns 0 for any loan with an endDate
@@ -3891,6 +3894,9 @@ function HistoryPage({ data }) {
   data.properties.forEach(prop=>{
     prop.loans.forEach(loan=>addHardPayments(loan, prop.address, prop.id));
   });
+  // Also generate for unassigned monthly-paid loans — money that's still sitting
+  // unplaced but already accruing/paying interest was being skipped entirely before.
+  (data.unassigned||[]).forEach(loan=>addHardPayments(loan, "Unassigned", null));
   // Detect implicit rollovers: loan closed → same lender starts next day (no explicit disposition)
   const startMap={};
   raw.forEach(ev=>{if(ev.etype==="start"&&ev.lender)startMap[`${ev.lender}||${ev.date}`]=ev;});
