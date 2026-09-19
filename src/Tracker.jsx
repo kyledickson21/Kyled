@@ -1321,7 +1321,9 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
         paymentType:l.paymentType||"closing",specialTerms:l.specialTerms||"",
         principalPayoff:String(l.principal||0),
         interestPayoff:String(intEarned),
-        lenderFees:"0",overageRefund:"0",titleMoneyCosts:"0",paidAtTitle:false,
+        // Hard money is settled through title as standard practice; private money is
+        // settled from the wire by default. Still a per-lender toggle either way.
+        lenderFees:"0",overageRefund:"0",titleMoneyCosts:"0",paidAtTitle:l.loanType==="hard",
         customRolling:String(l.principal||0),
         origStartDate:l.startDate||soldDate,
         type:"paidOut",destination:otherProps[0]?.id||"unassigned",newStartDate:nextDay(soldDate),
