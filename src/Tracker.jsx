@@ -4160,15 +4160,6 @@ function HistoryPage({ data }) {
                     </div>
                     <button onClick={()=>ev.lender&&openPanel?.({type:'lender',name:ev.lender})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(ev.lender)}</button>
                     <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5"><button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className={`${ev.propId?"hover:text-blue-600 dark:hover:text-blue-400 transition-colors":""} text-left`}>{ev.property}</button> · {rateLabel}</div>
-                    {ev.etype!=="start"&&(ev.interest||0)>0.01&&(
-                      ev.disposition==="waiveInterest"?(
-                        <div className="text-xs text-amber-500 dark:text-amber-400 mt-0.5 tabular-nums">{h$(ev.interest)} interest waived</div>
-                      ):ev.etype==="rolled"?(
-                        <div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">{h$(ev.interest)} interest rolled in</div>
-                      ):(
-                        <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">incl. {h$(ev.interest)} interest earned</div>
-                      )
-                    )}
                     {roll&&ev.pp>0&&<div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">Rolled from {h$(ev.pp)}</div>}
                     {ev._group&&(
                       <div className="mt-2 space-y-1 border-t border-black/[0.05] dark:border-white/[0.05] pt-1.5">
@@ -4181,32 +4172,32 @@ function HistoryPage({ data }) {
                       </div>
                     )}
                   </div>
-                  <div className="text-right shrink-0 min-w-[90px]">
+                  <div className="text-right shrink-0 min-w-[110px]">
                     {ev.etype==="start"?(
                       <>
                         <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">+{h$(ev.amount)}</div>
-                        {ev.nc>0
-                          ?<div className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{hs(ev.nc)}</div>
-                          :<div className="text-sm font-bold tabular-nums text-violet-500 dark:text-violet-400">→ Rollover</div>
-                        }
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">{ev.nc>0?"lent in":"no new funds"}</div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">Principal {h$(ev.amount)}</div>
                       </>
                     ):ev.etype==="rolled"?(
                       <>
-                        <div className="font-bold text-slate-900 dark:text-zinc-100 tabular-nums">{h$(ev.amount)}</div>
-                        <div className="text-sm font-bold tabular-nums text-violet-500 dark:text-violet-400">→ Continues</div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">no cash out</div>
+                        <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{h$(ev.amount)}</div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">
+                          Principal {h$(ev.principal)}
+                          {ev.disposition==="waiveInterest"?" · Interest waived":(ev.interest||0)>0.01?` · Interest ${h$(ev.interest)}`:""}
+                        </div>
                       </>
                     ):ev.etype==="hardPayment"?(
                       <>
-                        <div className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">−{h$(ev.amount)}</div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">interest paid</div>
+                        <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{h$(ev.amount)}</div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">Interest {h$(ev.amount)}</div>
                       </>
                     ):(
                       <>
                         <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{h$(ev.amount)}</div>
-                        <div className="text-sm font-bold tabular-nums text-red-500 dark:text-red-400">{hs(ev.nc)}</div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">returned</div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">
+                          Principal {h$(ev.principal)}
+                          {ev.disposition==="waiveInterest"?" · Interest waived":(ev.interest||0)>0.01?` · Interest ${h$(ev.interest)}`:""}
+                        </div>
                       </>
                     )}
                     {ev.etype!=="saleSummary"&&(
