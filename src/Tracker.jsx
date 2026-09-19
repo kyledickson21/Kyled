@@ -3091,7 +3091,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       })()}
       {modal?.type==="markSold"&&<MarkSoldModal prop={modal.prop} allProperties={data.properties} onConfirm={(d,disp,cd,ir)=>handleMarkSold(modal.prop,d,disp,cd,ir)} onClose={()=>setModal(null)}/>}
       {modal==="closeLender"&&<CloseLenderModal data={data} update={update} onClose={()=>setModal(null)}/>}
-      {modal?.type==="closePropPicker"&&<ClosePropertyPickerModal properties={data.properties} onPick={prop=>setModal({type:"markSold",prop})} onClose={()=>setModal(null)}/>}
+      {modal?.type==="closePropPicker"&&<ClosePropertyPickerModal properties={data.properties} order={data.propertyOrder||[]} onPick={prop=>setModal({type:"markSold",prop})} onClose={()=>setModal(null)}/>}
       {modal?.type==="quickDraw"&&<QuickDrawModal data={data} onSave={handleQuickDraw} onClose={()=>setModal(null)}/>}
     </div>
   );
@@ -5319,8 +5319,14 @@ function CloseLenderModal({ data, update, onClose }) {
 }
 
 // ─── Close Property Picker Modal ─────────────────────────────────────────────
-function ClosePropertyPickerModal({ properties, onPick, onClose }) {
-  const active=(properties||[]).filter(p=>!p.dateSold);
+function ClosePropertyPickerModal({ properties, order, onPick, onClose }) {
+  // Same manual order as the Properties tab's drag-sort — usually arranged soonest-to-close
+  // first, which is exactly the order you want when picking which one to close out.
+  const manualOrder=order||[];
+  const active=(properties||[]).filter(p=>!p.dateSold).sort((a,b)=>{
+    const ia=manualOrder.indexOf(a.id), ib=manualOrder.indexOf(b.id);
+    return (ia===-1?Infinity:ia)-(ib===-1?Infinity:ib)||(a.id||"").localeCompare(b.id||"");
+  });
   return (
     <Modal title="Close a Property" onClose={onClose}>
       {active.length===0
@@ -7378,7 +7384,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                     {label:"Add Property",modal:"addProp"},
                     {label:"Add Lender Money",modal:{type:"addMoney"}},
                     "divider",
-                    {label:"Close Property & All Loans",modal:{type:"closePropPicker"}},
+                    {label:"Close Property",modal:{type:"closePropPicker"}},
                     {label:"Close Lender Only",modal:"closeLender"},
                     "divider",
                     {label:"Record Draw",modal:{type:"quickDraw"}},
