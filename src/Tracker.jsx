@@ -4990,13 +4990,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const hs = v => prv ? maskMoney($$s(v)) : $$s(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [editing, setEditing] = useState(false);
-  const [editingClosing, setEditingClosing] = useState(false);
   const [moveLoan, setMoveLoan] = useState(null);
-  const payoffTypeLabel = {
-    paidOut:"Paid Out", rollFull:"Rolled Full", rollPrincipal:"Principal Rolled",
-    payInterest:"Interest Paid — Rolled", waiveInterest:"Interest Waived — Rolled",
-    custom:"Partial Roll", alreadyPaid:"Already Paid (Early Close)",
-  };
 
   const prop = data.properties.find(p => p.id === propId);
   if (!prop) return (
@@ -5042,13 +5036,6 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
       })}));
     }
     setMoveLoan(null);
-  };
-
-  const handleEditClosingSave = updates => {
-    update(d=>({...d,
-      properties:d.properties.map(p=>p.id!==propId?p:{...p,dateSold:updates.dateSold,isRental:updates.isRental,closingData:updates.closingData})
-    }));
-    setEditingClosing(false);
   };
 
   const SectionHead = ({title, count}) => (
@@ -5130,41 +5117,6 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
           ))}
         </div>
       ) : null}
-
-      {/* Full closing breakdown */}
-      {prop.dateSold && cd && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between">
-            <SectionHead title="Closing Breakdown"/>
-            <button onClick={()=>setEditingClosing(true)}
-              className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
-              ✏️ Edit Closing
-            </button>
-          </div>
-          <div className="px-5 py-4 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3.5 text-xs">
-            {[
-              ["Wire Received", h$(cd.wire||0)],
-              ["Title Total (paid at title)", h$(cd.titleTotal||0)],
-              ["Overage Refund", h$(cd.overageRefund||0)],
-              ["Cash to Close", h$(cd.cashToClose||0)],
-              ["Rehab", h$(cd.rehab||0)],
-              ["Misc / Holding", h$(cd.misc||0)],
-              ["Money Costs (int. + fees)", h$(cd.moneyCosts||0)],
-              ["Total Costs", h$(cd.totalCosts||0)],
-              ["Self-Funded (Nexus Capital)", h$(cd.selfFunded||0)],
-            ].map(([lbl,val]) => (
-              <div key={lbl}>
-                <div className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-0.5">{lbl}</div>
-                <div className="font-semibold text-slate-800 dark:text-zinc-200 tabular-nums">{val}</div>
-              </div>
-            ))}
-          </div>
-          <div className={`mx-5 mb-5 flex justify-between items-center rounded-xl px-4 py-3 ${(cd.profit||0)>=0?"bg-emerald-50 dark:bg-emerald-900/20":"bg-red-50 dark:bg-red-900/20"}`}>
-            <span className="font-bold text-sm text-slate-800 dark:text-zinc-100">Deal Profit</span>
-            <span className={`text-xl font-bold tabular-nums ${(cd.profit||0)>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{hs(cd.profit||0)}</span>
-          </div>
-        </div>
-      )}
 
       {/* Active loans */}
       {active.length > 0 && (
@@ -5279,11 +5231,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
                 <th className="px-5 pb-2 pt-3 text-left font-semibold">Lender</th>
-                <th className="px-3 pb-2 pt-3 text-left font-semibold">Type</th>
                 <th className="px-3 pb-2 pt-3 text-right font-semibold">Principal</th>
-                <th className="px-3 pb-2 pt-3 text-right font-semibold">Interest</th>
-                <th className="px-3 pb-2 pt-3 text-right font-semibold">Fees</th>
-                <th className="px-3 pb-2 pt-3 text-right font-semibold">Paid at Title</th>
                 <th className="px-5 pb-2 pt-3 text-right font-semibold">Wire Amount</th>
               </tr>
             </thead>
@@ -5296,16 +5244,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                       : <span className="font-semibold text-slate-700 dark:text-zinc-200">{lp.lenderName||"Unknown"}</span>
                     }
                   </td>
-                  <td className="px-3 py-3 text-slate-500 dark:text-zinc-400 whitespace-nowrap">{payoffTypeLabel[lp.type]||lp.type||"—"}</td>
                   <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(lp.principalPayoff||0)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums text-slate-500 dark:text-zinc-400">
-                    {h$(lp.interestPayoff||0)}
-                    {lp.isMonthly&&lp.paidAtTitle&&(lp.titleInterestPayoff||0)>0&&(
-                      <div className="text-[10px] text-amber-600 dark:text-amber-400 whitespace-nowrap">+{h$(lp.titleInterestPayoff)} at title</div>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 text-right tabular-nums text-slate-500 dark:text-zinc-400">{h$(lp.lenderFees||0)}</td>
-                  <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{lp.paidAtTitle?"Yes":"No"}</td>
                   <td className="px-5 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(lp.wireAmount||0)}</td>
                 </tr>
               ))}
@@ -5317,10 +5256,6 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
 
       {prop.loans.length === 0 && (
         <div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">No loans recorded for this property.</div>
-      )}
-
-      {editingClosing&&(
-        <EditClosingModal prop={prop} onSave={handleEditClosingSave} onClose={()=>setEditingClosing(false)}/>
       )}
 
       {moveLoan&&(
