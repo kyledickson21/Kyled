@@ -2100,6 +2100,77 @@ const upsertLender = (d, newLender) => {
   return {...d, lenders:[...(d.lenders||[]).filter(x=>x.name!==newLender.name), newLender]};
 };
 
+// ── Undo support ──────────────────────────────────────────────────────────────
+// Rather than snapshot the whole blob (which would blindly clobber any concurrent
+// change from another tab/device when undone), diff prev vs next by id and build a
+// small inverse PATCH function — add back what was removed, drop what was added,
+// restore modified items to their old values. That patch can then be safely replayed
+// on top of whatever the current data actually is when Undo is pressed (or retried
+// against fresher data on a save conflict), the same way every other update() does.
+const byId = arr => new Map((arr||[]).map(x=>[x.id,x]));
+const diffById = (prevArr=[], nextArr=[]) => {
+  const p=byId(prevArr), n=byId(nextArr);
+  const added=[...n.keys()].filter(id=>!p.has(id));
+  const removed=[...p.values()].filter(x=>!n.has(x.id));
+  const modified=[...n.entries()]
+    .filter(([id,item])=>p.has(id)&&JSON.stringify(p.get(id))!==JSON.stringify(item))
+    .map(([id])=>({id,prevItem:p.get(id)}));
+  return {added,removed,modified};
+};
+const invertArray = (prevArr, nextArr) => {
+  const {added,removed,modified}=diffById(prevArr,nextArr);
+  if(!added.length&&!removed.length&&!modified.length) return null;
+  return currentArr => {
+    let arr = (currentArr||[]).filter(x=>!added.includes(x.id));
+    arr = arr.map(x=>{
+      const mod = modified.find(m=>m.id===x.id);
+      return mod ? mod.prevItem : x;
+    });
+    return [...arr, ...removed];
+  };
+};
+const invertProperty = (prevProp, nextProp) => {
+  if (JSON.stringify(prevProp)===JSON.stringify(nextProp)) return null;
+  const invertLoans = invertArray(prevProp.loans, nextProp.loans);
+  const {loans:_p, ...prevRest} = prevProp;
+  const {loans:_n, ...nextRest} = nextProp;
+  const fieldsChanged = JSON.stringify(prevRest)!==JSON.stringify(nextRest);
+  return currentProp => ({
+    ...currentProp,
+    ...(fieldsChanged ? prevRest : {}),
+    loans: invertLoans ? invertLoans(currentProp.loans) : currentProp.loans,
+  });
+};
+const computeInverse = (prev, next) => {
+  if (prev===next) return null;
+  const propDiff = diffById(prev.properties, next.properties);
+  const propInverses = new Map();
+  (next.properties||[]).forEach(np=>{
+    const pp=(prev.properties||[]).find(p=>p.id===np.id);
+    if(pp){ const inv=invertProperty(pp,np); if(inv) propInverses.set(np.id,inv); }
+  });
+  const invertUnassigned = invertArray(prev.unassigned, next.unassigned);
+  const invertLenders = invertArray(prev.lenders, next.lenders);
+  const otherKeys = Object.keys(next).filter(k=>!['properties','unassigned','lenders'].includes(k));
+  const otherChanges = {};
+  otherKeys.forEach(k=>{ if(JSON.stringify(prev[k])!==JSON.stringify(next[k])) otherChanges[k]=prev[k]; });
+  const nothingChanged = !propDiff.added.length&&!propDiff.removed.length&&propInverses.size===0
+    &&!invertUnassigned&&!invertLenders&&Object.keys(otherChanges).length===0;
+  if (nothingChanged) return null;
+  return current => {
+    let properties=(current.properties||[]).filter(p=>!propDiff.added.includes(p.id));
+    properties=properties.map(p=>propInverses.has(p.id)?propInverses.get(p.id)(p):p);
+    properties=[...properties,...propDiff.removed];
+    return {
+      ...current,
+      ...otherChanges,
+      properties,
+      unassigned: invertUnassigned ? invertUnassigned(current.unassigned) : current.unassigned,
+      lenders: invertLenders ? invertLenders(current.lenders) : current.lenders,
+    };
+  };
+};
+
 // ─── Properties Page ──────────────────────────────────────────────────────────
 function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const prv=usePrivacy();
@@ -6038,6 +6109,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const globalSearchRef=useRef(null);
   const updatedAtRef=useRef(null);
   const saveQueueRef=useRef(Promise.resolve());
+  const undoRef=useRef(null); // { inverse: currentData => revertedData }
+  const [canUndo,setCanUndo]=useState(false);
 
   useEffect(()=>{
     const handler=e=>{
@@ -6159,10 +6232,24 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const update = fn => {
     setData(prev=>{
       const next=typeof fn==="function"?fn(prev):fn
+      const inverse = computeInverse(prev, next);
+      undoRef.current = inverse ? { inverse } : null;
+      setCanUndo(!!inverse);
       saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(next, fn));
       return next
     })
   }
+  const handleUndo = () => {
+    const entry = undoRef.current;
+    if (!entry) return;
+    undoRef.current = null;
+    setCanUndo(false);
+    setData(prev=>{
+      const reverted = entry.inverse(prev);
+      saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(reverted, entry.inverse));
+      return reverted;
+    });
+  };
   const navigate = entity => setPanelStack(s=>[...s,entity]);
   const navStackNavigate = entity => setNavStack(s=>[...s,entity]);
 
@@ -6439,7 +6526,14 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             </div>
 
             {/* Right side — Actions button, adjacent to search */}
-            <div className="flex-1 flex justify-end sm:justify-start pl-0 sm:pl-3">
+            <div className="flex-1 flex justify-end sm:justify-start items-center gap-2 pl-0 sm:pl-3">
+            {canUndo && (
+              <button onClick={handleUndo} title="Undo last change"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border border-slate-300 dark:border-zinc-600 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 shrink-0">
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0"><path fillRule="evenodd" d="M9.707 3.293a1 1 0 010 1.414L7.414 7H12a5 5 0 110 10H8a1 1 0 110-2h4a3 3 0 100-6H7.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                <span className="hidden sm:inline">Undo</span>
+              </button>
+            )}
             <div ref={fabRef} className="relative shrink-0">
               <button onClick={()=>setFabOpen(o=>!o)}
                 className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:border-blue-600 hover:text-white dark:hover:text-white"}`}>
