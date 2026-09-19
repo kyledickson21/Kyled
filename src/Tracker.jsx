@@ -289,10 +289,10 @@ const Inp = ({label,type="text",value,onChange,placeholder,helpText,money,percen
   </div>
 );
 
-const Sel = ({label,value,onChange,options,onBlur}) => (
+const Sel = ({label,value,onChange,options,onBlur,autoFocus}) => (
   <div className="mb-3">
     <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
-    <select value={value??""} onChange={e=>onChange(e.target.value)} onBlur={onBlur}
+    <select value={value??""} onChange={e=>onChange(e.target.value)} onBlur={onBlur} autoFocus={autoFocus}
       className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none">
       {options.map(([v,l])=><option key={v} value={v}>{l}</option>)}
     </select>
@@ -633,7 +633,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
             closing), so it reads as a default rather than an active choice until you
             actually tap in and change it. */}
         {editingPaymentType ? (
-          <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"}
+          <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"} autoFocus
             onChange={v=>{setPaymentTypeTouched(true);s("paymentType")(v);}}
             onBlur={()=>setEditingPaymentType(false)} options={[
             ["closing",       "Pay at Closing — all interest owed when deal closes"],
@@ -713,7 +713,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-2">{blockMsg}</div>}
         {destPickerOpen&&<div className="fixed inset-0 z-40" onClick={()=>setDestPickerOpen(false)}/>}
         <button type="button" onClick={()=>setDestPickerOpen(o=>!o)}
-          className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm flex items-center justify-between gap-2 text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+          className="relative z-50 w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm flex items-center justify-between gap-2 text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
           <span className="truncate">
             {f.destination==="unassigned"
               ? "💼 Unassigned — not yet placed on a property"
@@ -1340,7 +1340,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                     </div>
                     <div className="flex-1 relative">
                       <button type="button" disabled={!hasAmt} onClick={()=>setOpenPicker(openPicker===i?null:i)}
-                        className={`w-full text-left px-2 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs flex items-center justify-between gap-1 ${!hasAmt?"opacity-40 cursor-not-allowed text-slate-400 dark:text-zinc-500":"text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"}`}>
+                        className={`relative z-50 w-full text-left px-2 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs flex items-center justify-between gap-1 ${!hasAmt?"opacity-40 cursor-not-allowed text-slate-400 dark:text-zinc-500":"text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"}`}>
                         <span className="truncate">{pickerLabel}</span>
                         <span className="shrink-0 text-slate-400 dark:text-zinc-500">▾</span>
                       </button>
