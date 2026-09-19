@@ -2813,7 +2813,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       {viewMode==="grid"&&visible.length>0&&(
         <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={visible.map(p=>p.id)} strategy={rectSortingStrategy}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {visible.map(prop=>{
             const active=prop.loans.filter(l=>!l.endDate);
             const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
