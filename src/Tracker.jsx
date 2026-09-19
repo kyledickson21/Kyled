@@ -1007,11 +1007,26 @@ function MoveModal({ item, properties, onMove, onClose }) {
 
 // ─── Quick Draw Modal ─────────────────────────────────────────────────────────
 function QuickDrawModal({ data, onSave, onClose }) {
+  // Same ordering as the Draws tab's default "Highest Chance" sort: longest since the last
+  // draw or purchase (whichever is more recent) floats to the top, so the facility that's
+  // most likely due for a draw is pre-selected without having to switch pages to check.
   const drawLoans = (data.properties||[]).filter(p=>!p.dateSold).flatMap(prop=>
-    (prop.loans||[]).filter(l=>!l.endDate&&l.drawFacility).map(l=>({
-      ...l, propId:prop.id, propAddress:prop.address, remaining:drawRemaining(l),
-    }))
-  );
+    (prop.loans||[]).filter(l=>!l.endDate&&l.drawFacility).map(l=>{
+      const drawDates=(l.drawFacility.draws||[]).map(d=>d.date).filter(Boolean).sort();
+      const lastDrawDate=drawDates.length?drawDates[drawDates.length-1]:null;
+      const lastEventDate=[lastDrawDate,prop.purchaseDate].filter(Boolean).sort().pop()??null;
+      const daysSinceEvent=lastEventDate?daysBetween(lastEventDate,TODAY):null;
+      const eligible=!lastEventDate||daysSinceEvent>=14;
+      return {
+        ...l, propId:prop.id, propAddress:prop.address, remaining:drawRemaining(l),
+        lastDrawDate, lastEventDate, daysSinceEvent, eligible,
+      };
+    })
+  ).sort((a,b)=>{
+    const ea=a.daysSinceEvent??99999, eb=b.daysSinceEvent??99999;
+    if(a.eligible!==b.eligible) return a.eligible?-1:1;
+    return eb-ea;
+  });
   const [selId,setSelId]=useState(drawLoans[0]?.id??'');
   const [date,setDate]=useState(TODAY);
   const [amount,setAmount]=useState('');
@@ -1038,13 +1053,16 @@ function QuickDrawModal({ data, onSave, onClose }) {
           <select value={selId} onChange={e=>setSelId(e.target.value)}
             className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
             {drawLoans.map(l=>(
-              <option key={l.id} value={l.id}>{l.propAddress} — {l.lenderName} (${Math.round(l.remaining).toLocaleString()} avail)</option>
+              <option key={l.id} value={l.id}>
+                {l.propAddress} — {l.lenderName} ({$$(l.remaining)} avail
+                {l.daysSinceEvent!=null?`, ${l.daysSinceEvent}d since ${l.lastDrawDate&&l.lastDrawDate===l.lastEventDate?"last draw":"purchase"}`:""})
+              </option>
             ))}
           </select>
         </div>
 
         {sel&&(
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <div className="rounded-xl bg-slate-50 dark:bg-zinc-800 p-3 text-center">
               <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-1">Committed</div>
               <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 tabular-nums">{$$(totalCommitted)}</div>
@@ -1056,6 +1074,12 @@ function QuickDrawModal({ data, onSave, onClose }) {
             <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 p-3 text-center">
               <div className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-semibold mb-1">Available</div>
               <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{$$(maxDraw)}</div>
+            </div>
+            <div className="rounded-xl bg-slate-50 dark:bg-zinc-800 p-3 text-center">
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-1">Days Since</div>
+              <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 tabular-nums">
+                {sel.daysSinceEvent!=null?`${sel.daysSinceEvent}d`:"—"}
+              </div>
             </div>
           </div>
         )}
