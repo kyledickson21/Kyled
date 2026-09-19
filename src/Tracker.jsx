@@ -184,13 +184,44 @@ function AddressField({ value, onChange }) {
 }
 
 // ─── UI primitives ────────────────────────────────────────────────────────────
-const Inp = ({label,type="text",value,onChange,placeholder,helpText}) => (
+// A "$" input that shows a comma + 2-decimal formatted value (150,000.00) once you click
+// away, and the raw editable number while focused, so typing isn't fighting live comma
+// insertion. Passes plain numeric strings to onChange — same contract as a plain number
+// input, so callers don't need to change how they store, parse, or validate the value.
+const MoneyField = ({value,onChange,className,placeholder,autoFocus}) => {
+  const [focused,setFocused] = useState(false);
+  const n = parseFloat(value);
+  const display = (focused || value===""||value==null||isNaN(n))
+    ? (value ?? "")
+    : n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  return (
+    <input type="text" inputMode="decimal" autoFocus={autoFocus}
+      value={display}
+      placeholder={placeholder}
+      onFocus={()=>setFocused(true)}
+      onBlur={()=>setFocused(false)}
+      onChange={e=>{
+        let raw=e.target.value.replace(/[^0-9.]/g,"");
+        const parts=raw.split(".");
+        if(parts.length>2) raw=parts[0]+"."+parts.slice(1).join("");
+        onChange(raw);
+      }}
+      className={className}/>
+  );
+};
+
+const Inp = ({label,type="text",value,onChange,placeholder,helpText,money}) => (
   <div className="mb-3">
     <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
-    <input type={type} value={value??""} onChange={e=>onChange(e.target.value)}
-      onWheel={e=>e.target.blur()}
-      placeholder={placeholder}
-      className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+    {money ? (
+      <MoneyField value={value} onChange={onChange} placeholder={placeholder}
+        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+    ) : (
+      <input type={type} value={value??""} onChange={e=>onChange(e.target.value)}
+        onWheel={e=>e.target.blur()}
+        placeholder={placeholder}
+        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+    )}
     {helpText&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5">{helpText}</p>}
   </div>
 );
@@ -502,7 +533,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
 
       {/* Amount + Dates */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1">
-        <Inp label="Amount ($) *" type="number" value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
+        <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
         <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
         <DateInp label="End / Payoff Date" value={f.endDate} onChange={s("endDate")} helpText="Leave blank while the loan is active"/>
         <DateInp label="Due Date (optional)" value={f.dueDate} onChange={s("dueDate")} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
@@ -607,7 +638,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           ["fixed","Fixed Amount — flat dollar return (e.g. lend $100k, get back $105k)"],
         ]}/>
         {isFixed
-          ? <Inp label="Fixed Interest Amount ($) *" type="number" value={f.interestRate} onChange={s("interestRate")} placeholder="5000" helpText="Total interest they receive — e.g. lend $100k, get back $105k → enter 5000."/>
+          ? <Inp label="Fixed Interest Amount ($) *" money value={f.interestRate} onChange={s("interestRate")} placeholder="5000" helpText="Total interest they receive — e.g. lend $100k, get back $105k → enter 5000."/>
           : <Inp label="Annual Interest Rate (%) *" type="number" value={f.interestRate} onChange={s("interestRate")} placeholder="10" helpText="Enter 0 for no interest."/>
         }
         <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"} onChange={v=>{setPaymentTypeTouched(true);s("paymentType")(v);}} options={[
@@ -616,7 +647,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           ["monthly_fixed", "Monthly Fixed Amount — set dollar amount each month"],
         ]}/>
         {f.paymentType==="monthly_fixed"&&(
-          <Inp label="Monthly Payment Amount ($) *" type="number" value={f.monthlyPayment} onChange={s("monthlyPayment")} placeholder="500" helpText="Fixed dollar amount lender receives each month"/>
+          <Inp label="Monthly Payment Amount ($) *" money value={f.monthlyPayment} onChange={s("monthlyPayment")} placeholder="500" helpText="Fixed dollar amount lender receives each month"/>
         )}
         <Inp label="Notes (optional)" value={f.specialTerms} onChange={s("specialTerms")} placeholder="Balloon, prepayment penalty, etc."/>
       </div>
@@ -633,7 +664,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           </label>
           {f.drawFacility&&(
             <div className="mt-3 space-y-3">
-              <Inp label="Total Committed ($)" type="number" value={String(f.drawFacility.committed||"")}
+              <Inp label="Total Committed ($)" money value={String(f.drawFacility.committed||"")}
                 onChange={v=>sf(p=>({...p,drawFacility:{...p.drawFacility,committed:v}}))} placeholder="100000"/>
               {(f.drawFacility.draws||[]).length>0&&(
                 <div>
@@ -650,7 +681,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
               <div className="pt-1 border-t border-slate-200 dark:border-zinc-700">
                 <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Add Draw</div>
                 <DateInp label="Draw Date" value={drawDate} onChange={setDrawDate}/>
-                <Inp label="Amount ($)" type="number" value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
+                <Inp label="Amount ($)" money value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
                 <Btn onClick={addDraw} sm color="navy" full>+ Record Draw</Btn>
               </div>
             </div>
@@ -932,7 +963,7 @@ function QuickDrawModal({ data, onSave, onClose }) {
         )}
 
         <DateInp label="Draw Date" value={date} onChange={setDate}/>
-        <Inp label="Draw Amount" type="number" value={amount} onChange={setAmount} placeholder="0"/>
+        <Inp label="Draw Amount" money value={amount} onChange={setAmount} placeholder="0"/>
 
         {amt>maxDraw&&maxDraw>0&&(
           <p className="text-xs text-red-500 dark:text-red-400">Amount exceeds available balance of {$$(maxDraw)}</p>
@@ -991,7 +1022,7 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
               <div key={i} className="space-y-1.5">
                 <div className="flex gap-2 items-center">
                   <div className="w-32 shrink-0">
-                    <input type="number" placeholder="Amount $" value={row.amount} onChange={e=>setRow(i,"amount",e.target.value)}
+                    <MoneyField placeholder="Amount $" value={row.amount} onChange={v=>setRow(i,"amount",v)}
                       className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
                   </div>
                   <div className="flex-1">
@@ -1197,9 +1228,8 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                 <div key={i} className="space-y-1.5">
                   <div className="flex gap-2 items-center">
                     <div className="w-32 shrink-0">
-                      <input type="number" placeholder="$ Amount" value={row.amount}
-                        onChange={e=>{
-                          const val=e.target.value;
+                      <MoneyField placeholder="$ Amount" value={row.amount}
+                        onChange={val=>{
                           const newAmt=parseFloat(val)||0;
                           let newPropId=row.propId;
                           if(row.propId&&row.propId!=="unassigned"){
@@ -1574,18 +1604,18 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           <div className="grid grid-cols-3 gap-2">
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Principal</div>
-                              <input type="number" value={r.principalPayoff} onChange={e=>upd(r.loanId,{principalPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.principalPayoff} onChange={v=>upd(r.loanId,{principalPayoff:v})} className={numIn}/>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">
                                 {r.isMonthly?"Total Interest (full period)":"Interest"}
                               </div>
-                              <input type="number" value={r.interestPayoff} onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})} onWheel={e=>e.target.blur()}
+                              <MoneyField value={r.interestPayoff} onChange={v=>upd(r.loanId,{interestPayoff:v})}
                                 className={r.isMonthly?"w-full border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400 tabular-nums text-amber-700 dark:text-amber-400":numIn}/>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
-                              <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
                             </div>
                           </div>
                           {r.isMonthly&&!r.paidAtTitle&&<p className="text-[10px] text-amber-600 dark:text-amber-400">Total interest over hold period — not deducted from closing wire</p>}
@@ -1595,7 +1625,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
                                   <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Prorated interest from title</div>
-                                  <input type="number" value={r.titleMoneyCosts} onChange={e=>upd(r.loanId,{titleMoneyCosts:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                                  <MoneyField value={r.titleMoneyCosts} onChange={v=>upd(r.loanId,{titleMoneyCosts:v})} className={numIn}/>
                                 </div>
                                 <div>
                                   <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Already paid monthly</div>
@@ -1618,11 +1648,11 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Interest</div>
-                              <input type="number" value={r.interestPayoff} onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.interestPayoff} onChange={v=>upd(r.loanId,{interestPayoff:v})} className={numIn}/>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
-                              <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
                             </div>
                           </div>
                           <div className="text-[10px] text-slate-400 dark:text-zinc-500">Principal {$$p(r.principal)} rolls to next deal</div>
@@ -1636,7 +1666,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           <div className="grid grid-cols-3 gap-2">
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Amount Rolling</div>
-                              <input type="number" value={r.customRolling} onChange={e=>upd(r.loanId,{customRolling:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.customRolling} onChange={v=>upd(r.loanId,{customRolling:v})} className={numIn}/>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">From Wire</div>
@@ -1644,7 +1674,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
-                              <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
                             </div>
                           </div>
                         </div>
@@ -1663,7 +1693,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           </div>
                           <div>
                             <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Misc Fees from Wire (if any)</div>
-                            <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} placeholder="0" className={numIn}/>
+                            <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} placeholder="0" className={numIn}/>
                           </div>
                         </div>
                       )}
@@ -1671,7 +1701,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                       {/* Overage refund (post-close) */}
                       <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-3">
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight">Overage Refund<br/><span className="text-[9px]">(post-close, from this lender)</span></div>
-                        <input type="number" value={r.overageRefund} onChange={e=>upd(r.loanId,{overageRefund:e.target.value})} onWheel={e=>e.target.blur()} placeholder="0" className={numIn}/>
+                        <MoneyField value={r.overageRefund} onChange={v=>upd(r.loanId,{overageRefund:v})} placeholder="0" className={numIn}/>
                       </div>
 
                       {/* Roll destination */}
@@ -1714,9 +1744,8 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-[11px] text-slate-500 dark:text-zinc-400 shrink-0">Interest charged to deal:</span>
-                          <input type="number" value={r.interestPayoff}
-                            onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})}
-                            onWheel={e=>e.target.blur()}
+                          <MoneyField value={r.interestPayoff}
+                            onChange={v=>upd(r.loanId,{interestPayoff:v})}
                             className="flex-1 border border-orange-200 dark:border-orange-800/50 bg-white dark:bg-zinc-800 rounded-lg px-3 py-1.5 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-400 tabular-nums"/>
                         </div>
                       </div>
@@ -1802,11 +1831,11 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Cash to Close</span>
-                  <input type="number" value={cashToCloseIn} onChange={e=>setCashToCloseIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
+                  <MoneyField value={cashToCloseIn} onChange={setCashToCloseIn} className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Rehab</span>
-                  <input type="number" value={rehabIn} onChange={e=>setRehabIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
+                  <MoneyField value={rehabIn} onChange={setRehabIn} className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Money Costs <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(from step 1)</span></span>
@@ -1815,7 +1844,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
-                  <input type="number" value={miscIn} onChange={e=>handleMiscChange(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
+                  <MoneyField value={miscIn} onChange={handleMiscChange} className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-3 pt-2 border-t border-slate-200 dark:border-zinc-700">
                   <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Total Deployed</span>
@@ -1827,7 +1856,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
             {/* Wire Received */}
             <div className="flex items-center gap-3">
               <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Wire Received</span>
-              <input type="number" value={wireIn} onChange={e=>handleWireChange(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0"
+              <MoneyField value={wireIn} onChange={handleWireChange} placeholder="0"
                   className="flex-1 border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
             </div>
 
@@ -1964,8 +1993,8 @@ function PropertyForm({ init, onSave, onClose }) {
       <Inp label="Property Address" value={f.address} onChange={s("address")} placeholder="123 Oak Ave, Nashville, TN"/>
       <DateInp label="Purchase Date" value={f.purchaseDate} onChange={s("purchaseDate")} helpText="Reference only — does not affect calculations"/>
       <div className="grid grid-cols-2 gap-3">
-        <Inp label="Cost to Buy ($)" type="number" value={f.purchasePrice} onChange={s("purchasePrice")} placeholder="150000"/>
-        <Inp label="Rehab Budget ($)" type="number" value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
+        <Inp label="Cost to Buy ($)" money value={f.purchasePrice} onChange={s("purchasePrice")} placeholder="150000"/>
+        <Inp label="Rehab Budget ($)" money value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
       </div>
       <div className="mb-3">
         <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
@@ -1983,7 +2012,7 @@ function PropertyForm({ init, onSave, onClose }) {
           className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
         {rehab>0&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5">Formula: {Math.floor(rehab/1000)} rehab days + 60 listing days = {autoMonths} mo</p>}
       </div>
-      <Inp label="Monthly Utilities & Insurance ($)" type="number" value={f.monthlyHolding} onChange={s("monthlyHolding")} helpText="Pre-filled at $500/mo — covers utilities, insurance, etc."/>
+      <Inp label="Monthly Utilities & Insurance ($)" money value={f.monthlyHolding} onChange={s("monthlyHolding")} helpText="Pre-filled at $500/mo — covers utilities, insurance, etc."/>
       {totalBase>0&&(
         <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs space-y-1">
           <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Estimated Capital Need</div>
@@ -2843,8 +2872,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                                       </div>
                                       <div>
                                         <div className="text-[9px] font-semibold text-blue-400 dark:text-blue-500 uppercase mb-1">Amount ($)</div>
-                                        <input type="number" value={inlineDraw.amt} onChange={e=>setInlineDraw(p=>({...p,amt:e.target.value}))}
-                                          placeholder="25000" onWheel={e=>e.target.blur()}
+                                        <MoneyField value={inlineDraw.amt} onChange={v=>setInlineDraw(p=>({...p,amt:v}))}
+                                          placeholder="25000"
                                           className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
                                       </div>
                                       <button type="button" onClick={commitInlineDraw}
@@ -3671,18 +3700,18 @@ function EditClosingModal({ prop, onSave, onClose }) {
                           <div className="grid grid-cols-3 gap-2">
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Principal</div>
-                              <input type="number" value={r.principalPayoff} onChange={e=>upd(r.loanId,{principalPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.principalPayoff} onChange={v=>upd(r.loanId,{principalPayoff:v})} className={numIn}/>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">
                                 {r.isMonthly?"Total Interest (full period)":"Interest"}
                               </div>
-                              <input type="number" value={r.interestPayoff} onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})} onWheel={e=>e.target.blur()}
+                              <MoneyField value={r.interestPayoff} onChange={v=>upd(r.loanId,{interestPayoff:v})}
                                 className={r.isMonthly?"w-full border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400 tabular-nums text-amber-700 dark:text-amber-400":numIn}/>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
-                              <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
                             </div>
                           </div>
                           {r.isMonthly&&!r.paidAtTitle&&<p className="text-[10px] text-amber-600 dark:text-amber-400">Total interest over hold period — not deducted from closing wire</p>}
@@ -3692,7 +3721,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
                                   <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Prorated interest from title</div>
-                                  <input type="number" value={r.titleMoneyCosts} onChange={e=>upd(r.loanId,{titleMoneyCosts:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                                  <MoneyField value={r.titleMoneyCosts} onChange={v=>upd(r.loanId,{titleMoneyCosts:v})} className={numIn}/>
                                 </div>
                                 <div>
                                   <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Already paid monthly</div>
@@ -3715,11 +3744,11 @@ function EditClosingModal({ prop, onSave, onClose }) {
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Interest</div>
-                              <input type="number" value={r.interestPayoff} onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.interestPayoff} onChange={v=>upd(r.loanId,{interestPayoff:v})} className={numIn}/>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
-                              <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
                             </div>
                           </div>
                           <div className="text-[10px] text-slate-400 dark:text-zinc-500">Principal {$$p(r.principal)} rolls to next deal</div>
@@ -3733,7 +3762,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                           <div className="grid grid-cols-3 gap-2">
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Amount Rolling</div>
-                              <input type="number" value={r.customRolling} onChange={e=>upd(r.loanId,{customRolling:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.customRolling} onChange={v=>upd(r.loanId,{customRolling:v})} className={numIn}/>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">From Wire</div>
@@ -3741,7 +3770,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
-                              <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} className={numIn}/>
+                              <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
                             </div>
                           </div>
                         </div>
@@ -3760,7 +3789,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                           </div>
                           <div>
                             <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Misc Fees from Wire (if any)</div>
-                            <input type="number" value={r.lenderFees} onChange={e=>upd(r.loanId,{lenderFees:e.target.value})} onWheel={e=>e.target.blur()} placeholder="0" className={numIn}/>
+                            <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} placeholder="0" className={numIn}/>
                           </div>
                         </div>
                       )}
@@ -3768,7 +3797,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                       {/* Overage refund (post-close) */}
                       <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-3">
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight">Overage Refund<br/><span className="text-[9px]">(post-close, from this lender)</span></div>
-                        <input type="number" value={r.overageRefund} onChange={e=>upd(r.loanId,{overageRefund:e.target.value})} onWheel={e=>e.target.blur()} placeholder="0" className={numIn}/>
+                        <MoneyField value={r.overageRefund} onChange={v=>upd(r.loanId,{overageRefund:v})} placeholder="0" className={numIn}/>
                       </div>
                     </div>
                   );
@@ -3792,9 +3821,8 @@ function EditClosingModal({ prop, onSave, onClose }) {
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-[11px] text-slate-500 dark:text-zinc-400 shrink-0">Interest charged to deal:</span>
-                          <input type="number" value={r.interestPayoff}
-                            onChange={e=>upd(r.loanId,{interestPayoff:e.target.value})}
-                            onWheel={e=>e.target.blur()}
+                          <MoneyField value={r.interestPayoff}
+                            onChange={v=>upd(r.loanId,{interestPayoff:v})}
                             className="flex-1 border border-orange-200 dark:border-orange-800/50 bg-white dark:bg-zinc-800 rounded-lg px-3 py-1.5 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-400 tabular-nums"/>
                         </div>
                       </div>
@@ -3880,11 +3908,11 @@ function EditClosingModal({ prop, onSave, onClose }) {
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Cash to Close</span>
-                  <input type="number" value={cashToCloseIn} onChange={e=>setCashToCloseIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
+                  <MoneyField value={cashToCloseIn} onChange={setCashToCloseIn} className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Rehab</span>
-                  <input type="number" value={rehabIn} onChange={e=>setRehabIn(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
+                  <MoneyField value={rehabIn} onChange={setRehabIn} className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Money Costs <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(from step 1)</span></span>
@@ -3893,7 +3921,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
-                  <input type="number" value={miscIn} onChange={e=>handleMiscChange(e.target.value)} onWheel={e=>e.target.blur()} className={inputCls}/>
+                  <MoneyField value={miscIn} onChange={handleMiscChange} className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-3 pt-2 border-t border-slate-200 dark:border-zinc-700">
                   <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Total Deployed</span>
@@ -3905,7 +3933,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
             {/* Wire Received */}
             <div className="flex items-center gap-3">
               <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Wire Received</span>
-              <input type="number" value={wireIn} onChange={e=>handleWireChange(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0"
+              <MoneyField value={wireIn} onChange={handleWireChange} placeholder="0"
                   className="flex-1 border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
             </div>
 
@@ -6229,14 +6257,14 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
         <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
           <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-4">Edit Loan Terms</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Inp label="Principal ($)" value={ef.principal} onChange={v=>setEf(f=>({...f,principal:v}))} type="number"/>
+            <Inp label="Principal ($)" value={ef.principal} onChange={v=>setEf(f=>({...f,principal:v}))} money/>
             <DateInp label="Start Date" value={ef.startDate} onChange={v=>setEf(f=>({...f,startDate:v}))}/>
             <DateInp label="End Date (leave blank if active)" value={ef.endDate} onChange={v=>setEf(f=>({...f,endDate:v}))}/>
             <DateInp label="Due Date (optional)" value={ef.dueDate} onChange={v=>setEf(f=>({...f,dueDate:v}))} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
             <Sel label="Interest Type" value={ef.interestType} onChange={v=>setEf(f=>({...f,interestType:v}))} options={[["percentage","% Per Year"],["fixed","Fixed $ Amount"]]}/>
-            <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} type="number"/>
+            <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} money={ef.interestType==="fixed"}/>
             <Sel label="Payment Type" value={ef.paymentType} onChange={v=>setEf(f=>({...f,paymentType:v}))} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"]]}/>
-            {ef.paymentType==="monthly_fixed"&&<Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={v=>setEf(f=>({...f,monthlyPayment:v}))} type="number"/>}
+            {ef.paymentType==="monthly_fixed"&&<Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={v=>setEf(f=>({...f,monthlyPayment:v}))} money/>}
             <div className="sm:col-span-2"><Inp label="Notes" value={ef.specialTerms} onChange={v=>setEf(f=>({...f,specialTerms:v}))}/></div>
           </div>
           {loan.loanType==="hard"&&(
@@ -6252,7 +6280,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
               </label>
               {ef.drawFacility&&(
                 <div className="mt-3 space-y-3">
-                  <Inp label="Total Committed ($)" type="number" value={String(ef.drawFacility.committed||"")}
+                  <Inp label="Total Committed ($)" money value={String(ef.drawFacility.committed||"")}
                     onChange={v=>setEf(f=>({...f,drawFacility:{...f.drawFacility,committed:v}}))} placeholder="100000"/>
                   {(ef.drawFacility.draws||[]).length>0&&(
                     <div>
@@ -6269,7 +6297,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
                   <div className="pt-1 border-t border-slate-200 dark:border-zinc-700">
                     <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Add Draw</div>
                     <DateInp label="Draw Date" value={drawDate} onChange={setDrawDate}/>
-                    <Inp label="Amount ($)" type="number" value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
+                    <Inp label="Amount ($)" money value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
                     <Btn onClick={addDraw} sm color="navy" full>+ Record Draw</Btn>
                   </div>
                 </div>
