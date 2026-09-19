@@ -454,6 +454,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const [destPickerOpen,setDestPickerOpen]=useState(false);
   const [editingPaymentType,setEditingPaymentType]=useState(false);
   const [editingEndDate,setEditingEndDate]=useState(false);
+  const [editingDueDate,setEditingDueDate]=useState(false);
   const paymentTypeLabel = {closing:"Pay at Closing", monthly_rate:"Monthly Interest-Only", monthly_fixed:"Monthly Fixed Amount"};
   const s = k => v => sf(p=>({...p,[k]:v}));
 
@@ -600,17 +601,33 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
 
       {/* Loan details */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1">
-        <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
-        <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
-        <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={[
-          ["percentage","% Rate — accrues daily (e.g. 10%/yr)"],
-          ["fixed","Fixed Amount — flat dollar return (e.g. lend $100k, get back $105k)"],
-        ]}/>
-        {isFixed
-          ? <Inp label="Fixed Interest Amount ($) *" money value={f.interestRate} onChange={s("interestRate")} placeholder="5000" helpText="Total interest they receive — e.g. lend $100k, get back $105k → enter 5000."/>
-          : <Inp label="Annual Interest Rate (%) *" percent value={f.interestRate} onChange={s("interestRate")} placeholder="10" helpText="Enter 0 for no interest."/>
-        }
-        <DateInp label="Due Date (optional)" value={f.dueDate} onChange={s("dueDate")} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
+        <div className="grid grid-cols-2 gap-3">
+          <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
+          <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={[
+            ["percentage","% Rate"],
+            ["fixed","Fixed Amount"],
+          ]}/>
+          {isFixed
+            ? <Inp label="Fixed Interest ($) *" money value={f.interestRate} onChange={s("interestRate")} placeholder="5000"/>
+            : <Inp label="Annual Rate (%) *" percent value={f.interestRate} onChange={s("interestRate")} placeholder="10"/>
+          }
+        </div>
+        {isFixed&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-3">Total interest they receive — e.g. lend $100k, get back $105k → enter 5000.</p>}
+
+        {/* Due date — optional, almost always left blank, so it gets the same muted
+            "default" treatment as How Interest Is Paid below instead of a full field. */}
+        {editingDueDate ? (
+          <DateInp label="Due Date (optional)" value={f.dueDate} onChange={s("dueDate")} autoFocus onBlur={()=>setEditingDueDate(false)} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
+        ) : (
+          <button type="button" onClick={()=>setEditingDueDate(true)}
+            className="w-full flex items-center justify-between px-3 py-1.5 mb-2 rounded-lg text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
+            <span>Due Date{!f.dueDate?" (default)":""}</span>
+            <span className="font-medium">{f.dueDate||"None"}</span>
+          </button>
+        )}
 
         {/* How interest is paid — auto-set by lender type (hard → monthly, private →
             closing), so it reads as a default rather than an active choice until you
