@@ -39,10 +39,13 @@ const yearDays = l => l?.loanType==="hard" ? 360 : 365;
 // (a loan's own loanType decides the defaults), so nothing changes for a lender until it's
 // explicitly customized — see the History tab's addHardPayments for how these are used.
 const defaultLenderPaymentSettings = loanType => ({
-  graceMonth: loanType==="hard",   // skip the first month before billing starts
-  payFirstAtClosing: false,         // first month + prorated stub charged at closing instead
-  payInArrears: false,              // only used with payFirstAtClosing — bills on the 1st for
-                                     // the month that just ended, instead of the month starting
+  graceMonth: loanType==="hard",   // skip the first month before billing starts (only used
+                                    // when prorateStubAtClosing is off)
+  prorateStubAtClosing: false,      // prorated interest from closing through the end of that
+                                     // month is charged at closing instead of rolled into a
+                                     // later payment
+  firstFullMonthAtClosing: false,   // on top of the stub, ALSO prepay the next full calendar
+                                     // month at closing (only meaningful with the stub above)
   dayCountBasis: loanType==="hard" ? 360 : 365,
   monthlyMethod: "perDiem",         // "perDiem" (actual days that month) or "flat" (rate/12 every time)
   drawFee: 0,                       // flat $ fee added for each draw captured in a payment
@@ -4570,17 +4573,16 @@ function HistoryPage({ data }) {
       }
     };
 
-    if (settings.payFirstAtClosing) {
-      // The prorated stub (closing day through end of that month) and the first full
-      // month's payment are both charged at closing, outside the recurring cycle — so the
-      // schedule here starts with the SECOND calendar month, and every entry covers one
-      // clean full month (no catch-up proration needed). By default it's billed in advance,
-      // on that same month's own 1st; with payInArrears, the bill instead posts on the 1st
-      // of the FOLLOWING month (paying for the month that just ended) — which can mean the
-      // very next 1st has nothing due at all, if that month was already the one prepaid at
-      // closing.
-      let cy=sy, cm=sm+2; while(cm>12){cm-=12;cy+=1;}
-      let prevDate = monthsLater(sy,sm,1,1); // 1st of the month right after closing (already paid)
+    if (settings.prorateStubAtClosing) {
+      // The prorated stub (closing day through end of that month) is charged at closing,
+      // outside the recurring cycle — and, if firstFullMonthAtClosing is also on, the next
+      // full calendar month is prepaid there too. Either way, the regular cycle only covers
+      // calendar months that weren't already settled at closing, and always bills in
+      // arrears — the 1st pays for the month that just ended, same as every other lender —
+      // so if the next month was also prepaid, the following 1st has nothing due at all.
+      const skip = settings.firstFullMonthAtClosing ? 2 : 1;
+      let cy=sy, cm=sm+skip; while(cm>12){cm-=12;cy+=1;}
+      let prevDate = `${cy}-${String(cm).padStart(2,'0')}-01`; // start of the first period not already prepaid
       while (true) {
         const periodStart = `${cy}-${String(cm).padStart(2,'0')}-01`;
         if (periodStart>endBound) break;
@@ -4595,8 +4597,7 @@ function HistoryPage({ data }) {
           const drawStart = d.date>prevDate ? d.date : prevDate;
           amount += settings.monthlyMethod==="flat" ? (d.amount||0)*(loan.interestRate||0)/1200 : (d.amount||0)*dailyRate*daysBetween(drawStart,periodStart);
         });
-        let billY=cy, billM=cm;
-        if (settings.payInArrears) { billM+=1; if(billM>12){billM=1;billY+=1;} }
+        let billY=cy, billM=cm+1; if(billM>12){billM=1;billY+=1;} // always arrears
         const dateStr = `${billY}-${String(billM).padStart(2,'0')}-01`;
         pushPayment(dateStr, amount+feeFor(prevDate,periodStart));
         prevDate = periodStart;
@@ -6309,32 +6310,32 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
         <div className="space-y-3">
           <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3 cursor-pointer">
             <div>
-              <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Pays first month up front</div>
-              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Prorated stub interest + the first full month are charged at closing, not billed later</div>
+              <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Prorates stub at closing</div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Interest from closing through the end of that month is charged at closing, not rolled into a later payment. Billing always resumes in arrears — the 1st pays for the month that just ended.</div>
             </div>
-            <div onClick={()=>setPsForm(f=>({...f,payFirstAtClosing:!f.payFirstAtClosing}))}
-              className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer shrink-0 ${psForm.payFirstAtClosing?"bg-blue-500":"bg-slate-200 dark:bg-zinc-600"}`}>
-              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${psForm.payFirstAtClosing?"translate-x-5":""}`}/>
+            <div onClick={()=>setPsForm(f=>({...f,prorateStubAtClosing:!f.prorateStubAtClosing}))}
+              className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer shrink-0 ${psForm.prorateStubAtClosing?"bg-blue-500":"bg-slate-200 dark:bg-zinc-600"}`}>
+              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${psForm.prorateStubAtClosing?"translate-x-5":""}`}/>
             </div>
           </label>
 
-          <label className={`flex items-center justify-between gap-3 rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-900/10 px-4 py-3 ml-4 ${!psForm.payFirstAtClosing?"opacity-40 pointer-events-none":"cursor-pointer"}`}>
+          <label className={`flex items-center justify-between gap-3 rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-900/10 px-4 py-3 ml-4 ${!psForm.prorateStubAtClosing?"opacity-40 pointer-events-none":"cursor-pointer"}`}>
             <div>
-              <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Bills in arrears</div>
-              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">The 1st pays for the month that just ended, not the month starting — e.g. loan starts Jul 28, first month (Aug) paid at closing, so Sep 1 has nothing due; Oct 1 is the first real payment, covering September</div>
+              <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Also prepays the next full month</div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">On top of the stub, one full calendar month is also charged at closing — e.g. close Jul 28: stub covers the rest of July, August is also paid up front, so Sep 1 has nothing due and Oct 1 is the first real payment, covering September</div>
             </div>
-            <div onClick={()=>psForm.payFirstAtClosing&&setPsForm(f=>({...f,payInArrears:!f.payInArrears}))}
-              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${psForm.payInArrears?"bg-amber-500":"bg-slate-200 dark:bg-zinc-600"}`}>
-              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${psForm.payInArrears?"translate-x-5":""}`}/>
+            <div onClick={()=>psForm.prorateStubAtClosing&&setPsForm(f=>({...f,firstFullMonthAtClosing:!f.firstFullMonthAtClosing}))}
+              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${psForm.firstFullMonthAtClosing?"bg-amber-500":"bg-slate-200 dark:bg-zinc-600"}`}>
+              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${psForm.firstFullMonthAtClosing?"translate-x-5":""}`}/>
             </div>
           </label>
 
-          <label className={`flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3 ${psForm.payFirstAtClosing?"opacity-40 pointer-events-none":"cursor-pointer"}`}>
+          <label className={`flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3 ${psForm.prorateStubAtClosing?"opacity-40 pointer-events-none":"cursor-pointer"}`}>
             <div>
               <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Gives a grace period month</div>
               <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">No payment due on a 1st before the loan's one-month anniversary; the first payment prorates back to origination</div>
             </div>
-            <div onClick={()=>!psForm.payFirstAtClosing&&setPsForm(f=>({...f,graceMonth:!f.graceMonth}))}
+            <div onClick={()=>!psForm.prorateStubAtClosing&&setPsForm(f=>({...f,graceMonth:!f.graceMonth}))}
               className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${psForm.graceMonth?"bg-blue-500":"bg-slate-200 dark:bg-zinc-600"}`}>
               <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${psForm.graceMonth?"translate-x-5":""}`}/>
             </div>
