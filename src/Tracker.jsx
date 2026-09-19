@@ -2712,12 +2712,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             </div>
           )}
         </div>
-      ) : (
-        <div className="mb-4 rounded-2xl border border-dashed border-violet-300 dark:border-violet-800 px-4 py-2.5 flex items-center justify-center gap-1.5 bg-violet-50/50 dark:bg-violet-900/10">
-          <span className="text-sm font-semibold text-violet-700 dark:text-violet-400">✅ All Money Placed</span>
-          <span className="text-xs text-slate-400 dark:text-zinc-500">— no idle funds</span>
-        </div>
-      )}
+      ) : null}
 
       {visible.length===0&&(
         <div className="text-center py-12 text-slate-400 dark:text-zinc-500 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl">
@@ -6758,12 +6753,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
             </div>
           )}
         </div>
-      ) : (
-        <div className="mb-4 rounded-2xl border border-dashed border-violet-300 dark:border-violet-800 px-4 py-2.5 flex items-center justify-center gap-1.5 bg-violet-50/50 dark:bg-violet-900/10">
-          <span className="text-sm font-semibold text-violet-700 dark:text-violet-400">✅ All Money Placed</span>
-          <span className="text-xs text-slate-400 dark:text-zinc-500">— no idle funds</span>
-        </div>
-      )}
+      ) : null}
 
       {/* ── Upcoming Due Dates (glanceable — fixed maturities + recurring hard money) ── */}
       {dueSchedule.length > 0 && (
