@@ -1448,8 +1448,15 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
       lenderPayoffs:rows.map(r=>({
         loanId:r.loanId,lenderName:r.lenderName,type:r.type,
         paidAtTitle:r.paidAtTitle||false,
+        isMonthly:r.isMonthly||false,
         principalPayoff:parseFloat(r.principalPayoff)||0,
         interestPayoff:parseFloat(r.interestPayoff)||0,
+        // For a monthly-paid loan (mostly hard money), interestPayoff above is the TOTAL
+        // interest over the whole hold period, most of which was already paid month to
+        // month — titleMoneyCosts is just the prorated last-partial-month portion Title
+        // actually pays at closing. Save it separately so History can show what Title paid,
+        // not the whole period's interest.
+        titleInterestPayoff:r.isMonthly&&r.paidAtTitle?(parseFloat(r.titleMoneyCosts)||0):0,
         lenderFees:parseFloat(r.lenderFees)||0,
         wireAmount:wireContrib(r),
         totalPayoff:(parseFloat(r.principalPayoff)||0)+(parseFloat(r.interestPayoff)||0)+(parseFloat(r.lenderFees)||0),
@@ -3448,6 +3455,16 @@ function EditClosingModal({ prop, onSave, onClose }) {
   const [rehabIn,setRehabIn]=useState(String(cd.rehab||""));
   const [miscIn,setMiscIn]=useState(String(cd.misc||""));
   const [overageIn,setOverageIn]=useState(String(cd.overageRefund||""));
+  // Monthly-paid (mostly hard money) lender payoffs on this closing — the prorated last-
+  // partial-month interest Title pays at close is tracked separately from the loan's own
+  // terms, and older closings never captured it at all, so it needs to be fixable here.
+  const monthlyPayoffs=(cd.lenderPayoffs||[]).filter(lp=>{
+    const loan=(prop.loans||[]).find(l=>l.id===lp.loanId);
+    return loan&&(loan.paymentType==="monthly_rate"||loan.paymentType==="monthly_fixed");
+  });
+  const [titleInterestIn,setTitleInterestIn]=useState(()=>Object.fromEntries(
+    monthlyPayoffs.map(lp=>[lp.loanId,String(lp.titleInterestPayoff||"")])
+  ));
 
   const wire=parseFloat(wireIn)||0;
   const cashToClose=parseFloat(cashToCloseIn)||0;
@@ -3497,13 +3514,32 @@ function EditClosingModal({ prop, onSave, onClose }) {
           </div>
         )}
 
+        {monthlyPayoffs.length>0&&(
+          <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 p-3.5 space-y-2.5">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400">Prorated Interest Paid by Title</div>
+            {monthlyPayoffs.map(lp=>(
+              <div key={lp.loanId} className="flex items-center justify-between gap-3">
+                <span className="text-xs font-medium text-slate-700 dark:text-zinc-200 truncate">{lp.lenderName}</span>
+                <input type="number" value={titleInterestIn[lp.loanId]??""} onChange={e=>setTitleInterestIn(v=>({...v,[lp.loanId]:e.target.value}))}
+                  placeholder="0" className="w-28 border border-amber-200 dark:border-amber-800/50 bg-white dark:bg-zinc-800 rounded-lg px-2.5 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400 tabular-nums text-amber-700 dark:text-amber-400"/>
+              </div>
+            ))}
+            <p className="text-[10px] text-amber-600 dark:text-amber-400">The last partial month's interest Title paid directly, separate from what was already paid monthly — this is what shows in History.</p>
+          </div>
+        )}
+
         <div className={`flex justify-between items-center rounded-xl px-4 py-3 ${profit>=0?"bg-emerald-50 dark:bg-emerald-900/20":"bg-red-50 dark:bg-red-900/20"}`}>
           <span className="font-bold text-sm text-slate-800 dark:text-zinc-100">Deal Profit</span>
           <span className={`text-xl font-bold tabular-nums ${profit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{$$ps(profit)}</span>
         </div>
 
         <div className="flex gap-2 pt-1">
-          <Btn onClick={()=>onSave({dateSold,isRental,closingData:{...cd,wire,cashToClose,rehab,misc,totalCosts,overageRefund:overage,profit}})} color="navy" full>Save Changes</Btn>
+          <Btn onClick={()=>{
+            const updatedPayoffs=(cd.lenderPayoffs||[]).map(lp=>
+              titleInterestIn.hasOwnProperty(lp.loanId)?{...lp,titleInterestPayoff:parseFloat(titleInterestIn[lp.loanId])||0}:lp
+            );
+            onSave({dateSold,isRental,closingData:{...cd,wire,cashToClose,rehab,misc,totalCosts,overageRefund:overage,profit,lenderPayoffs:updatedPayoffs}});
+          }} color="navy" full>Save Changes</Btn>
           <Btn onClick={onClose} color="ghost">Cancel</Btn>
         </div>
       </div>
@@ -3815,9 +3851,14 @@ function HistoryPage({ data }) {
         const rollingTypes=["rollFull","rollPrincipal","payInterest","waiveInterest","custom"];
         const isRoll=disp&&rollingTypes.includes(disp.type);
         const etype=isRoll?"rolled":(prop.dateSold&&!loan.endDate?"sold":"closed");
+        // A monthly-paid loan's payoff (calcBalance) is principal-only, since interest is
+        // normally settled month to month — but a property can sell mid-month, and any
+        // prorated last-partial-month interest Title pays directly gets recorded on the
+        // closing as titleInterestPayoff. Fold that in here so it doesn't show as $0.
+        const titleInterest=disp?.titleInterestPayoff||0;
         // waiveInterest: interest forgiven, principal unchanged — show principal only as amount
-        const dispAmt=disp?.type==="waiveInterest"?loan.principal:finBal;
-        raw.push({date:end,sx:"a",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype,disposition:disp?.type||null,amount:dispAmt,principal:loan.principal||0,interest:finBal-(loan.principal||0),property:prop.address,propId:prop.id,rate:loan.interestRate||0,loanId:loan.id});
+        const dispAmt=disp?.type==="waiveInterest"?loan.principal:finBal+titleInterest;
+        raw.push({date:end,sx:"a",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype,disposition:disp?.type||null,amount:dispAmt,principal:loan.principal||0,interest:(finBal-(loan.principal||0))+titleInterest,property:prop.address,propId:prop.id,rate:loan.interestRate||0,loanId:loan.id});
       }
     });
     if(prop.dateSold&&prop.closingData){
