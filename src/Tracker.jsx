@@ -2312,9 +2312,17 @@ const splitPiece = (fund, amount) => {
     : fund.monthlyPayment;
   return {...fund, id:uid(), principal:amount, interestRate, monthlyPayment, drawFacility:null};
 };
+// Every brand-new hard money lender starts with the stub prorated at closing and a grace
+// month, but not the next full month prepaid too — the house default. Private lenders keep
+// the generic fallback (no explicit paymentSettings) since they don't share that convention.
+const newLenderDefaultSettings = loanType => loanType==="hard"
+  ? {...defaultLenderPaymentSettings("hard"), prorateStubAtClosing:true}
+  : null;
 const upsertLender = (d, newLender) => {
   if (!newLender) return d;
-  return {...d, lenders:[...(d.lenders||[]).filter(x=>x.name!==newLender.name), newLender]};
+  const settings = newLender.paymentSettings || newLenderDefaultSettings(newLender.loanType);
+  const withSettings = settings ? {...newLender, paymentSettings:settings} : newLender;
+  return {...d, lenders:[...(d.lenders||[]).filter(x=>x.name!==withSettings.name), withSettings]};
 };
 
 // ── Undo support ──────────────────────────────────────────────────────────────
@@ -4575,12 +4583,14 @@ function HistoryPage({ data }) {
 
     if (settings.prorateStubAtClosing) {
       // The prorated stub (closing day through end of that month) is charged at closing,
-      // outside the recurring cycle — and, if firstFullMonthAtClosing is also on, the next
-      // full calendar month is prepaid there too. Either way, the regular cycle only covers
-      // calendar months that weren't already settled at closing, and always bills in
-      // arrears — the 1st pays for the month that just ended, same as every other lender —
-      // so if the next month was also prepaid, the following 1st has nothing due at all.
-      const skip = settings.firstFullMonthAtClosing ? 2 : 1;
+      // outside the recurring cycle. On top of that, up to one extra calendar month can be
+      // skipped before regular billing starts: firstFullMonthAtClosing means that month is
+      // ALSO prepaid at closing, while graceMonth means it's simply not charged at all (a
+      // true grace period) — the two are independent and can combine. Either way, the
+      // regular cycle only covers calendar months that weren't already accounted for, and
+      // always bills in arrears — the 1st pays for the month that just ended, same as every
+      // other lender — so a skipped month can mean the following 1st has nothing due at all.
+      const skip = 1 + (settings.firstFullMonthAtClosing?1:0) + (settings.graceMonth?1:0);
       let cy=sy, cm=sm+skip; while(cm>12){cm-=12;cy+=1;}
       let prevDate = `${cy}-${String(cm).padStart(2,'0')}-01`; // start of the first period not already prepaid
       while (true) {
@@ -6330,12 +6340,16 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
             </div>
           </label>
 
-          <label className={`flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3 ${psForm.prorateStubAtClosing?"opacity-40 pointer-events-none":"cursor-pointer"}`}>
+          <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3 cursor-pointer">
             <div>
               <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Gives a grace period month</div>
-              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">No payment due on a 1st before the loan's one-month anniversary; the first payment prorates back to origination</div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
+                {psForm.prorateStubAtClosing
+                  ? "On top of the stub, one extra calendar month is skipped entirely — not charged at closing, not billed later either"
+                  : "No payment due on a 1st before the loan's one-month anniversary; the first payment prorates back to origination"}
+              </div>
             </div>
-            <div onClick={()=>!psForm.prorateStubAtClosing&&setPsForm(f=>({...f,graceMonth:!f.graceMonth}))}
+            <div onClick={()=>setPsForm(f=>({...f,graceMonth:!f.graceMonth}))}
               className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${psForm.graceMonth?"bg-blue-500":"bg-slate-200 dark:bg-zinc-600"}`}>
               <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${psForm.graceMonth?"translate-x-5":""}`}/>
             </div>
