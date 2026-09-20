@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, Fragment } from "react";
 import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, deleteLenderAccount } from './supabase'
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -5832,6 +5832,268 @@ function DrawsPage({ data }) {
   );
 }
 
+// ─── Whiteboard ───────────────────────────────────────────────────────────────
+// A deliberately manual, standalone planning board — separate from the rest of the
+// tracker's auto-computed numbers. You drag cards onto a week to plan upcoming money in
+// (usually an expected sale) and money out (usually a purchase closing), so you can see at
+// a glance what's coming and whether you'll have the cash for it. Nothing here feeds back
+// into properties/loans/history; it's just a whiteboard.
+const wbMondayOf = dateStr => {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dt = new Date(y,m-1,d);
+  const day = dt.getDay();
+  dt.setDate(dt.getDate() + (day===0?-6:1-day));
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+};
+const wbAddDays = (dateStr,n) => {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dt = new Date(y,m-1,d+n);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+};
+const wbFmtDate = dateStr => {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+};
+
+const WhiteboardCardVisual = ({ card, h$, onEdit, onRemove, navigate, dragHandleProps }) => {
+  const isIn = card.direction==="in";
+  return (
+    <div className={`rounded-xl border p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm select-none ${isIn?"border-emerald-300 dark:border-emerald-700":"border-red-300 dark:border-red-700"}`}
+      {...(dragHandleProps||{})}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          {card.kind==="property"
+            ? <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'property',id:card.propId});}}
+                className="font-semibold text-[13px] text-blue-600 dark:text-blue-400 hover:underline truncate text-left block w-full">{card.address}</button>
+            : <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-100 truncate">{card.address}</div>
+          }
+          <div className={`text-lg font-black tabular-nums mt-0.5 ${isIn?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>
+            {isIn?"+":"−"}{h$(card.amount)}
+          </div>
+        </div>
+        {(onEdit||onRemove)&&(
+          <div className="flex flex-col gap-1 shrink-0">
+            {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-[11px]">✏️</button>}
+            {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const WhiteboardCard = ({ card, h$, onEdit, onRemove, navigate }) => {
+  const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id});
+  const style = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
+  return (
+    <div ref={setNodeRef} style={style} className={`cursor-grab active:cursor-grabbing touch-none ${isDragging?"opacity-30":""}`}>
+      <WhiteboardCardVisual card={card} h$={h$} onEdit={onEdit} onRemove={onRemove} navigate={navigate} dragHandleProps={{...attributes,...listeners}}/>
+    </div>
+  );
+};
+
+const WhiteboardColumn = ({ id, label, sub, isThisWeek, isUnscheduled, net, h$, children, empty }) => {
+  const {setNodeRef,isOver} = useDroppable({id});
+  return (
+    <div ref={setNodeRef}
+      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":isThisWeek?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"}`}>
+      <div className="px-1 pb-2 mb-2 border-b border-slate-200 dark:border-zinc-700">
+        <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isThisWeek?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
+        {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
+        {!isUnscheduled&&net!==0&&(
+          <div className={`text-sm font-bold tabular-nums mt-0.5 ${net>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{net>=0?"+":"−"}{h$(Math.abs(net))}</div>
+        )}
+      </div>
+      <div className="min-h-[70px]">
+        {children}
+        {empty&&<div className="text-[11px] text-slate-300 dark:text-zinc-600 italic text-center py-4">{isUnscheduled?"Drop cards here first":"—"}</div>}
+      </div>
+    </div>
+  );
+};
+
+function WhiteboardCardModal({ properties, init, onSave, onClose }) {
+  const [mode,setMode] = useState(init?.kind || "property");
+  const [propId,setPropId] = useState(init?.propId || "");
+  const [address,setAddress] = useState(init?.address || "");
+  const [amount,setAmount] = useState(init ? String(init.amount||"") : "");
+  const [direction,setDirection] = useState(init?.direction || "in");
+  const [propSearch,setPropSearch] = useState("");
+
+  const activeProps = (properties||[]).filter(p=>!p.dateSold);
+  const filtered = activeProps.filter(p=>!propSearch||p.address?.toLowerCase().includes(propSearch.toLowerCase()));
+  const canSave = address.trim() && parseFloat(amount)>0;
+
+  return (
+    <Modal title={init?"Edit Card":"Add Card"} onClose={onClose}>
+      <div className="space-y-3">
+        {!init&&(
+          <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1 mb-1">
+            <button type="button" onClick={()=>setMode("property")}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="property"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>🏠 Existing Property</button>
+            <button type="button" onClick={()=>{setMode("manual");setPropId("");setAddress("");setDirection("out");}}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="manual"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>✏️ Manual Entry</button>
+          </div>
+        )}
+
+        {mode==="property"?(
+          <div className="mb-1">
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Property</label>
+            {propId?(
+              <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3">
+                <span className="text-sm font-semibold text-slate-800 dark:text-zinc-100 truncate">{address}</span>
+                <button type="button" onClick={()=>{setPropId("");setAddress("");}} className="text-xs font-semibold text-blue-500 hover:underline shrink-0 ml-2">Change</button>
+              </div>
+            ):(
+              <>
+                <input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)} placeholder="Search properties…"
+                  className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-2.5 text-sm mb-2 text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {filtered.map(p=>(
+                    <button key={p.id} type="button" onClick={()=>{setPropId(p.id);setAddress(p.address);}}
+                      className="w-full text-left px-3 py-2 rounded-lg text-sm bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-slate-800 dark:text-zinc-100 transition-colors truncate">
+                      {p.address}
+                    </button>
+                  ))}
+                  {filtered.length===0&&<div className="text-xs text-slate-400 dark:text-zinc-500 text-center py-3">No matches</div>}
+                </div>
+              </>
+            )}
+          </div>
+        ):(
+          <Inp label="Address" value={address} onChange={setAddress} placeholder="123 Oak Ave, Nashville, TN"/>
+        )}
+
+        <Inp label="Amount ($)" money value={amount} onChange={setAmount} placeholder="150000"/>
+
+        <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3">
+          <div>
+            <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">{direction==="in"?"Money In":"Money Out"}</div>
+            <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{direction==="in"?"Expecting this money to come in":"Need this money to go out"}</div>
+          </div>
+          <div onClick={()=>setDirection(d=>d==="in"?"out":"in")}
+            className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer shrink-0 ${direction==="in"?"bg-emerald-500":"bg-red-500"}`}>
+            <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${direction==="in"?"translate-x-5":"translate-x-0.5"}`}/>
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <Btn color={canSave?"blue":"ghost"} disabled={!canSave} onClick={()=>canSave&&onSave({
+            id: init?.id || uid(),
+            kind: mode,
+            propId: mode==="property" ? propId : null,
+            address: address.trim(),
+            amount: parseFloat(amount)||0,
+            direction,
+            week: init?.week ?? null,
+          })}>Save</Btn>
+          <Btn color="ghost" onClick={onClose}>Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function WhiteboardPage({ data, update }) {
+  const prv = usePrivacy();
+  const navigate = usePanel();
+  const h$ = v => prv?maskMoney($$(v)):$$(v);
+  const cards = data.whiteboard?.cards || [];
+  const [addOpen,setAddOpen] = useState(false);
+  const [editCard,setEditCard] = useState(null);
+  const [activeId,setActiveId] = useState(null);
+  const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
+
+  const thisMonday = wbMondayOf(TODAY);
+  const WEEKS = 10;
+  const weekCols = Array.from({length:WEEKS},(_,i)=>wbAddDays(thisMonday,i*7));
+
+  const cardsFor = week => cards.filter(c=>(c.week||null)===week);
+  const unscheduled = cardsFor(null);
+  const netFor = week => cardsFor(week).reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0);
+
+  const saveCard = c => update(d=>{
+    const existing = d.whiteboard?.cards||[];
+    const already = existing.some(x=>x.id===c.id);
+    const nextCards = already ? existing.map(x=>x.id===c.id?{...x,...c}:x) : [...existing,c];
+    return {...d, whiteboard:{...d.whiteboard, cards:nextCards}};
+  });
+  const removeCard = id => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).filter(c=>c.id!==id)}}));
+  const setCardWeek = (id,week) => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).map(c=>c.id===id?{...c,week}:c)}}));
+
+  const handleDragEnd = ({active,over}) => {
+    setActiveId(null);
+    if (!over) return;
+    setCardWeek(active.id, over.id==="unscheduled" ? null : over.id);
+  };
+
+  const activeCard = cards.find(c=>c.id===activeId);
+  const totalIn = cards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0);
+  const totalOut = cards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0);
+
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board, separate from the rest of the tracker — drag cards onto a week to plan upcoming money in and out.</p>
+        </div>
+        <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>
+      </div>
+
+      {cards.length>0&&(
+        <div className="flex gap-3 mb-4">
+          <div className="flex-1 bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
+            <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(totalIn)}</div>
+          </div>
+          <div className="flex-1 bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
+            <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(totalOut)}</div>
+          </div>
+          <div className="flex-1 bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Net</div>
+            <div className={`text-lg font-black tabular-nums ${totalIn-totalOut>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{totalIn-totalOut>=0?"+":"−"}{h$(Math.abs(totalIn-totalOut))}</div>
+          </div>
+        </div>
+      )}
+
+      {cards.length===0?(
+        <div className="text-center py-16 text-slate-400 dark:text-zinc-500">
+          <div className="text-4xl mb-3">📌</div>
+          <p className="font-semibold">Nothing on the board yet</p>
+          <p className="text-xs mt-1 max-w-xs mx-auto">Add a card for a property you're closing on or one you expect to sell, then drag it onto the week it's happening.</p>
+        </div>
+      ):(
+        <DndContext sensors={dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
+          <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1">
+            <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
+              {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+            </WhiteboardColumn>
+            {weekCols.map((week,i)=>(
+              <WhiteboardColumn key={week} id={week} h$={h$}
+                label={i===0?"This Week":wbFmtDate(week)+" – "+wbFmtDate(wbAddDays(week,6))}
+                sub={i===0?wbFmtDate(week)+" – "+wbFmtDate(wbAddDays(week,6)):null}
+                isThisWeek={i===0} net={netFor(week)} empty={cardsFor(week).length===0}>
+                {cardsFor(week).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+              </WhiteboardColumn>
+            ))}
+          </div>
+          <DragOverlay>
+            {activeCard&&<div className="w-56"><WhiteboardCardVisual card={activeCard} h$={h$}/></div>}
+          </DragOverlay>
+        </DndContext>
+      )}
+
+      {(addOpen||editCard)&&(
+        <WhiteboardCardModal properties={data.properties} init={editCard}
+          onSave={c=>{saveCard(c);setAddOpen(false);setEditCard(null);}}
+          onClose={()=>{setAddOpen(false);setEditCard(null);}}/>
+      )}
+    </div>
+  );
+}
+
 // ─── Entity Detail Pages ──────────────────────────────────────────────────────
 function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const prv = usePrivacy();
@@ -7202,7 +7464,7 @@ function EntityDetailView({ entity, data, update, onBack, navigate }) {
   return null;
 }
 
-const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab"},{id:"Closed",label:"🏁",full:"Closed"},{id:"History",label:"📋",full:"History"},{id:"Draws",label:"🏗️",full:"Draws"},{id:"LenderAccts",label:"🔑",full:"Accounts"}];
+const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab"},{id:"Closed",label:"🏁",full:"Closed"},{id:"History",label:"📋",full:"History"},{id:"Draws",label:"🏗️",full:"Draws"},{id:"Whiteboard",label:"📌",full:"Whiteboard"},{id:"LenderAccts",label:"🔑",full:"Accounts"}];
 
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
@@ -7705,6 +7967,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             {tab==="Closed"       &&<ClosedDealsPage data={data} update={update}/>}
             {tab==="History"      &&<HistoryPage data={data}/>}
             {tab==="Draws"        &&<DrawsPage data={data}/>}
+            {tab==="Whiteboard"   &&<WhiteboardPage data={data} update={update}/>}
             {tab==="LenderAccts"  &&<ManageLendersPage data={data}/>}
           </div>
         )}
