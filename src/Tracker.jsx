@@ -6032,6 +6032,50 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
   );
 }
 
+// Read-only cards auto-generated from every active monthly-pay loan (hard money's monthly
+// interest, or any other monthly_fixed loan) — one per loan for each 1st-of-the-month date
+// in view, since that's always the bill date (arrears). Purely computed each render, never
+// stored, so they always reflect the live loan/property data.
+const upcomingLoanPayments = (data, dayCols) => {
+  const firsts = dayCols.filter(d=>d.slice(8,10)==="01");
+  if (!firsts.length) return [];
+  const allLoans = [
+    ...(data.properties||[]).flatMap(p=>(p.loans||[]).map(l=>({...l, _addr:p.address, _propId:p.id}))),
+    ...(data.unassigned||[]).map(l=>({...l, _addr:"Unassigned", _propId:null})),
+  ].filter(l=>!l.endDate && monthlyLoanPayment(l)>0);
+  const out = [];
+  for (const first of firsts) {
+    for (const l of allLoans) {
+      if (l.startDate && l.startDate>=first) continue; // hasn't been outstanding a full month yet
+      out.push({
+        id: `pmt-${l.id}-${first}`,
+        loanId: l.id,
+        propId: l._propId,
+        address: l._addr,
+        lenderName: l.lenderName,
+        amount: monthlyLoanPayment(l),
+        day: first,
+      });
+    }
+  }
+  return out;
+};
+
+const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
+  <div className="rounded-xl border border-dashed border-slate-300 dark:border-zinc-600 p-3 mb-2 bg-slate-50 dark:bg-zinc-800/60">
+    <div className="flex items-center gap-1.5 mb-0.5">
+      <span className="text-[10px]">🏦</span>
+      <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'loan',loanId:card.loanId,propId:card.propId});}}
+        className="font-semibold text-[12px] text-slate-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline truncate text-left">
+        {card.lenderName||"Unknown"}
+      </button>
+    </div>
+    {card.address&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">{card.address}</div>}
+    <div className="text-base font-black tabular-nums mt-0.5 text-red-500 dark:text-red-400">−{h$(card.amount)}</div>
+    <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Loan payment · auto</div>
+  </div>
+);
+
 function WhiteboardPage({ data, update }) {
   const prv = usePrivacy();
   const navigate = usePanel();
@@ -6044,15 +6088,19 @@ function WhiteboardPage({ data, update }) {
 
   const DAYS = 45;
   const dayCols = Array.from({length:DAYS},(_,i)=>wbAddDays(TODAY,i));
+  const autoCards = upcomingLoanPayments(data, dayCols);
 
   const cardsFor = day => cards.filter(c=>(c.day||null)===day);
+  const autoCardsFor = day => autoCards.filter(c=>c.day===day);
   const unscheduled = cardsFor(null);
   // Net for a day counts out-cards placed that day plus in-cards that actually SETTLE
   // that day (1 business day after the day they're dropped on), not cards merely placed
-  // there — so a Thursday deposit doesn't look available for a Thursday closing.
+  // there — so a Thursday deposit doesn't look available for a Thursday closing. Auto loan
+  // payments always land on their own day (the 1st) with no settlement delay — they go out.
   const netFor = day => cards
     .filter(c=>c.day && wbEffectiveDate(c)===day)
-    .reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0);
+    .reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0)
+    - autoCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
   // Current liens on a linked property, pulled live every render — so if a loan gets paid
   // off or a new one's added, the card reflects it automatically without re-entering anything.
   const liensFor = propId => {
@@ -6081,19 +6129,19 @@ function WhiteboardPage({ data, update }) {
 
   const activeCard = cards.find(c=>c.id===activeId);
   const totalIn = cards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0);
-  const totalOut = cards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0);
+  const totalOut = cards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + autoCards.reduce((s,c)=>s+(c.amount||0),0);
 
   return (
     <div>
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
-          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board, separate from the rest of the tracker — drag cards onto a day to plan upcoming money in and out. Incoming money is assumed to take 1 business day to clear.</p>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board, separate from the rest of the tracker — drag cards onto a day to plan upcoming money in and out. Incoming money is assumed to take 1 business day to clear. Upcoming hard money / monthly loan payments are pulled in automatically on the 1st of each month.</p>
         </div>
         <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>
       </div>
 
-      {cards.length>0&&(
+      {(cards.length>0||autoCards.length>0)&&(
         <div className="flex gap-3 mb-4">
           <div className="flex-1 bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
@@ -6110,7 +6158,7 @@ function WhiteboardPage({ data, update }) {
         </div>
       )}
 
-      {cards.length===0?(
+      {cards.length===0&&autoCards.length===0?(
         <div className="text-center py-16 text-slate-400 dark:text-zinc-500">
           <div className="text-4xl mb-3">📌</div>
           <p className="font-semibold">Nothing on the board yet</p>
@@ -6126,7 +6174,8 @@ function WhiteboardPage({ data, update }) {
               <WhiteboardColumn key={day} id={day} h$={h$}
                 label={i===0?"Today":wbFmtDate(day)}
                 sub={i===0?wbFmtDate(day):wbWeekday(day)}
-                isToday={i===0} net={netFor(day)} empty={cardsFor(day).length===0}>
+                isToday={i===0} net={netFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
+                {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
                 {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
               </WhiteboardColumn>
             ))}
