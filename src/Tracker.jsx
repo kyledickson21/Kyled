@@ -7464,7 +7464,6 @@ function EntityDetailView({ entity, data, update, onBack, navigate }) {
   return null;
 }
 
-const TABS=[{id:"Properties",label:"🏠",full:"Properties"},{id:"LenderDash",label:"👥",full:"Lenders"},{id:"PropDash",label:"📊",full:"Dash"},{id:"RehabPriority",label:"🔥",full:"Rehab"},{id:"Closed",label:"🏁",full:"Closed"},{id:"History",label:"📋",full:"History"},{id:"Draws",label:"🏗️",full:"Draws"},{id:"Whiteboard",label:"📌",full:"Whiteboard"},{id:"LenderAccts",label:"🔑",full:"Accounts"}];
 
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
@@ -7694,6 +7693,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const IcoGrid=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z" clipRule="evenodd"/></svg>;
   const IcoBar=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>;
   const IcoList=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd"/></svg>;
+  const IcoPin=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd"/></svg>;
 
   // ── Sidebar nav button (icon-only, tooltip on hover) ──
   const SideBtn=({icon,label,active,onClick,tooltip})=>(
@@ -7749,6 +7749,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
           {/* Records = Closed + History */}
           <SideBtn icon={<IcoDocument/>} label="Records" tooltip="Records" active={["Closed","History"].includes(tab)&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
+          <SideBtn icon={<IcoPin/>} label="Whiteboard" tooltip="Whiteboard" active={tab==="Whiteboard"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Whiteboard");}}/>
         </nav>
 
         {/* Bottom — Settings */}
@@ -7815,6 +7816,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 {id:"Draws",icon:<IcoGrid/>,label:"Draw Tracker",match:t=>t==="Draws"},
                 {id:"PropDash",icon:<IcoBar/>,label:"Prop Dashboard",match:t=>t==="PropDash"},
                 {id:"Closed",icon:<IcoDocument/>,label:"Records",match:t=>["Closed","History"].includes(t)},
+                {id:"Whiteboard",icon:<IcoPin/>,label:"Whiteboard",match:t=>t==="Whiteboard"},
               ].map(({id,icon,label,match})=>(
                 <button key={id}
                   onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setMobileNavOpen(false);}}
