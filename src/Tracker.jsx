@@ -5834,17 +5834,12 @@ function DrawsPage({ data }) {
 
 // ─── Whiteboard ───────────────────────────────────────────────────────────────
 // A deliberately manual, standalone planning board — separate from the rest of the
-// tracker's auto-computed numbers. You drag cards onto a week to plan upcoming money in
+// tracker's auto-computed numbers. You drag cards onto a day to plan upcoming money in
 // (usually an expected sale) and money out (usually a purchase closing), so you can see at
-// a glance what's coming and whether you'll have the cash for it. Nothing here feeds back
-// into properties/loans/history; it's just a whiteboard.
-const wbMondayOf = dateStr => {
-  const [y,m,d] = dateStr.split('-').map(Number);
-  const dt = new Date(y,m-1,d);
-  const day = dt.getDay();
-  dt.setDate(dt.getDate() + (day===0?-6:1-day));
-  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
-};
+// a glance what's coming and whether you'll have the cash for it. Incoming money is assumed
+// to take 1 business day to clear, so a day's net counts in-cards by when they actually
+// settle, not the day they're dropped on. Nothing here feeds back into properties/loans/
+// history; it's just a whiteboard.
 const wbAddDays = (dateStr,n) => {
   const [y,m,d] = dateStr.split('-').map(Number);
   const dt = new Date(y,m-1,d+n);
@@ -5854,8 +5849,25 @@ const wbFmtDate = dateStr => {
   const [y,m,d] = dateStr.split('-').map(Number);
   return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'short',day:'numeric'});
 };
+const wbWeekday = dateStr => {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return new Date(y,m-1,d).toLocaleDateString(undefined,{weekday:'short'});
+};
+const wbIsWeekend = dateStr => {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dow = new Date(y,m-1,d).getDay();
+  return dow===0 || dow===6;
+};
+// Incoming money doesn't actually hit the account the day it's expected — it takes
+// 1 business day to clear, so a card dated Thursday isn't real cash until Friday.
+const wbNextBusinessDay = dateStr => {
+  let d = wbAddDays(dateStr,1);
+  while (wbIsWeekend(d)) d = wbAddDays(d,1);
+  return d;
+};
+const wbEffectiveDate = card => card.direction==="in" && card.day ? wbNextBusinessDay(card.day) : card.day;
 
-const WhiteboardCardVisual = ({ card, h$, liens, onEdit, onRemove, navigate, dragHandleProps }) => {
+const WhiteboardCardVisual = ({ card, h$, liens, availText, onEdit, onRemove, navigate, dragHandleProps }) => {
   const isProp = card.kind==="property";
   const isIn = card.direction==="in";
   const hasAmount = (card.amount||0)>0;
@@ -5900,6 +5912,9 @@ const WhiteboardCardVisual = ({ card, h$, liens, onEdit, onRemove, navigate, dra
           ) : (
             <div className="text-[11px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
           )}
+          {availText&&(
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Available {availText}</div>
+          )}
         </div>
         {(onEdit||onRemove)&&(
           <div className="flex flex-col gap-1 shrink-0">
@@ -5912,23 +5927,23 @@ const WhiteboardCardVisual = ({ card, h$, liens, onEdit, onRemove, navigate, dra
   );
 };
 
-const WhiteboardCard = ({ card, h$, liens, onEdit, onRemove, navigate }) => {
+const WhiteboardCard = ({ card, h$, liens, availText, onEdit, onRemove, navigate }) => {
   const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id});
   const style = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
   return (
     <div ref={setNodeRef} style={style} className={`cursor-grab active:cursor-grabbing touch-none ${isDragging?"opacity-30":""}`}>
-      <WhiteboardCardVisual card={card} h$={h$} liens={liens} onEdit={onEdit} onRemove={onRemove} navigate={navigate} dragHandleProps={{...attributes,...listeners}}/>
+      <WhiteboardCardVisual card={card} h$={h$} liens={liens} availText={availText} onEdit={onEdit} onRemove={onRemove} navigate={navigate} dragHandleProps={{...attributes,...listeners}}/>
     </div>
   );
 };
 
-const WhiteboardColumn = ({ id, label, sub, isThisWeek, isUnscheduled, net, h$, children, empty }) => {
+const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, net, h$, children, empty }) => {
   const {setNodeRef,isOver} = useDroppable({id});
   return (
     <div ref={setNodeRef}
-      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":isThisWeek?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"}`}>
+      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"}`}>
       <div className="px-1 pb-2 mb-2 border-b border-slate-200 dark:border-zinc-700">
-        <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isThisWeek?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
+        <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
         {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
         {!isUnscheduled&&net!==0&&(
           <div className={`text-sm font-bold tabular-nums mt-0.5 ${net>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{net>=0?"+":"−"}{h$(Math.abs(net))}</div>
@@ -6008,7 +6023,7 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
             address: address.trim(),
             amount: parseFloat(amount)||0,
             direction: init?.direction || (mode==="property" ? "in" : "out"),
-            week: init?.week ?? null,
+            day: init?.day ?? null,
           })}>Save</Btn>
           <Btn color="ghost" onClick={onClose}>Cancel</Btn>
         </div>
@@ -6027,13 +6042,17 @@ function WhiteboardPage({ data, update }) {
   const [activeId,setActiveId] = useState(null);
   const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
 
-  const thisMonday = wbMondayOf(TODAY);
-  const WEEKS = 10;
-  const weekCols = Array.from({length:WEEKS},(_,i)=>wbAddDays(thisMonday,i*7));
+  const DAYS = 45;
+  const dayCols = Array.from({length:DAYS},(_,i)=>wbAddDays(TODAY,i));
 
-  const cardsFor = week => cards.filter(c=>(c.week||null)===week);
+  const cardsFor = day => cards.filter(c=>(c.day||null)===day);
   const unscheduled = cardsFor(null);
-  const netFor = week => cardsFor(week).reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0);
+  // Net for a day counts out-cards placed that day plus in-cards that actually SETTLE
+  // that day (1 business day after the day they're dropped on), not cards merely placed
+  // there — so a Thursday deposit doesn't look available for a Thursday closing.
+  const netFor = day => cards
+    .filter(c=>c.day && wbEffectiveDate(c)===day)
+    .reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0);
   // Current liens on a linked property, pulled live every render — so if a loan gets paid
   // off or a new one's added, the card reflects it automatically without re-entering anything.
   const liensFor = propId => {
@@ -6052,12 +6071,12 @@ function WhiteboardPage({ data, update }) {
     return {...d, whiteboard:{...d.whiteboard, cards:nextCards}};
   });
   const removeCard = id => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).filter(c=>c.id!==id)}}));
-  const setCardWeek = (id,week) => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).map(c=>c.id===id?{...c,week}:c)}}));
+  const setCardDay = (id,day) => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).map(c=>c.id===id?{...c,day}:c)}}));
 
   const handleDragEnd = ({active,over}) => {
     setActiveId(null);
     if (!over) return;
-    setCardWeek(active.id, over.id==="unscheduled" ? null : over.id);
+    setCardDay(active.id, over.id==="unscheduled" ? null : over.id);
   };
 
   const activeCard = cards.find(c=>c.id===activeId);
@@ -6069,7 +6088,7 @@ function WhiteboardPage({ data, update }) {
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
-          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board, separate from the rest of the tracker — drag cards onto a week to plan upcoming money in and out.</p>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board, separate from the rest of the tracker — drag cards onto a day to plan upcoming money in and out. Incoming money is assumed to take 1 business day to clear.</p>
         </div>
         <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>
       </div>
@@ -6095,7 +6114,7 @@ function WhiteboardPage({ data, update }) {
         <div className="text-center py-16 text-slate-400 dark:text-zinc-500">
           <div className="text-4xl mb-3">📌</div>
           <p className="font-semibold">Nothing on the board yet</p>
-          <p className="text-xs mt-1 max-w-xs mx-auto">Add a card for a property you're closing on or one you expect to sell, then drag it onto the week it's happening.</p>
+          <p className="text-xs mt-1 max-w-xs mx-auto">Add a card for a property you're closing on or one you expect to sell, then drag it onto the day it's happening.</p>
         </div>
       ):(
         <DndContext sensors={dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
@@ -6103,12 +6122,12 @@ function WhiteboardPage({ data, update }) {
             <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
               {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
             </WhiteboardColumn>
-            {weekCols.map((week,i)=>(
-              <WhiteboardColumn key={week} id={week} h$={h$}
-                label={i===0?"This Week":wbFmtDate(week)+" – "+wbFmtDate(wbAddDays(week,6))}
-                sub={i===0?wbFmtDate(week)+" – "+wbFmtDate(wbAddDays(week,6)):null}
-                isThisWeek={i===0} net={netFor(week)} empty={cardsFor(week).length===0}>
-                {cardsFor(week).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+            {dayCols.map((day,i)=>(
+              <WhiteboardColumn key={day} id={day} h$={h$}
+                label={i===0?"Today":wbFmtDate(day)}
+                sub={i===0?wbFmtDate(day):wbWeekday(day)}
+                isToday={i===0} net={netFor(day)} empty={cardsFor(day).length===0}>
+                {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
               </WhiteboardColumn>
             ))}
           </div>
