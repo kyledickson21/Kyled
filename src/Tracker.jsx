@@ -5855,21 +5855,51 @@ const wbFmtDate = dateStr => {
   return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'short',day:'numeric'});
 };
 
-const WhiteboardCardVisual = ({ card, h$, onEdit, onRemove, navigate, dragHandleProps }) => {
+const WhiteboardCardVisual = ({ card, h$, liens, onEdit, onRemove, navigate, dragHandleProps }) => {
+  const isProp = card.kind==="property";
   const isIn = card.direction==="in";
+  const hasAmount = (card.amount||0)>0;
+  const liensShown = (liens||[]).slice(0,4);
+  const liensExtra = (liens||[]).length - liensShown.length;
+  const liensTotal = (liens||[]).reduce((s,l)=>s+l.amt,0);
   return (
     <div className={`rounded-xl border p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm select-none ${isIn?"border-emerald-300 dark:border-emerald-700":"border-red-300 dark:border-red-700"}`}
       {...(dragHandleProps||{})}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          {card.kind==="property"
+          {isProp
             ? <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'property',id:card.propId});}}
                 className="font-semibold text-[13px] text-blue-600 dark:text-blue-400 hover:underline truncate text-left block w-full">{card.address}</button>
             : <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-100 truncate">{card.address}</div>
           }
-          <div className={`text-lg font-black tabular-nums mt-0.5 ${isIn?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>
-            {isIn?"+":"−"}{h$(card.amount)}
-          </div>
+
+          {isProp&&liensShown.length>0&&(
+            <div className="mt-1.5 mb-1 space-y-0.5">
+              {liensShown.map((l,i)=>(
+                <div key={i} className="flex justify-between text-[10px] text-slate-400 dark:text-zinc-500 gap-2">
+                  <span className="truncate">{l.lenderName||"Unknown"}</span>
+                  <span className="tabular-nums shrink-0">{h$(l.amt)}</span>
+                </div>
+              ))}
+              {liensExtra>0&&<div className="text-[10px] text-slate-300 dark:text-zinc-600">+{liensExtra} more</div>}
+              <div className="flex justify-between text-[10px] font-semibold text-slate-500 dark:text-zinc-400 border-t border-slate-100 dark:border-zinc-700 pt-0.5">
+                <span>Liens</span><span className="tabular-nums">{h$(liensTotal)}</span>
+              </div>
+            </div>
+          )}
+
+          {hasAmount ? (
+            <div className={`text-lg font-black tabular-nums mt-0.5 ${isIn?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>
+              {isIn?"+":"−"}{h$(card.amount)}
+            </div>
+          ) : onEdit ? (
+            <button onClick={e=>{e.stopPropagation();onEdit(card);}}
+              className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">
+              + {isIn?"Add expected amount":"Add amount needed"}
+            </button>
+          ) : (
+            <div className="text-[11px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
+          )}
         </div>
         {(onEdit||onRemove)&&(
           <div className="flex flex-col gap-1 shrink-0">
@@ -5882,12 +5912,12 @@ const WhiteboardCardVisual = ({ card, h$, onEdit, onRemove, navigate, dragHandle
   );
 };
 
-const WhiteboardCard = ({ card, h$, onEdit, onRemove, navigate }) => {
+const WhiteboardCard = ({ card, h$, liens, onEdit, onRemove, navigate }) => {
   const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id});
   const style = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
   return (
     <div ref={setNodeRef} style={style} className={`cursor-grab active:cursor-grabbing touch-none ${isDragging?"opacity-30":""}`}>
-      <WhiteboardCardVisual card={card} h$={h$} onEdit={onEdit} onRemove={onRemove} navigate={navigate} dragHandleProps={{...attributes,...listeners}}/>
+      <WhiteboardCardVisual card={card} h$={h$} liens={liens} onEdit={onEdit} onRemove={onRemove} navigate={navigate} dragHandleProps={{...attributes,...listeners}}/>
     </div>
   );
 };
@@ -5917,12 +5947,14 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
   const [propId,setPropId] = useState(init?.propId || "");
   const [address,setAddress] = useState(init?.address || "");
   const [amount,setAmount] = useState(init ? String(init.amount||"") : "");
-  const [direction,setDirection] = useState(init?.direction || "in");
   const [propSearch,setPropSearch] = useState("");
 
   const activeProps = (properties||[]).filter(p=>!p.dateSold);
   const filtered = activeProps.filter(p=>!propSearch||p.address?.toLowerCase().includes(propSearch.toLowerCase()));
-  const canSave = address.trim() && parseFloat(amount)>0;
+  // Only the address (and, for a property card, which property) is required — the amount
+  // is added whenever it's actually known, which for a property is usually only once it's
+  // under contract or closer to closing.
+  const canSave = mode==="property" ? !!propId : address.trim().length>0;
 
   return (
     <Modal title={init?"Edit Card":"Add Card"} onClose={onClose}>
@@ -5931,7 +5963,7 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1 mb-1">
             <button type="button" onClick={()=>setMode("property")}
               className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="property"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>🏠 Existing Property</button>
-            <button type="button" onClick={()=>{setMode("manual");setPropId("");setAddress("");setDirection("out");}}
+            <button type="button" onClick={()=>{setMode("manual");setPropId("");setAddress("");}}
               className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="manual"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>✏️ Manual Entry</button>
           </div>
         )}
@@ -5959,23 +5991,14 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
                 </div>
               </>
             )}
+            {propId&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-2">Shows all current liens on this property automatically.</p>}
           </div>
         ):(
           <Inp label="Address" value={address} onChange={setAddress} placeholder="123 Oak Ave, Nashville, TN"/>
         )}
 
-        <Inp label="Amount ($)" money value={amount} onChange={setAmount} placeholder="150000"/>
-
-        <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3">
-          <div>
-            <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100">{direction==="in"?"Money In":"Money Out"}</div>
-            <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{direction==="in"?"Expecting this money to come in":"Need this money to go out"}</div>
-          </div>
-          <div onClick={()=>setDirection(d=>d==="in"?"out":"in")}
-            className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer shrink-0 ${direction==="in"?"bg-emerald-500":"bg-red-500"}`}>
-            <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${direction==="in"?"translate-x-5":"translate-x-0.5"}`}/>
-          </div>
-        </div>
+        <Inp label={`${mode==="property"?"Expected Amount":"Amount Needed"} ($) — optional`} money value={amount} onChange={setAmount} placeholder="150000"
+          helpText={mode==="property"?"Add now if you know it, or leave blank and fill it in closer to closing":"Add now if you know it, or leave blank and fill it in once you do"}/>
 
         <div className="flex gap-2 pt-1">
           <Btn color={canSave?"blue":"ghost"} disabled={!canSave} onClick={()=>canSave&&onSave({
@@ -5984,7 +6007,7 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
             propId: mode==="property" ? propId : null,
             address: address.trim(),
             amount: parseFloat(amount)||0,
-            direction,
+            direction: init?.direction || (mode==="property" ? "in" : "out"),
             week: init?.week ?? null,
           })}>Save</Btn>
           <Btn color="ghost" onClick={onClose}>Cancel</Btn>
@@ -6011,6 +6034,16 @@ function WhiteboardPage({ data, update }) {
   const cardsFor = week => cards.filter(c=>(c.week||null)===week);
   const unscheduled = cardsFor(null);
   const netFor = week => cardsFor(week).reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0);
+  // Current liens on a linked property, pulled live every render — so if a loan gets paid
+  // off or a new one's added, the card reflects it automatically without re-entering anything.
+  const liensFor = propId => {
+    const prop = (data.properties||[]).find(p=>p.id===propId);
+    if (!prop) return [];
+    return (prop.loans||[]).filter(l=>!l.endDate).map(l=>({
+      lenderName: l.lenderName,
+      amt: (l.principal||0)+(l.drawFacility?.committed||0),
+    }));
+  };
 
   const saveCard = c => update(d=>{
     const existing = d.whiteboard?.cards||[];
@@ -6068,19 +6101,19 @@ function WhiteboardPage({ data, update }) {
         <DndContext sensors={dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
           <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1">
             <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
-              {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+              {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
             </WhiteboardColumn>
             {weekCols.map((week,i)=>(
               <WhiteboardColumn key={week} id={week} h$={h$}
                 label={i===0?"This Week":wbFmtDate(week)+" – "+wbFmtDate(wbAddDays(week,6))}
                 sub={i===0?wbFmtDate(week)+" – "+wbFmtDate(wbAddDays(week,6)):null}
                 isThisWeek={i===0} net={netFor(week)} empty={cardsFor(week).length===0}>
-                {cardsFor(week).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+                {cardsFor(week).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
               </WhiteboardColumn>
             ))}
           </div>
           <DragOverlay>
-            {activeCard&&<div className="w-56"><WhiteboardCardVisual card={activeCard} h$={h$}/></div>}
+            {activeCard&&<div className="w-56"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
           </DragOverlay>
         </DndContext>
       )}
