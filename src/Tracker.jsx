@@ -6114,30 +6114,57 @@ const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
 
 // Bills/invoices with no due date — pay-ASAP, ranked by when they came in (default) or a
 // manual override via the up/down arrows, kept in their own queue instead of forced onto a
-// specific day since there isn't one yet.
-const WhiteboardBillCard = ({ card, h$, canMoveUp, canMoveDown, onMove, onEdit, onRemove }) => (
-  <div className="rounded-xl border border-amber-300 dark:border-amber-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm">
-    <div className="flex items-start justify-between gap-2">
-      <div className="min-w-0 flex-1">
-        <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-100 truncate">{card.address}</div>
-        {(card.amount||0)>0 ? (
-          <div className="text-lg font-black tabular-nums mt-0.5 text-red-600 dark:text-red-400">−{h$(card.amount)}</div>
-        ) : onEdit ? (
-          <button onClick={e=>{e.stopPropagation();onEdit(card);}} className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">+ Add amount</button>
-        ) : (
-          <div className="text-[11px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
-        )}
-        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">since {wbFmtDate(card.addedAt||TODAY)}</div>
-      </div>
-      <div className="flex flex-col gap-1 shrink-0 items-center">
-        <button disabled={!canMoveUp} onClick={e=>{e.stopPropagation();onMove(card.id,-1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[11px]">▲</button>
-        <button disabled={!canMoveDown} onClick={e=>{e.stopPropagation();onMove(card.id,1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[11px]">▼</button>
-        {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-[11px]">✏️</button>}
-        {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
+// specific day since there isn't one yet. Also draggable onto a day, same as any other card —
+// once it has a day it leaves this queue and shows up there instead (see cardsFor).
+const WhiteboardBillCard = ({ card, h$, canMoveUp, canMoveDown, onMove, onEdit, onRemove }) => {
+  const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id});
+  const style = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}
+      className={`rounded-xl border border-amber-300 dark:border-amber-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm cursor-grab active:cursor-grabbing touch-none select-none ${isDragging?"opacity-30":""}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-100 truncate">{card.address}</div>
+          {(card.amount||0)>0 ? (
+            <div className="text-lg font-black tabular-nums mt-0.5 text-red-600 dark:text-red-400">−{h$(card.amount)}</div>
+          ) : onEdit ? (
+            <button onClick={e=>{e.stopPropagation();onEdit(card);}} className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">+ Add amount</button>
+          ) : (
+            <div className="text-[11px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
+          )}
+          <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">since {wbFmtDate(card.addedAt||TODAY)}</div>
+        </div>
+        <div className="flex flex-col gap-1 shrink-0 items-center">
+          <button disabled={!canMoveUp} onClick={e=>{e.stopPropagation();onMove(card.id,-1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[11px]">▲</button>
+          <button disabled={!canMoveDown} onClick={e=>{e.stopPropagation();onMove(card.id,1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[11px]">▼</button>
+          {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-[11px]">✏️</button>}
+          {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
+
+// Droppable, so a bill can be dragged straight onto a day (leaving this queue — see
+// cardsFor) and a dated bill can be dragged back here to clear its day again.
+const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove }) => {
+  const {setNodeRef,isOver} = useDroppable({id:"duenow"});
+  if (!bills.length) return null;
+  return (
+    <div ref={setNodeRef} className={`shrink-0 w-56 rounded-2xl p-2 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":"bg-amber-50/70 dark:bg-amber-900/10"}`}>
+      <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">🧾 Due Now</div>
+          <div className="text-[10px] text-slate-400 dark:text-zinc-500">No due date · oldest first</div>
+        </div>
+        {billsTotal>0&&<div className="text-xs font-bold tabular-nums shrink-0 text-red-600 dark:text-red-400">−{h$(billsTotal)}</div>}
+      </div>
+      <div className="min-h-[40px]">
+        {bills.map((c,i)=><WhiteboardBillCard key={c.id} card={c} h$={h$} canMoveUp={i>0} canMoveDown={i<bills.length-1} onMove={moveBill} onEdit={onEdit} onRemove={onRemove}/>)}
+      </div>
+    </div>
+  );
+};
 
 function WhiteboardPage({ data, update }) {
   const prv = usePrivacy();
@@ -6153,10 +6180,13 @@ function WhiteboardPage({ data, update }) {
   const dayCols = Array.from({length:DAYS},(_,i)=>wbAddDays(TODAY,i));
   const autoCards = upcomingLoanPayments(data, dayCols);
 
-  const cardsFor = day => cards.filter(c=>c.kind!=="bill" && (c.day||null)===day);
+  // A bill counts as "in the Due Now queue" only while it has no day — drag it onto a day and
+  // it shows up there like any other card instead (still excluded from Unscheduled, since a
+  // dayless bill belongs in Due Now, not that column).
+  const cardsFor = day => cards.filter(c=>(c.day||null)===day && (day!=null || c.kind!=="bill"));
   const autoCardsFor = day => autoCards.filter(c=>c.day===day);
   const unscheduled = cardsFor(null);
-  const bills = cards.filter(c=>c.kind==="bill").sort((a,b)=>(a.order??0)-(b.order??0));
+  const bills = cards.filter(c=>c.kind==="bill" && !c.day).sort((a,b)=>(a.order??0)-(b.order??0));
   const billsTotal = bills.reduce((s,c)=>s+(c.amount||0),0);
   // Net for a day counts out-cards placed that day plus in-cards that actually SETTLE
   // that day (1 business day after the day they're dropped on), not cards merely placed
@@ -6206,7 +6236,7 @@ function WhiteboardPage({ data, update }) {
   const setStartingBalance = v => update(d=>({...d, whiteboard:{...d.whiteboard, startingBalance:v}}));
   const moveBill = (id,dir) => update(d=>{
     const all = d.whiteboard?.cards||[];
-    const sorted = all.filter(c=>c.kind==="bill").sort((a,b)=>(a.order??0)-(b.order??0));
+    const sorted = all.filter(c=>c.kind==="bill" && !c.day).sort((a,b)=>(a.order??0)-(b.order??0));
     const idx = sorted.findIndex(c=>c.id===id);
     const swapIdx = idx+dir;
     if (idx<0||swapIdx<0||swapIdx>=sorted.length) return d;
@@ -6222,15 +6252,16 @@ function WhiteboardPage({ data, update }) {
   const handleDragEnd = ({active,over}) => {
     setActiveId(null);
     if (!over) return;
-    setCardDay(active.id, over.id==="unscheduled" ? null : over.id);
+    setCardDay(active.id, (over.id==="unscheduled"||over.id==="duenow") ? null : over.id);
   };
 
   const activeCard = cards.find(c=>c.id===activeId);
-  // Cards still sitting in Unscheduled haven't been given a day yet, and bills in Due Now
-  // have no day at all — neither feeds into any day's balance, so exclude both here too, or
-  // this total wouldn't match what the day columns actually add up to. Due Now has its own
-  // total shown right on its own box.
-  const scheduledCards = cards.filter(c=>c.kind!=="bill" && c.day);
+  // Cards still sitting in Unscheduled haven't been given a day yet, and bills still in Due
+  // Now have no day at all — neither feeds into any day's balance, so exclude both here too,
+  // or this total wouldn't match what the day columns actually add up to. A bill dragged onto
+  // a day counts here exactly like any other dated card. Due Now shows its own total on its
+  // own box for bills that haven't been given a day yet.
+  const scheduledCards = cards.filter(c=>c.day);
   const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0);
   const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + autoCards.reduce((s,c)=>s+(c.amount||0),0);
   const [sbInput,setSbInput] = useState(String(startingBalance||""));
@@ -6278,20 +6309,7 @@ function WhiteboardPage({ data, update }) {
       ):(
         <DndContext sensors={dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
           <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1">
-            {bills.length>0&&(
-              <div className="shrink-0 w-56 rounded-2xl p-2 bg-amber-50/70 dark:bg-amber-900/10">
-                <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
-                  <div>
-                    <div className="text-[11px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">🧾 Due Now</div>
-                    <div className="text-[10px] text-slate-400 dark:text-zinc-500">No due date · oldest first</div>
-                  </div>
-                  {billsTotal>0&&<div className="text-xs font-bold tabular-nums shrink-0 text-red-600 dark:text-red-400">−{h$(billsTotal)}</div>}
-                </div>
-                <div className="min-h-[40px]">
-                  {bills.map((c,i)=><WhiteboardBillCard key={c.id} card={c} h$={h$} canMoveUp={i>0} canMoveDown={i<bills.length-1} onMove={moveBill} onEdit={setEditCard} onRemove={removeCard}/>)}
-                </div>
-              </div>
-            )}
+            <WhiteboardDueNowBox bills={bills} billsTotal={billsTotal} h$={h$} moveBill={moveBill} onEdit={setEditCard} onRemove={removeCard}/>
             <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
               {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
             </WhiteboardColumn>
