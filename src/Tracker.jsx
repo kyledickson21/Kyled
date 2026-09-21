@@ -5944,16 +5944,23 @@ const WhiteboardCard = ({ card, h$, liens, availText, onEdit, onRemove, navigate
   );
 };
 
-const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, net, h$, children, empty }) => {
+// balance is the running cash position after everything through this day — the number that
+// answers "will I have enough" — shown big and red the moment it goes negative. net (that
+// day's own activity) stays as a small secondary line underneath when it's non-zero.
+const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, net, balance, h$, children, empty }) => {
   const {setNodeRef,isOver} = useDroppable({id});
+  const short = balance<0;
   return (
     <div ref={setNodeRef}
-      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"} ${weekStart?"ml-2":""}`}>
+      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":short?"bg-red-50/70 dark:bg-red-900/10":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"} ${weekStart?"ml-2":""}`}>
       <div className="px-1 pb-2 mb-2 border-b border-slate-200 dark:border-zinc-700">
         <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
         {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
+        {balance!=null&&(
+          <div className={`text-sm font-black tabular-nums mt-0.5 ${short?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{short?"⚠ −":""}{h$(Math.abs(balance))}</div>
+        )}
         {!isUnscheduled&&net!==0&&(
-          <div className={`text-sm font-bold tabular-nums mt-0.5 ${net>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{net>=0?"+":"−"}{h$(Math.abs(net))}</div>
+          <div className={`text-[11px] font-semibold tabular-nums mt-0.5 ${net>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{net>=0?"+":"−"}{h$(Math.abs(net))} today</div>
         )}
       </div>
       <div className="min-h-[70px]">
@@ -6159,6 +6166,18 @@ function WhiteboardPage({ data, update }) {
     .filter(c=>c.day && wbEffectiveDate(c)===day)
     .reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0)
     - autoCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
+  // Running cash balance through each day, so a shortfall shows up on the exact day it
+  // happens instead of needing to be worked out by hand. Bills with no due date are due-ASAP,
+  // so they're deducted right away instead of waiting on a day.
+  const startingBalance = data.whiteboard?.startingBalance || 0;
+  const balances = {};
+  {
+    let running = startingBalance - billsTotal;
+    for (const day of dayCols) {
+      running += netFor(day);
+      balances[day] = running;
+    }
+  }
   // Current liens on a linked property, pulled live every render — so if a loan gets paid
   // off or a new one's added, the card reflects it automatically without re-entering anything.
   const liensFor = propId => {
@@ -6183,6 +6202,7 @@ function WhiteboardPage({ data, update }) {
   });
   const removeCard = id => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).filter(c=>c.id!==id)}}));
   const setCardDay = (id,day) => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).map(c=>c.id===id?{...c,day}:c)}}));
+  const setStartingBalance = v => update(d=>({...d, whiteboard:{...d.whiteboard, startingBalance:v}}));
   const moveBill = (id,dir) => update(d=>{
     const all = d.whiteboard?.cards||[];
     const sorted = all.filter(c=>c.kind==="bill").sort((a,b)=>(a.order??0)-(b.order??0));
@@ -6208,6 +6228,8 @@ function WhiteboardPage({ data, update }) {
   const nonBillCards = cards.filter(c=>c.kind!=="bill");
   const totalIn = nonBillCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0);
   const totalOut = nonBillCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + autoCards.reduce((s,c)=>s+(c.amount||0),0) + billsTotal;
+  const [sbInput,setSbInput] = useState(String(startingBalance||""));
+  useEffect(()=>{ setSbInput(String(startingBalance||"")); }, [startingBalance]);
 
   return (
     <div>
@@ -6219,22 +6241,29 @@ function WhiteboardPage({ data, update }) {
         <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>
       </div>
 
-      {(cards.length>0||autoCards.length>0)&&(
-        <div className="flex gap-3 mb-4">
-          <div className="flex-1 bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+      <div className="flex gap-3 mb-4 flex-wrap">
+        <div className="flex-1 min-w-[140px] bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Starting Balance</div>
+          <div className="flex items-baseline gap-0.5">
+            <span className="text-lg font-black text-slate-700 dark:text-zinc-200">$</span>
+            <input type="text" inputMode="decimal" value={sbInput}
+              onChange={e=>setSbInput(e.target.value)}
+              onBlur={()=>setStartingBalance(parseFloat(sbInput)||0)}
+              className="text-lg font-black tabular-nums bg-transparent w-full focus:outline-none text-slate-700 dark:text-zinc-200 min-w-0"/>
+          </div>
+          {billsTotal>0&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">−{h$(billsTotal)} in Due Now already counted</div>}
+        </div>
+        {(cards.length>0||autoCards.length>0)&&(<>
+          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
             <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(totalIn)}</div>
           </div>
-          <div className="flex-1 bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
             <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(totalOut)}</div>
           </div>
-          <div className="flex-1 bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Net</div>
-            <div className={`text-lg font-black tabular-nums ${totalIn-totalOut>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{totalIn-totalOut>=0?"+":"−"}{h$(Math.abs(totalIn-totalOut))}</div>
-          </div>
-        </div>
-      )}
+        </>)}
+      </div>
 
       {cards.length===0&&autoCards.length===0?(
         <div className="text-center py-16 text-slate-400 dark:text-zinc-500">
@@ -6266,7 +6295,7 @@ function WhiteboardPage({ data, update }) {
               <WhiteboardColumn key={day} id={day} h$={h$}
                 label={i===0?"Today":wbFmtDate(day)}
                 sub={i===0?wbFmtDate(day):wbWeekday(day)}
-                isToday={i===0} weekStart={i>0&&i%7===0} net={netFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
+                isToday={i===0} weekStart={i>0&&i%7===0} net={netFor(day)} balance={balances[day]} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
                 {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
                 {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
               </WhiteboardColumn>
