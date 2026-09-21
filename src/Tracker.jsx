@@ -5834,14 +5834,15 @@ function DrawsPage({ data }) {
 
 // ─── Whiteboard ───────────────────────────────────────────────────────────────
 // A deliberately manual, standalone planning board — separate from the rest of the
-// tracker's auto-computed numbers. You drag cards onto a day to plan upcoming money in
-// (usually an expected sale) and money out (usually a purchase closing), so you can see at
-// a glance what's coming and whether you'll have the cash for it. Incoming money is assumed
-// to take 1 business day to clear, so a day's net counts in-cards by when they actually
-// settle, not the day they're dropped on. Bills with no due date (kind:"bill") skip the day
-// grid entirely and live in a separate "Due Now" queue, ranked by when they were added with
-// a manual up/down override. Nothing here feeds back into properties/loans/history; it's
-// just a whiteboard.
+// tracker's auto-computed numbers. Days are grouped into week rows (7 at a time) stacked
+// vertically instead of one long horizontal scroll, so the whole DAYS-day horizon is
+// reachable by scrolling down like the rest of the app, not sideways. You drag cards onto a
+// day to plan upcoming money in (usually an expected sale) and money out (usually a purchase
+// closing). Incoming money is assumed to take 1 business day to clear, so a day's balance
+// counts in-cards by when they actually settle, not the day they're dropped on. Bills with
+// no due date (kind:"bill") skip the day grid entirely and live in a separate "Due Now"
+// queue, ranked by when they were added with a manual up/down override. Nothing here feeds
+// back into properties/loans/history; it's just a whiteboard.
 const wbAddDays = (dateStr,n) => {
   const [y,m,d] = dateStr.split('-').map(Number);
   const dt = new Date(y,m-1,d+n);
@@ -5949,12 +5950,12 @@ const WhiteboardCard = ({ card, h$, liens, availText, onEdit, onRemove, navigate
 // balance is the running cash position AFTER everything through this day — the number that
 // actually answers "will I have enough" — shown big and colored red the instant it goes
 // negative, since that's the one thing worth noticing at a glance.
-const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, balance, h$, children, empty }) => {
+const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, balance, h$, children, empty }) => {
   const {setNodeRef,isOver} = useDroppable({id});
   const short = balance<0;
   return (
     <div ref={setNodeRef}
-      className={`shrink-0 w-48 rounded-2xl p-2 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":short?"bg-red-50/70 dark:bg-red-900/10":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"} ${weekStart?"ml-2":""}`}>
+      className={`shrink-0 w-40 rounded-2xl p-2 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":short?"bg-red-50/70 dark:bg-red-900/10":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-white dark:bg-zinc-900/40"}`}>
       <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700">
         <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
         {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
@@ -6137,8 +6138,10 @@ function WhiteboardPage({ data, update }) {
   const [activeId,setActiveId] = useState(null);
   const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
 
-  const DAYS = 45;
+  const DAYS = 42;
   const dayCols = Array.from({length:DAYS},(_,i)=>wbAddDays(TODAY,i));
+  const weeks = [];
+  for (let i=0;i<dayCols.length;i+=7) weeks.push(dayCols.slice(i,i+7));
   const autoCards = upcomingLoanPayments(data, dayCols);
 
   const cardsFor = day => cards.filter(c=>c.kind!=="bill" && (c.day||null)===day);
@@ -6260,36 +6263,53 @@ function WhiteboardPage({ data, update }) {
         </div>
       ):(
         <DndContext sensors={dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
-          <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1">
-            {bills.length>0&&(
-              <div className="shrink-0 w-48 rounded-2xl p-2 bg-amber-50/70 dark:bg-amber-900/10">
-                <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
-                  <div>
-                    <div className="text-[11px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">🧾 Due Now</div>
-                    <div className="text-[10px] text-slate-400 dark:text-zinc-500">No due date · oldest first</div>
+          {(bills.length>0||unscheduled.length>0)&&(
+            <div className="flex gap-3 overflow-x-auto pb-1 mb-3 -mx-1 px-1">
+              {bills.length>0&&(
+                <div className="shrink-0 w-48 rounded-2xl p-2 bg-amber-50/70 dark:bg-amber-900/10">
+                  <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
+                    <div>
+                      <div className="text-[11px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">🧾 Due Now</div>
+                      <div className="text-[10px] text-slate-400 dark:text-zinc-500">No due date · oldest first</div>
+                    </div>
+                    {billsTotal>0&&<div className="text-xs font-bold tabular-nums shrink-0 text-red-600 dark:text-red-400">−{h$(billsTotal)}</div>}
                   </div>
-                  {billsTotal>0&&<div className="text-xs font-bold tabular-nums shrink-0 text-red-600 dark:text-red-400">−{h$(billsTotal)}</div>}
+                  <div className="min-h-[40px]">
+                    {bills.map((c,i)=><WhiteboardBillCard key={c.id} card={c} h$={h$} canMoveUp={i>0} canMoveDown={i<bills.length-1} onMove={moveBill} onEdit={setEditCard} onRemove={removeCard}/>)}
+                  </div>
                 </div>
-                <div className="min-h-[40px]">
-                  {bills.map((c,i)=><WhiteboardBillCard key={c.id} card={c} h$={h$} canMoveUp={i>0} canMoveDown={i<bills.length-1} onMove={moveBill} onEdit={setEditCard} onRemove={removeCard}/>)}
+              )}
+              <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
+                {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+              </WhiteboardColumn>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {weeks.map((week,wi)=>(
+              <div key={week[0]} className="bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-2">
+                <div className="px-1 pb-1.5 mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                  {wi===0?"This Week":`${wbFmtDate(week[0])} – ${wbFmtDate(week[6])}`}
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                  {week.map(day=>{
+                    const i = dayCols.indexOf(day);
+                    return (
+                      <WhiteboardColumn key={day} id={day} h$={h$}
+                        label={i===0?"Today":wbFmtDate(day)}
+                        sub={wbWeekday(day)}
+                        isToday={i===0} balance={balances[day]} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
+                        {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
+                        {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+                      </WhiteboardColumn>
+                    );
+                  })}
                 </div>
               </div>
-            )}
-            <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
-              {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
-            </WhiteboardColumn>
-            {dayCols.map((day,i)=>(
-              <WhiteboardColumn key={day} id={day} h$={h$}
-                label={i===0?"Today":wbFmtDate(day)}
-                sub={i===0?wbFmtDate(day):wbWeekday(day)}
-                isToday={i===0} weekStart={i>0&&i%7===0} balance={balances[day]} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
-                {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
-                {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
-              </WhiteboardColumn>
             ))}
           </div>
           <DragOverlay>
-            {activeCard&&<div className="w-48"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
+            {activeCard&&<div className="w-40"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
           </DragOverlay>
         </DndContext>
       )}
