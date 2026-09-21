@@ -5962,13 +5962,14 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
   const [propId,setPropId] = useState(init?.propId || "");
   const [address,setAddress] = useState(init?.address || "");
   const [amount,setAmount] = useState(init ? String(init.amount||"") : "");
+  const [direction,setDirection] = useState(init?.direction || "out");
   const [propSearch,setPropSearch] = useState("");
 
   const activeProps = (properties||[]).filter(p=>!p.dateSold);
   const filtered = activeProps.filter(p=>!propSearch||p.address?.toLowerCase().includes(propSearch.toLowerCase()));
-  // Only the address (and, for a property card, which property) is required — the amount
-  // is added whenever it's actually known, which for a property is usually only once it's
-  // under contract or closer to closing.
+  // Only the address/description (and, for a property card, which property) is required —
+  // the amount is added whenever it's actually known, which for a property is usually only
+  // once it's under contract or closer to closing.
   const canSave = mode==="property" ? !!propId : address.trim().length>0;
 
   return (
@@ -5977,9 +5978,23 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
         {!init&&(
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1 mb-1">
             <button type="button" onClick={()=>setMode("property")}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="property"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>🏠 Existing Property</button>
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="property"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>🏠 Property</button>
             <button type="button" onClick={()=>{setMode("manual");setPropId("");setAddress("");}}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="manual"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>✏️ Manual Entry</button>
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="manual"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>🔑 Purchase Closing</button>
+            <button type="button" onClick={()=>{setMode("misc");setPropId("");setAddress("");}}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="misc"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>💵 Other</button>
+          </div>
+        )}
+
+        {mode==="misc"&&(
+          <div className="mb-1">
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Direction</label>
+            <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
+              <button type="button" onClick={()=>setDirection("in")}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${direction==="in"?"bg-white dark:bg-zinc-700 text-emerald-600 dark:text-emerald-400 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>+ Money In</button>
+              <button type="button" onClick={()=>setDirection("out")}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${direction==="out"?"bg-white dark:bg-zinc-700 text-red-600 dark:text-red-400 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>− Money Out</button>
+            </div>
           </div>
         )}
 
@@ -6008,12 +6023,14 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
             )}
             {propId&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-2">Shows all current liens on this property automatically.</p>}
           </div>
+        ):mode==="misc"?(
+          <Inp label="Description" value={address} onChange={setAddress} placeholder="e.g. Contractor draw, personal loan, refund"/>
         ):(
           <Inp label="Address" value={address} onChange={setAddress} placeholder="123 Oak Ave, Nashville, TN"/>
         )}
 
-        <Inp label={`${mode==="property"?"Expected Amount":"Amount Needed"} ($) — optional`} money value={amount} onChange={setAmount} placeholder="150000"
-          helpText={mode==="property"?"Add now if you know it, or leave blank and fill it in closer to closing":"Add now if you know it, or leave blank and fill it in once you do"}/>
+        <Inp label={`${mode==="property"?"Expected Amount":mode==="misc"?"Amount":"Amount Needed"} ($) — optional`} money value={amount} onChange={setAmount} placeholder="150000"
+          helpText={mode==="misc"?"Add now if you know it, or leave blank and fill it in once you do":mode==="property"?"Add now if you know it, or leave blank and fill it in closer to closing":"Add now if you know it, or leave blank and fill it in once you do"}/>
 
         <div className="flex gap-2 pt-1">
           <Btn color={canSave?"blue":"ghost"} disabled={!canSave} onClick={()=>canSave&&onSave({
@@ -6022,7 +6039,7 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
             propId: mode==="property" ? propId : null,
             address: address.trim(),
             amount: parseFloat(amount)||0,
-            direction: init?.direction || (mode==="property" ? "in" : "out"),
+            direction: mode==="misc" ? direction : (init?.direction || (mode==="property" ? "in" : "out")),
             day: init?.day ?? null,
           })}>Save</Btn>
           <Btn color="ghost" onClick={onClose}>Cancel</Btn>
