@@ -5838,8 +5838,10 @@ function DrawsPage({ data }) {
 // (usually an expected sale) and money out (usually a purchase closing), so you can see at
 // a glance what's coming and whether you'll have the cash for it. Incoming money is assumed
 // to take 1 business day to clear, so a day's net counts in-cards by when they actually
-// settle, not the day they're dropped on. Nothing here feeds back into properties/loans/
-// history; it's just a whiteboard.
+// settle, not the day they're dropped on. Bills with no due date (kind:"bill") skip the day
+// grid entirely and live in a separate "Due Now" queue, ranked by when they were added with
+// a manual up/down override. Nothing here feeds back into properties/loans/history; it's
+// just a whiteboard.
 const wbAddDays = (dateStr,n) => {
   const [y,m,d] = dateStr.split('-').map(Number);
   const dt = new Date(y,m-1,d+n);
@@ -5867,63 +5869,68 @@ const wbNextBusinessDay = dateStr => {
 };
 const wbEffectiveDate = card => card.direction==="in" && card.day ? wbNextBusinessDay(card.day) : card.day;
 
+// Shared compact shell for every whiteboard card — a colored left accent bar instead of a
+// full border, amount as the dominant element, and secondary detail (liens, availability,
+// edit/remove) kept small and out of the way until hovered, so a column full of cards scans
+// at a glance instead of reading like a form.
+const WhiteboardCardShell = ({ accent, title, titleOnClick, amountNode, meta, onEdit, onRemove, dragHandleProps, children }) => (
+  <div className={`group relative rounded-lg border-l-[3px] pl-2.5 pr-1.5 py-2 mb-1.5 bg-white dark:bg-zinc-800 shadow-sm select-none ${accent}`}
+    {...(dragHandleProps||{})}>
+    <div className="flex items-start justify-between gap-1.5">
+      <div className="min-w-0 flex-1">
+        {titleOnClick
+          ? <button onClick={e=>{e.stopPropagation();titleOnClick();}} className="font-semibold text-[12px] text-blue-600 dark:text-blue-400 hover:underline truncate text-left block w-full">{title}</button>
+          : <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{title}</div>
+        }
+        {amountNode}
+        {meta}
+      </div>
+      {(onEdit||onRemove)&&(
+        <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit();}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-[11px]">✏️</button>}
+          {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove();}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
+        </div>
+      )}
+    </div>
+    {children}
+  </div>
+);
+
 const WhiteboardCardVisual = ({ card, h$, liens, availText, onEdit, onRemove, navigate, dragHandleProps }) => {
   const isProp = card.kind==="property";
   const isIn = card.direction==="in";
   const hasAmount = (card.amount||0)>0;
-  const liensShown = (liens||[]).slice(0,4);
+  const liensShown = (liens||[]).slice(0,3);
   const liensExtra = (liens||[]).length - liensShown.length;
   const liensTotal = (liens||[]).reduce((s,l)=>s+l.amt,0);
   return (
-    <div className={`rounded-xl border p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm select-none ${isIn?"border-emerald-300 dark:border-emerald-700":"border-red-300 dark:border-red-700"}`}
-      {...(dragHandleProps||{})}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          {isProp
-            ? <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'property',id:card.propId});}}
-                className="font-semibold text-[13px] text-blue-600 dark:text-blue-400 hover:underline truncate text-left block w-full">{card.address}</button>
-            : <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-100 truncate">{card.address}</div>
-          }
-
-          {isProp&&liensShown.length>0&&(
-            <div className="mt-1.5 mb-1 space-y-0.5">
-              {liensShown.map((l,i)=>(
-                <div key={i} className="flex justify-between text-[10px] text-slate-400 dark:text-zinc-500 gap-2">
-                  <span className="truncate">{l.lenderName||"Unknown"}</span>
-                  <span className="tabular-nums shrink-0">{h$(l.amt)}</span>
-                </div>
-              ))}
-              {liensExtra>0&&<div className="text-[10px] text-slate-300 dark:text-zinc-600">+{liensExtra} more</div>}
-              <div className="flex justify-between text-[10px] font-semibold text-slate-500 dark:text-zinc-400 border-t border-slate-100 dark:border-zinc-700 pt-0.5">
-                <span>Liens</span><span className="tabular-nums">{h$(liensTotal)}</span>
-              </div>
-            </div>
-          )}
-
-          {hasAmount ? (
-            <div className={`text-lg font-black tabular-nums mt-0.5 ${isIn?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>
-              {isIn?"+":"−"}{h$(card.amount)}
-            </div>
-          ) : onEdit ? (
-            <button onClick={e=>{e.stopPropagation();onEdit(card);}}
-              className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">
-              + {isIn?"Add expected amount":"Add amount needed"}
-            </button>
-          ) : (
-            <div className="text-[11px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
-          )}
-          {availText&&(
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Available {availText}</div>
-          )}
+    <WhiteboardCardShell dragHandleProps={dragHandleProps}
+      accent={isIn?"border-emerald-400 dark:border-emerald-600":"border-red-400 dark:border-red-600"}
+      title={card.address}
+      titleOnClick={isProp&&navigate ? ()=>navigate({type:'property',id:card.propId}) : null}
+      onEdit={onEdit?()=>onEdit(card):null}
+      onRemove={onRemove?()=>onRemove(card.id):null}
+      amountNode={hasAmount ? (
+        <div className={`text-[15px] font-black tabular-nums mt-0.5 ${isIn?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>
+          {isIn?"+":"−"}{h$(card.amount)}
         </div>
-        {(onEdit||onRemove)&&(
-          <div className="flex flex-col gap-1 shrink-0">
-            {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-[11px]">✏️</button>}
-            {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
+      ) : onEdit ? (
+        <button onClick={e=>{e.stopPropagation();onEdit(card);}}
+          className="text-[10.5px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">
+          + {isIn?"add expected amount":"add amount needed"}
+        </button>
+      ) : (
+        <div className="text-[10.5px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
+      )}
+      meta={<>
+        {isProp&&liensShown.length>0&&(
+          <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 truncate">
+            {liensShown.map(l=>l.lenderName||"Unknown").join(", ")}{liensExtra>0?` +${liensExtra}`:""} · {h$(liensTotal)} liens
           </div>
         )}
-      </div>
-    </div>
+        {availText&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Available {availText}</div>}
+      </>}
+    />
   );
 };
 
@@ -5937,21 +5944,23 @@ const WhiteboardCard = ({ card, h$, liens, availText, onEdit, onRemove, navigate
   );
 };
 
-const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, net, h$, children, empty }) => {
+const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, net, h$, children, empty }) => {
   const {setNodeRef,isOver} = useDroppable({id});
   return (
     <div ref={setNodeRef}
-      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"}`}>
-      <div className="px-1 pb-2 mb-2 border-b border-slate-200 dark:border-zinc-700">
-        <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
-        {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
+      className={`shrink-0 w-48 rounded-2xl p-2 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"} ${weekStart?"ml-2":""}`}>
+      <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
+        <div>
+          <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
+          {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
+        </div>
         {!isUnscheduled&&net!==0&&(
-          <div className={`text-sm font-bold tabular-nums mt-0.5 ${net>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{net>=0?"+":"−"}{h$(Math.abs(net))}</div>
+          <div className={`text-xs font-bold tabular-nums shrink-0 ${net>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{net>=0?"+":"−"}{h$(Math.abs(net))}</div>
         )}
       </div>
-      <div className="min-h-[70px]">
+      <div className="min-h-[40px]">
         {children}
-        {empty&&<div className="text-[11px] text-slate-300 dark:text-zinc-600 italic text-center py-4">{isUnscheduled?"Drop cards here first":"—"}</div>}
+        {empty&&isUnscheduled&&<div className="text-[11px] text-slate-300 dark:text-zinc-600 italic text-center py-4">Drop cards here first</div>}
       </div>
     </div>
   );
@@ -5976,13 +5985,15 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
     <Modal title={init?"Edit Card":"Add Card"} onClose={onClose}>
       <div className="space-y-3">
         {!init&&(
-          <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1 mb-1">
+          <div className="grid grid-cols-2 bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1 mb-1">
             <button type="button" onClick={()=>setMode("property")}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="property"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>🏠 Property</button>
+              className={`py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="property"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>🏠 Property</button>
             <button type="button" onClick={()=>{setMode("manual");setPropId("");setAddress("");}}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="manual"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>🔑 Purchase Closing</button>
+              className={`py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="manual"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>🔑 Purchase Closing</button>
             <button type="button" onClick={()=>{setMode("misc");setPropId("");setAddress("");}}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="misc"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>💵 Other</button>
+              className={`py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="misc"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>💵 Other</button>
+            <button type="button" onClick={()=>{setMode("bill");setPropId("");setAddress("");}}
+              className={`py-1.5 rounded-lg text-xs font-semibold transition-all ${mode==="bill"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>🧾 Bill, No Due Date</button>
           </div>
         )}
 
@@ -6025,12 +6036,15 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
           </div>
         ):mode==="misc"?(
           <Inp label="Description" value={address} onChange={setAddress} placeholder="e.g. Contractor draw, personal loan, refund"/>
+        ):mode==="bill"?(
+          <Inp label="What's it for?" value={address} onChange={setAddress} placeholder="e.g. Insurance, materials invoice, utility bill"/>
         ):(
           <Inp label="Address" value={address} onChange={setAddress} placeholder="123 Oak Ave, Nashville, TN"/>
         )}
 
-        <Inp label={`${mode==="property"?"Expected Amount":mode==="misc"?"Amount":"Amount Needed"} ($) — optional`} money value={amount} onChange={setAmount} placeholder="150000"
-          helpText={mode==="misc"?"Add now if you know it, or leave blank and fill it in once you do":mode==="property"?"Add now if you know it, or leave blank and fill it in closer to closing":"Add now if you know it, or leave blank and fill it in once you do"}/>
+        <Inp label={`${mode==="property"?"Expected Amount":"Amount"}${mode==="bill"?"":" — optional"} ($)`} money value={amount} onChange={setAmount} placeholder="150000"
+          helpText={mode==="property"?"Add now if you know it, or leave blank and fill it in closer to closing":mode==="bill"?"You can leave this blank and fill it in once you know it":"Add now if you know it, or leave blank and fill it in once you do"}/>
+        {mode==="bill"&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2">No due date needed — it goes straight into the Due Now queue, ranked by when it came in. Use the ▲▼ arrows there to reprioritize.</p>}
 
         <div className="flex gap-2 pt-1">
           <Btn color={canSave?"blue":"ghost"} disabled={!canSave} onClick={()=>canSave&&onSave({
@@ -6039,8 +6053,8 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
             propId: mode==="property" ? propId : null,
             address: address.trim(),
             amount: parseFloat(amount)||0,
-            direction: mode==="misc" ? direction : (init?.direction || (mode==="property" ? "in" : "out")),
-            day: init?.day ?? null,
+            direction: mode==="misc" ? direction : mode==="bill" ? "out" : (init?.direction || (mode==="property" ? "in" : "out")),
+            day: mode==="bill" ? null : (init?.day ?? null),
           })}>Save</Btn>
           <Btn color="ghost" onClick={onClose}>Cancel</Btn>
         </div>
@@ -6079,18 +6093,37 @@ const upcomingLoanPayments = (data, dayCols) => {
 };
 
 const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
-  <div className="rounded-xl border border-dashed border-slate-300 dark:border-zinc-600 p-3 mb-2 bg-slate-50 dark:bg-zinc-800/60">
-    <div className="flex items-center gap-1.5 mb-0.5">
-      <span className="text-[10px]">🏦</span>
-      <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'loan',loanId:card.loanId,propId:card.propId});}}
-        className="font-semibold text-[12px] text-slate-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline truncate text-left">
-        {card.lenderName||"Unknown"}
-      </button>
-    </div>
-    {card.address&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">{card.address}</div>}
-    <div className="text-base font-black tabular-nums mt-0.5 text-red-500 dark:text-red-400">−{h$(card.amount)}</div>
-    <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Loan payment · auto</div>
-  </div>
+  <WhiteboardCardShell accent="border-slate-300 dark:border-zinc-600"
+    title={<>🏦 {card.lenderName||"Unknown"}</>}
+    titleOnClick={navigate ? ()=>navigate({type:'loan',loanId:card.loanId,propId:card.propId}) : null}
+    amountNode={<div className="text-[15px] font-black tabular-nums mt-0.5 text-red-500 dark:text-red-400">−{h$(card.amount)}</div>}
+    meta={<div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 truncate">{card.address?`${card.address} · `:""}auto</div>}
+  />
+);
+
+// Bills/invoices with no due date — pay-ASAP, ranked by when they came in (default) or a
+// manual override via the up/down arrows, kept in their own queue instead of forced onto a
+// specific day since there isn't one yet.
+const WhiteboardBillCard = ({ card, h$, canMoveUp, canMoveDown, onMove, onEdit, onRemove }) => (
+  <WhiteboardCardShell accent="border-amber-400 dark:border-amber-600"
+    title={card.address}
+    onEdit={onEdit?()=>onEdit(card):null}
+    onRemove={onRemove?()=>onRemove(card.id):null}
+    amountNode={(card.amount||0)>0 ? (
+      <div className="text-[15px] font-black tabular-nums mt-0.5 text-red-500 dark:text-red-400">−{h$(card.amount)}</div>
+    ) : onEdit ? (
+      <button onClick={e=>{e.stopPropagation();onEdit(card);}} className="text-[10.5px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">+ add amount</button>
+    ) : (
+      <div className="text-[10.5px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
+    )}
+    meta={<div className="flex items-center justify-between mt-1">
+      <span className="text-[10px] text-slate-400 dark:text-zinc-500">since {wbFmtDate(card.addedAt||TODAY)}</span>
+      <span className="flex gap-0.5">
+        <button disabled={!canMoveUp} onClick={e=>{e.stopPropagation();onMove(card.id,-1);}} className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[10px]">▲</button>
+        <button disabled={!canMoveDown} onClick={e=>{e.stopPropagation();onMove(card.id,1);}} className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[10px]">▼</button>
+      </span>
+    </div>}
+  />
 );
 
 function WhiteboardPage({ data, update }) {
@@ -6107,9 +6140,11 @@ function WhiteboardPage({ data, update }) {
   const dayCols = Array.from({length:DAYS},(_,i)=>wbAddDays(TODAY,i));
   const autoCards = upcomingLoanPayments(data, dayCols);
 
-  const cardsFor = day => cards.filter(c=>(c.day||null)===day);
+  const cardsFor = day => cards.filter(c=>c.kind!=="bill" && (c.day||null)===day);
   const autoCardsFor = day => autoCards.filter(c=>c.day===day);
   const unscheduled = cardsFor(null);
+  const bills = cards.filter(c=>c.kind==="bill").sort((a,b)=>(a.order??0)-(b.order??0));
+  const billsTotal = bills.reduce((s,c)=>s+(c.amount||0),0);
   // Net for a day counts out-cards placed that day plus in-cards that actually SETTLE
   // that day (1 business day after the day they're dropped on), not cards merely placed
   // there — so a Thursday deposit doesn't look available for a Thursday closing. Auto loan
@@ -6132,11 +6167,30 @@ function WhiteboardPage({ data, update }) {
   const saveCard = c => update(d=>{
     const existing = d.whiteboard?.cards||[];
     const already = existing.some(x=>x.id===c.id);
-    const nextCards = already ? existing.map(x=>x.id===c.id?{...x,...c}:x) : [...existing,c];
+    let card = c;
+    if (card.kind==="bill" && card.order==null) {
+      const maxOrder = existing.filter(x=>x.kind==="bill").reduce((m,x)=>Math.max(m,x.order??0),0);
+      card = {...card, order: maxOrder+1, addedAt: card.addedAt || TODAY};
+    }
+    const nextCards = already ? existing.map(x=>x.id===card.id?{...x,...card}:x) : [...existing,card];
     return {...d, whiteboard:{...d.whiteboard, cards:nextCards}};
   });
   const removeCard = id => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).filter(c=>c.id!==id)}}));
   const setCardDay = (id,day) => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).map(c=>c.id===id?{...c,day}:c)}}));
+  const moveBill = (id,dir) => update(d=>{
+    const all = d.whiteboard?.cards||[];
+    const sorted = all.filter(c=>c.kind==="bill").sort((a,b)=>(a.order??0)-(b.order??0));
+    const idx = sorted.findIndex(c=>c.id===id);
+    const swapIdx = idx+dir;
+    if (idx<0||swapIdx<0||swapIdx>=sorted.length) return d;
+    const a=sorted[idx], b=sorted[swapIdx];
+    const aOrder=a.order??0, bOrder=b.order??0;
+    return {...d, whiteboard:{...d.whiteboard, cards: all.map(c=>{
+      if(c.id===a.id) return {...c,order:bOrder};
+      if(c.id===b.id) return {...c,order:aOrder};
+      return c;
+    })}};
+  });
 
   const handleDragEnd = ({active,over}) => {
     setActiveId(null);
@@ -6145,15 +6199,16 @@ function WhiteboardPage({ data, update }) {
   };
 
   const activeCard = cards.find(c=>c.id===activeId);
-  const totalIn = cards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0);
-  const totalOut = cards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + autoCards.reduce((s,c)=>s+(c.amount||0),0);
+  const nonBillCards = cards.filter(c=>c.kind!=="bill");
+  const totalIn = nonBillCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0);
+  const totalOut = nonBillCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + autoCards.reduce((s,c)=>s+(c.amount||0),0) + billsTotal;
 
   return (
     <div>
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
-          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board, separate from the rest of the tracker — drag cards onto a day to plan upcoming money in and out. Incoming money is assumed to take 1 business day to clear. Upcoming hard money / monthly loan payments are pulled in automatically on the 1st of each month.</p>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board, separate from the rest of the tracker — drag cards onto a day to plan upcoming money in and out. Incoming money takes 1 business day to clear, loan payments are pulled in on the 1st automatically, and bills with no due date live in the Due Now queue on the left.</p>
         </div>
         <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>
       </div>
@@ -6184,6 +6239,20 @@ function WhiteboardPage({ data, update }) {
       ):(
         <DndContext sensors={dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
           <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1">
+            {bills.length>0&&(
+              <div className="shrink-0 w-48 rounded-2xl p-2 bg-amber-50/70 dark:bg-amber-900/10">
+                <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">🧾 Due Now</div>
+                    <div className="text-[10px] text-slate-400 dark:text-zinc-500">No due date · oldest first</div>
+                  </div>
+                  {billsTotal>0&&<div className="text-xs font-bold tabular-nums shrink-0 text-red-600 dark:text-red-400">−{h$(billsTotal)}</div>}
+                </div>
+                <div className="min-h-[40px]">
+                  {bills.map((c,i)=><WhiteboardBillCard key={c.id} card={c} h$={h$} canMoveUp={i>0} canMoveDown={i<bills.length-1} onMove={moveBill} onEdit={setEditCard} onRemove={removeCard}/>)}
+                </div>
+              </div>
+            )}
             <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
               {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
             </WhiteboardColumn>
@@ -6191,14 +6260,14 @@ function WhiteboardPage({ data, update }) {
               <WhiteboardColumn key={day} id={day} h$={h$}
                 label={i===0?"Today":wbFmtDate(day)}
                 sub={i===0?wbFmtDate(day):wbWeekday(day)}
-                isToday={i===0} net={netFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
+                isToday={i===0} weekStart={i>0&&i%7===0} net={netFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
                 {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
                 {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
               </WhiteboardColumn>
             ))}
           </div>
           <DragOverlay>
-            {activeCard&&<div className="w-56"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
+            {activeCard&&<div className="w-48"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
           </DragOverlay>
         </DndContext>
       )}
