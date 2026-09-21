@@ -5834,19 +5834,21 @@ function DrawsPage({ data }) {
 
 // ─── Whiteboard ───────────────────────────────────────────────────────────────
 // A deliberately manual, standalone planning board — separate from the rest of the
-// tracker's auto-computed numbers. Days are grouped into Sun–Sat weeks, each its own vertical
-// column (7 days stacked top to bottom) so a whole week is visible without scrolling; weeks
-// themselves sit side by side — this week on the left — and you scroll right for later ones,
-// instead of scrolling sideways through every individual day. Each week has its own
-// starting balance (defaults to $0, editable per week) and running/ending balance — weeks
-// aren't chained off one number for the whole board, so a real bank-balance check partway
-// through drops straight into that week. You drag cards onto a day to plan upcoming money in
-// (usually an expected sale) and money out (usually a purchase closing). Incoming money is
-// assumed to take 1 business day to clear, so a day's balance counts in-cards by when they
-// actually settle, not the day they're dropped on. Bills with no due date (kind:"bill") skip
-// the day grid entirely and live in a separate "Due Now" queue, ranked by when they were
-// added with a manual up/down override, deducted from the current week's balance. Nothing
-// here feeds back into properties/loans/history; it's just a whiteboard.
+// tracker's auto-computed numbers. Like Google Calendar, one view is showing at a time
+// (Month/Week/Day/Agenda tabs) instead of dumping the whole horizon on screen — Month is a
+// compact grid for orientation (tap a day to open it), Week shows one Sun–Sat week with its
+// own start/end balance, Day is one day in full, Agenda is a flat chronological list of only
+// the days with something on them. Drag-and-drop lives in Week/Day, where real day columns
+// are on screen. Each week has its own starting balance (defaults to $0, editable) and
+// running/ending balance — weeks aren't chained off one number for the whole board, so a real
+// bank-balance check partway through drops straight into that week. You drag cards onto a
+// day to plan upcoming money in (usually an expected sale) and money out (usually a purchase
+// closing). Incoming money is assumed to take 1 business day to clear, so a day's balance
+// counts in-cards by when they actually settle, not the day they're dropped on. Bills with no
+// due date (kind:"bill") skip the day grid entirely and live in a separate "Due Now" queue,
+// ranked by when they were added with a manual up/down override, deducted from the current
+// week's balance. Nothing here feeds back into properties/loans/history; it's just a
+// whiteboard.
 const wbAddDays = (dateStr,n) => {
   const [y,m,d] = dateStr.split('-').map(Number);
   const dt = new Date(y,m-1,d+n);
@@ -6150,40 +6152,45 @@ const WhiteboardBillCard = ({ card, h$, canMoveUp, canMoveDown, onMove, onEdit, 
   />
 );
 
-// One Sunday–Saturday week, laid out as its own vertical column: its own starting balance
+// Prev/Today/Next controls shared by the Week and Day views.
+const WhiteboardNav = ({ label, onPrev, onNext, onToday, prevDisabled, nextDisabled }) => (
+  <div className="flex items-center justify-between gap-2 mb-2 px-0.5">
+    <div className="text-sm font-bold text-slate-700 dark:text-zinc-200">{label}</div>
+    <div className="flex items-center gap-1">
+      <button onClick={onToday} className="text-[11px] font-semibold px-2 py-1 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20">Today</button>
+      <button onClick={onPrev} disabled={prevDisabled} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 disabled:opacity-20">‹</button>
+      <button onClick={onNext} disabled={nextDisabled} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 disabled:opacity-20">›</button>
+    </div>
+  </div>
+);
+
+// One Sunday–Saturday week shown on its own (the Week view) — its own starting balance
 // (editable, defaults to $0 — a real balance you check partway through a week drops straight
-// in here), the resulting ending balance, and its 7 days stacked top to bottom underneath —
-// no side-scrolling needed to see a whole week. Weeks themselves sit side by side (This Week
-// first, on the left) in a horizontally scrolling row one level up.
-function WhiteboardWeekRow({ wi, week, calc, onSetStart, billsTotal, h$, navigate, cardsFor, autoCardsFor, liensFor, onEdit, onRemove }) {
+// in here) and the resulting ending balance, with its 7 days in a row underneath.
+function WhiteboardWeekView({ calc, week, onSetStart, billsTotal, h$, navigate, cardsFor, autoCardsFor, liensFor, onEdit, onRemove }) {
   const [input,setInput] = useState(String(calc.startBal||""));
-  useEffect(()=>{ setInput(String(calc.startBal||"")); }, [calc.startBal]);
+  useEffect(()=>{ setInput(String(calc.startBal||"")); }, [calc.startBal, calc.weekSunday]);
   const short = v => v<0;
   return (
-    <div className="shrink-0 w-72 bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-2">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700">
-        <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
-          {wi===0?"This Week":`${wbFmtDate(calc.weekSunday)} – ${wbFmtDate(wbAddDays(calc.weekSunday,6))}`}
-        </div>
-        <div className="flex items-center gap-3 text-[11px]">
-          <label className="flex items-center gap-1 text-slate-400 dark:text-zinc-500">
-            Start $
-            <input type="text" inputMode="decimal" value={input}
-              onChange={e=>setInput(e.target.value)}
-              onBlur={()=>onSetStart(parseFloat(input)||0)}
-              className="w-16 font-bold tabular-nums bg-transparent focus:outline-none text-slate-700 dark:text-zinc-200"/>
-          </label>
-          <span className={`font-bold tabular-nums ${short(calc.endBal)?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>
-            End {short(calc.endBal)?"⚠ −":""}{h$(Math.abs(calc.endBal))}
-          </span>
-        </div>
+    <div className="bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-2">
+      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 text-[11px]">
+        <label className="flex items-center gap-1 text-slate-400 dark:text-zinc-500">
+          Start $
+          <input type="text" inputMode="decimal" value={input}
+            onChange={e=>setInput(e.target.value)}
+            onBlur={()=>onSetStart(parseFloat(input)||0)}
+            className="w-16 font-bold tabular-nums bg-transparent focus:outline-none text-slate-700 dark:text-zinc-200"/>
+        </label>
+        <span className={`font-bold tabular-nums ${short(calc.endBal)?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>
+          End {short(calc.endBal)?"⚠ −":""}{h$(Math.abs(calc.endBal))}
+        </span>
       </div>
       {billsTotal>0&&<div className="px-1 -mt-1 mb-1.5 text-[10px] text-slate-400 dark:text-zinc-500">includes −{h$(billsTotal)} in Due Now</div>}
-      <div className="space-y-2">
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
         {week.map((day,s)=>{
-          if (!day) return null;
+          if (!day) return <div key={s} className="shrink-0 w-40"/>;
           return (
-            <WhiteboardColumn key={day} id={day} h$={h$} full
+            <WhiteboardColumn key={day} id={day} h$={h$}
               label={day===TODAY?"Today":wbFmtDate(day)}
               sub={wbWeekday(day)}
               isToday={day===TODAY} balance={calc.dayBalances[day]} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
@@ -6197,6 +6204,68 @@ function WhiteboardWeekRow({ wi, week, calc, onSetStart, billsTotal, h$, navigat
   );
 }
 
+// A compact calendar grid across the whole horizon — just a date and a small balance per
+// cell, colored red the moment it goes negative — for orientation at a glance. Tapping a day
+// jumps into the Day view for it instead of trying to cram real cards into a tiny cell.
+function WhiteboardMonthGrid({ weeks, weekCalcs, cardsFor, autoCardsFor, hc$, onPickDay }) {
+  return (
+    <div className="bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-2">
+      <div className="grid grid-cols-7 gap-1 px-0.5 pb-1 mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-zinc-500 text-center">
+        {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=><div key={d}>{d}</div>)}
+      </div>
+      <div className="space-y-1">
+        {weeks.map((week,wi)=>(
+          <div key={weekCalcs[wi].weekSunday} className="grid grid-cols-7 gap-1">
+            {week.map((day,s)=>{
+              if (!day) return <div key={s}/>;
+              const bal = weekCalcs[wi].dayBalances[day];
+              const short = bal<0;
+              const hasCards = cardsFor(day).length>0||autoCardsFor(day).length>0;
+              return (
+                <button key={day} onClick={()=>onPickDay(day)}
+                  className={`aspect-square rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors ${day===TODAY?"bg-amber-100 dark:bg-amber-900/30":short?"bg-red-50 dark:bg-red-900/20":"bg-white dark:bg-zinc-900/40 hover:bg-slate-100 dark:hover:bg-zinc-800"}`}>
+                  <span className={`text-[11px] font-bold ${day===TODAY?"text-amber-700 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{Number(day.slice(8,10))}</span>
+                  {bal!=null&&<span className={`text-[8px] font-bold tabular-nums ${short?"text-red-600 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>{short?"−":""}{hc$(Math.abs(bal))}</span>}
+                  {hasCards&&<span className="w-1 h-1 rounded-full bg-blue-400"/>}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// A flat, chronological read/edit list — only days with something on them, like Google
+// Calendar's Schedule view — for scanning what's coming up without the grid.
+function WhiteboardAgenda({ dayCols, weekCalcs, cardsFor, autoCardsFor, liensFor, h$, navigate, onEdit, onRemove }) {
+  const dayBalances = {};
+  weekCalcs.forEach(wc=>Object.assign(dayBalances,wc.dayBalances));
+  const activeDays = dayCols.filter(day=>cardsFor(day).length>0||autoCardsFor(day).length>0);
+  if (!activeDays.length) return <div className="text-center py-10 text-slate-400 dark:text-zinc-500 text-sm">Nothing scheduled in the next {dayCols.length} days.</div>;
+  return (
+    <div className="space-y-3">
+      {activeDays.map(day=>{
+        const bal = dayBalances[day];
+        const short = bal<0;
+        return (
+          <div key={day} className="bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-2.5">
+            <div className="flex items-center justify-between mb-1.5 px-0.5">
+              <div className={`text-[11px] font-bold uppercase tracking-wide ${day===TODAY?"text-amber-600 dark:text-amber-400":"text-slate-500 dark:text-zinc-400"}`}>
+                {day===TODAY?"Today":`${wbWeekday(day)}, ${wbFmtDate(day)}`}
+              </div>
+              {bal!=null&&<div className={`text-xs font-bold tabular-nums ${short?"text-red-600 dark:text-red-400":"text-slate-500 dark:text-zinc-400"}`}>{short?"⚠ −":""}{h$(Math.abs(bal))}</div>}
+            </div>
+            {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
+            {cardsFor(day).map(c=><WhiteboardCardVisual key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={onEdit} onRemove={onRemove} navigate={navigate}/>)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function WhiteboardPage({ data, update }) {
   const prv = usePrivacy();
   const navigate = usePanel();
@@ -6206,6 +6275,10 @@ function WhiteboardPage({ data, update }) {
   const [editCard,setEditCard] = useState(null);
   const [activeId,setActiveId] = useState(null);
   const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
+  const hc$ = v => prv?maskMoney($$c(v)):$$c(v);
+  const [view,setView] = useState("week"); // month | week | day | agenda
+  const [weekIdx,setWeekIdx] = useState(0);
+  const [selDay,setSelDay] = useState(TODAY);
 
   const DAYS = 42;
   const dayCols = Array.from({length:DAYS},(_,i)=>wbAddDays(TODAY,i));
@@ -6259,6 +6332,8 @@ function WhiteboardPage({ data, update }) {
     }
     return { weekSunday, startBal, endBal: running, dayBalances };
   });
+  const allDayBalances = {};
+  weekCalcs.forEach(wc=>Object.assign(allDayBalances,wc.dayBalances));
   // Current liens on a linked property, pulled live every render — so if a loan gets paid
   // off or a new one's added, the card reflects it automatically without re-entering anything.
   const liensFor = propId => {
@@ -6306,15 +6381,25 @@ function WhiteboardPage({ data, update }) {
   };
 
   const activeCard = cards.find(c=>c.id===activeId);
+  const clampedWeekIdx = Math.min(Math.max(weekIdx,0), weeks.length-1);
+  const dayIdx = dayCols.indexOf(selDay);
+  const VIEWS = [["month","Month"],["week","Week"],["day","Day"],["agenda","Agenda"]];
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-3 mb-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
-          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">Scroll right for future weeks. Each week starts at $0 — type in a real balance for a week if you know it.</p>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">Each week starts at $0 — type in a real balance for a week if you know it.</p>
         </div>
         <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>
+      </div>
+
+      <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1 mb-3 max-w-sm">
+        {VIEWS.map(([v,lbl])=>(
+          <button key={v} onClick={()=>setView(v)}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${view===v?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{lbl}</button>
+        ))}
       </div>
 
       {cards.length===0&&autoCards.length===0?(
@@ -6347,15 +6432,41 @@ function WhiteboardPage({ data, update }) {
             </div>
           )}
 
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-            {weeks.map((week,wi)=>(
-              <WhiteboardWeekRow key={weekCalcs[wi].weekSunday} wi={wi} week={week} calc={weekCalcs[wi]}
-                onSetStart={v=>setWeekStartBalance(weekCalcs[wi].weekSunday,v)}
-                billsTotal={wi===0?billsTotal:0} h$={h$} navigate={navigate}
-                cardsFor={cardsFor} autoCardsFor={autoCardsFor} liensFor={liensFor}
-                onEdit={setEditCard} onRemove={removeCard}/>
-            ))}
-          </div>
+          {view==="month"&&(
+            <WhiteboardMonthGrid weeks={weeks} weekCalcs={weekCalcs} cardsFor={cardsFor} autoCardsFor={autoCardsFor} hc$={hc$}
+              onPickDay={day=>{setSelDay(day);setView("day");}}/>
+          )}
+
+          {view==="week"&&(<>
+            <WhiteboardNav label={clampedWeekIdx===0?"This Week":`${wbFmtDate(weekCalcs[clampedWeekIdx].weekSunday)} – ${wbFmtDate(wbAddDays(weekCalcs[clampedWeekIdx].weekSunday,6))}`}
+              onToday={()=>setWeekIdx(0)} prevDisabled={clampedWeekIdx===0} nextDisabled={clampedWeekIdx>=weeks.length-1}
+              onPrev={()=>setWeekIdx(i=>Math.max(0,i-1))} onNext={()=>setWeekIdx(i=>Math.min(weeks.length-1,i+1))}/>
+            <WhiteboardWeekView week={weeks[clampedWeekIdx]} calc={weekCalcs[clampedWeekIdx]}
+              onSetStart={v=>setWeekStartBalance(weekCalcs[clampedWeekIdx].weekSunday,v)}
+              billsTotal={clampedWeekIdx===0?billsTotal:0} h$={h$} navigate={navigate}
+              cardsFor={cardsFor} autoCardsFor={autoCardsFor} liensFor={liensFor}
+              onEdit={setEditCard} onRemove={removeCard}/>
+          </>)}
+
+          {view==="day"&&(<>
+            <WhiteboardNav label={selDay===TODAY?"Today":`${wbWeekday(selDay)}, ${wbFmtDate(selDay)}`}
+              onToday={()=>setSelDay(TODAY)} prevDisabled={dayIdx<=0} nextDisabled={dayIdx>=dayCols.length-1}
+              onPrev={()=>setSelDay(d=>{const i=dayCols.indexOf(d);return i>0?dayCols[i-1]:d;})}
+              onNext={()=>setSelDay(d=>{const i=dayCols.indexOf(d);return i<dayCols.length-1?dayCols[i+1]:d;})}/>
+            <WhiteboardColumn id={selDay} h$={h$} full
+              label={selDay===TODAY?"Today":wbFmtDate(selDay)}
+              sub={wbWeekday(selDay)}
+              isToday={selDay===TODAY} balance={allDayBalances[selDay]} empty={cardsFor(selDay).length===0&&autoCardsFor(selDay).length===0}>
+              {autoCardsFor(selDay).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
+              {cardsFor(selDay).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+            </WhiteboardColumn>
+          </>)}
+
+          {view==="agenda"&&(
+            <WhiteboardAgenda dayCols={dayCols} weekCalcs={weekCalcs} cardsFor={cardsFor} autoCardsFor={autoCardsFor} liensFor={liensFor}
+              h$={h$} navigate={navigate} onEdit={setEditCard} onRemove={removeCard}/>
+          )}
+
           <DragOverlay>
             {activeCard&&<div className="w-64"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
           </DragOverlay>
