@@ -6167,12 +6167,13 @@ function WhiteboardPage({ data, update }) {
     .reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0)
     - autoCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
   // Running cash balance through each day, so a shortfall shows up on the exact day it
-  // happens instead of needing to be worked out by hand. Bills with no due date are due-ASAP,
-  // so they're deducted right away instead of waiting on a day.
+  // happens instead of needing to be worked out by hand. Only counts money that's actually
+  // on a date — Due Now bills and Unscheduled cards have no date, so they sit outside this
+  // entirely until they're given one.
   const startingBalance = data.whiteboard?.startingBalance || 0;
   const balances = {};
   {
-    let running = startingBalance - billsTotal;
+    let running = startingBalance;
     for (const day of dayCols) {
       running += netFor(day);
       balances[day] = running;
@@ -6255,7 +6256,6 @@ function WhiteboardPage({ data, update }) {
               onBlur={()=>setStartingBalance(parseFloat(sbInput)||0)}
               className="text-lg font-black tabular-nums bg-transparent w-full focus:outline-none text-slate-700 dark:text-zinc-200 min-w-0"/>
           </div>
-          {billsTotal>0&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">−{h$(billsTotal)} in Due Now already counted</div>}
         </div>
         {(cards.length>0||autoCards.length>0)&&(<>
           <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
