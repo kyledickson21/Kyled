@@ -7,7 +7,12 @@ import { CSS } from "@dnd-kit/utilities";
 const load = loadData
 const save = saveData
 
-const TODAY = new Date().toISOString().split("T")[0];
+// toISOString() converts to UTC first, so in the evening in a US timezone it can already be
+// "tomorrow" in UTC while it's still today locally — use local date parts instead.
+const TODAY = (() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+})();
 const uid   = () => Math.random().toString(36).slice(2, 9);
 const $$    = n  => "$" + Math.round(Math.abs(n ?? 0)).toLocaleString();
 const $$s   = n  => { if (n==null) return "—"; const a=Math.round(Math.abs(n)).toLocaleString(); return n>=0?`+$${a}`:`-$${a}`; };
