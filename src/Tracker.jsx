@@ -2751,8 +2751,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                       }`}>{days}d idle</span>
                     </div>
                     <div className="flex gap-1.5 shrink-0 items-center">
-                      {u.loanType!=="hard"&&<button onClick={() => setModal({ type: "place", fund: u })}
-                        className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>}
+                      <button onClick={() => setModal({ type: "place", fund: u })}
+                        className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>
                       {/* ⋯ menu */}
                       <div className="relative z-20">
                         <button onClick={() => setMenuOpen(o => o === u.id ? null : u.id)}
@@ -7562,8 +7562,8 @@ function DashboardPage({ data, update, onNavigateTab }) {
                       }`}>{days}d idle</span>
                     </div>
                     <div className="flex gap-1.5 shrink-0 items-center">
-                      {u.loanType!=="hard"&&<button onClick={() => setModal({ type: "place", fund: u })}
-                        className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>}
+                      <button onClick={() => setModal({ type: "place", fund: u })}
+                        className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>
                       {/* ⋯ menu */}
                       <div className="relative z-20">
                         <button onClick={() => setMenuOpen(o => o === u.id ? null : u.id)}
