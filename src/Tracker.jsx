@@ -5947,7 +5947,7 @@ const WhiteboardCard = ({ card, h$, liens, availText, onEdit, onRemove, navigate
 // balance is the running cash position after everything through this day — the number that
 // answers "will I have enough" — shown big and red the moment it goes negative. net (that
 // day's own activity) stays as a small secondary line underneath when it's non-zero.
-const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, net, balance, h$, children, empty }) => {
+const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, net, balance, settledIn, h$, children, empty }) => {
   const {setNodeRef,isOver} = useDroppable({id});
   const short = balance<0;
   return (
@@ -5961,6 +5961,15 @@ const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, n
         )}
         {!isUnscheduled&&net!==0&&(
           <div className={`text-[11px] font-semibold tabular-nums mt-0.5 ${net>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{net>=0?"+":"−"}{h$(Math.abs(net))} today</div>
+        )}
+        {/* Money dragged onto an earlier day still counts here instead, once it clears (1
+            business day later) — spell that out, or a balance jump here looks unexplained. */}
+        {settledIn&&settledIn.length>0&&(
+          <div className="mt-1 space-y-0.5">
+            {settledIn.map((c,i)=>(
+              <div key={i} className="text-[10px] text-emerald-600 dark:text-emerald-400">+{h$(c.amount)} clearing from {c.address} ({wbFmtDate(c.day)})</div>
+            ))}
+          </div>
         )}
       </div>
       <div className="min-h-[70px]">
@@ -6196,6 +6205,9 @@ function WhiteboardPage({ data, update }) {
     .filter(c=>c.day && wbEffectiveDate(c)===day)
     .reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0)
     - autoCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
+  // A card dragged onto day X but settling on day Y (see wbEffectiveDate) still shows on X —
+  // this is what lets Y's balance jump make sense without hunting for the card.
+  const settledInFor = day => cards.filter(c=>c.day && c.day!==day && c.direction==="in" && (c.amount||0)>0 && wbEffectiveDate(c)===day);
   // Running cash balance through each day, so a shortfall shows up on the exact day it
   // happens instead of needing to be worked out by hand. Only counts money that's actually
   // on a date — Due Now bills and Unscheduled cards have no date, so they sit outside this
@@ -6317,7 +6329,7 @@ function WhiteboardPage({ data, update }) {
               <WhiteboardColumn key={day} id={day} h$={h$}
                 label={i===0?"Today":wbFmtDate(day)}
                 sub={i===0?wbFmtDate(day):wbWeekday(day)}
-                isToday={i===0} weekStart={i>0&&i%7===0} net={netFor(day)} balance={balances[day]} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
+                isToday={i===0} weekStart={i>0&&i%7===0} net={netFor(day)} balance={balances[day]} settledIn={settledInFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
                 {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
                 {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
               </WhiteboardColumn>
