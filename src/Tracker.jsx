@@ -3041,7 +3041,6 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                                 <span className="text-slate-400 dark:text-zinc-500">{hr(loan)}</span>
                                 <span className="text-slate-400 dark:text-zinc-500">from {loan.startDate}</span>
                                 <span className="text-slate-500 dark:text-zinc-400">bal <strong className="text-blue-600 dark:text-blue-400 tabular-nums">{h$(bal)}</strong></span>
-                                {monthly>0&&<span className="text-slate-400 dark:text-zinc-500"><strong className="text-orange-500 dark:text-orange-400 tabular-nums">{h$(monthly)}/mo</strong></span>}
                                 <span className="text-slate-400 dark:text-zinc-500">{monthly>0?"paid":"earned"} <strong className="text-emerald-600 dark:text-emerald-400 tabular-nums">{h$(earned)}</strong></span>
                               </div>
                               {loan.specialTerms&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 italic mt-1">{loan.specialTerms}</div>}
