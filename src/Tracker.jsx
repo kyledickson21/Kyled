@@ -5856,6 +5856,10 @@ const wbWeekday = dateStr => {
   const [y,m,d] = dateStr.split('-').map(Number);
   return new Date(y,m-1,d).toLocaleDateString(undefined,{weekday:'short'});
 };
+const wbDow = dateStr => { // 0=Sun..6=Sat
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return new Date(y,m-1,d).getDay();
+};
 const wbIsWeekend = dateStr => {
   const [y,m,d] = dateStr.split('-').map(Number);
   const dow = new Date(y,m-1,d).getDay();
@@ -6140,8 +6144,20 @@ function WhiteboardPage({ data, update }) {
 
   const DAYS = 42;
   const dayCols = Array.from({length:DAYS},(_,i)=>wbAddDays(TODAY,i));
+  // Weeks run Sunday–Saturday like a normal calendar, so the first row is padded with blank
+  // leading slots up to today's weekday instead of just chunking every 7 days from today.
+  const todayDow = wbDow(TODAY);
+  const weekSunday0 = wbAddDays(TODAY, -todayDow);
   const weeks = [];
-  for (let i=0;i<dayCols.length;i+=7) weeks.push(dayCols.slice(i,i+7));
+  {
+    let idx = 0;
+    while (idx < dayCols.length) {
+      const rowStart = weeks.length===0 ? todayDow : 0;
+      const slots = new Array(7).fill(null);
+      for (let s=rowStart; s<7 && idx<dayCols.length; s++, idx++) slots[s] = dayCols[idx];
+      weeks.push(slots);
+    }
+  }
   const autoCards = upcomingLoanPayments(data, dayCols);
 
   const cardsFor = day => cards.filter(c=>c.kind!=="bill" && (c.day||null)===day);
@@ -6286,27 +6302,31 @@ function WhiteboardPage({ data, update }) {
           )}
 
           <div className="space-y-3">
-            {weeks.map((week,wi)=>(
-              <div key={week[0]} className="bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-2">
-                <div className="px-1 pb-1.5 mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
-                  {wi===0?"This Week":`${wbFmtDate(week[0])} – ${wbFmtDate(week[6])}`}
+            {weeks.map((week,wi)=>{
+              const weekSunday = wbAddDays(weekSunday0, wi*7);
+              return (
+                <div key={weekSunday} className="bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-2">
+                  <div className="px-1 pb-1.5 mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                    {wi===0?"This Week":`${wbFmtDate(weekSunday)} – ${wbFmtDate(wbAddDays(weekSunday,6))}`}
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                    {week.map((day,s)=>{
+                      if (!day) return <div key={s} className="shrink-0 w-40"/>;
+                      const i = dayCols.indexOf(day);
+                      return (
+                        <WhiteboardColumn key={day} id={day} h$={h$}
+                          label={i===0?"Today":wbFmtDate(day)}
+                          sub={wbWeekday(day)}
+                          isToday={i===0} balance={balances[day]} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
+                          {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
+                          {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+                        </WhiteboardColumn>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-                  {week.map(day=>{
-                    const i = dayCols.indexOf(day);
-                    return (
-                      <WhiteboardColumn key={day} id={day} h$={h$}
-                        label={i===0?"Today":wbFmtDate(day)}
-                        sub={wbWeekday(day)}
-                        isToday={i===0} balance={balances[day]} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
-                        {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
-                        {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
-                      </WhiteboardColumn>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <DragOverlay>
             {activeCard&&<div className="w-40"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
