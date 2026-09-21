@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, deleteLenderAccount } from './supabase'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -397,6 +398,44 @@ function Modal({title,onClose,children}) {
   );
 }
 
+// A dropdown panel anchored to a button, rendered via portal straight onto document.body so
+// it isn't clipped by an ancestor's overflow — a plain `absolute` panel inside a scrollable
+// Modal gets cut off the moment the anchor button scrolls near the modal's own bottom edge,
+// since the modal's overflow-y-auto clips anything that visually extends past it regardless
+// of the panel's own position. Flips to open upward when there isn't room below.
+function DropdownPortal({ anchorRef, open, onClose, children }) {
+  const [rect, setRect] = useState(null);
+  useLayoutEffect(() => {
+    if (!open || !anchorRef.current) { setRect(null); return; }
+    const measure = () => setRect(anchorRef.current.getBoundingClientRect());
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => { window.removeEventListener("resize", measure); window.removeEventListener("scroll", measure, true); };
+  }, [open]);
+  if (!open || !rect) return null;
+  const gap = 4;
+  const spaceBelow = window.innerHeight - rect.bottom - gap;
+  const spaceAbove = rect.top - gap;
+  const openUp = spaceBelow < 160 && spaceAbove > spaceBelow;
+  const style = {
+    position: "fixed",
+    left: rect.left,
+    width: rect.width,
+    maxHeight: Math.max(120, (openUp ? spaceAbove : spaceBelow) - 8),
+    ...(openUp ? {bottom: window.innerHeight - rect.top + gap} : {top: rect.bottom + gap}),
+  };
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[100]" onClick={onClose}/>
+      <div style={style} className="z-[101] overflow-y-auto bg-white dark:bg-zinc-800 rounded-xl shadow-xl border border-slate-200 dark:border-zinc-700">
+        {children}
+      </div>
+    </>,
+    document.body
+  );
+}
+
 const Btn = ({onClick,children,color="blue",full,sm,disabled}) => {
   const cls={
     blue:  "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm shadow-blue-200 dark:shadow-none",
@@ -478,6 +517,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const [drawAmt,setDrawAmt]=useState("");
   const [blockMsg,setBlockMsg]=useState("");
   const [destPickerOpen,setDestPickerOpen]=useState(false);
+  const destBtnRef=useRef(null);
   const [editingPaymentType,setEditingPaymentType]=useState(false);
   const [editingEndDate,setEditingEndDate]=useState(false);
   const [editingDueDate,setEditingDueDate]=useState(false);
@@ -737,9 +777,8 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           Where Does This Money Go?
         </label>
         {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-2">{blockMsg}</div>}
-        {destPickerOpen&&<div className="fixed inset-0 z-40" onClick={()=>setDestPickerOpen(false)}/>}
-        <button type="button" onClick={()=>setDestPickerOpen(o=>!o)}
-          className="relative z-50 w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm flex items-center justify-between gap-2 text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+        <button ref={destBtnRef} type="button" onClick={()=>setDestPickerOpen(o=>!o)}
+          className="relative w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm flex items-center justify-between gap-2 text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
           <span className="truncate">
             {f.destination==="unassigned"
               ? "💼 Unassigned — not yet placed on a property"
@@ -747,8 +786,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           </span>
           <span className="shrink-0 text-slate-400 dark:text-zinc-500">▾</span>
         </button>
-        {destPickerOpen&&(
-          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-800 rounded-xl shadow-xl border border-slate-200 dark:border-zinc-700 overflow-hidden max-h-72 overflow-y-auto">
+        <DropdownPortal anchorRef={destBtnRef} open={destPickerOpen} onClose={()=>setDestPickerOpen(false)}>
             <button type="button" onClick={()=>{setBlockMsg("");s("destination")("unassigned");setDestPickerOpen(false);}}
               className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 border-b border-slate-100 dark:border-zinc-700 transition-colors">
               💼 Unassigned — not yet placed on a property
@@ -791,8 +829,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
             ) : (
               <div className="px-3 py-2.5 text-xs text-slate-400 dark:text-zinc-500 italic">No active properties. Add one first.</div>
             )}
-          </div>
-        )}
+        </DropdownPortal>
         {!canShowConflicts&&activeProps.length>0&&(
           <div className="text-[11px] text-slate-400 dark:text-zinc-500 italic px-1 mt-1.5">Enter amount and start date above to see property availability.</div>
         )}
@@ -1225,6 +1262,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
   const [mode, setMode] = useState("place");
   const [blockMsg, setBlockMsg] = useState("");
   const [openPicker, setOpenPicker] = useState(null);
+  const pickerBtnRefs = useRef({});
 
   const available=[], blockedDate=[], blockedSize=[];
   for (const p of candidateProps) {
@@ -1356,7 +1394,6 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm">
             <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total to split</span><span className="tabular-nums font-semibold text-slate-900 dark:text-zinc-100">{$$(loanAmt)}</span></div>
           </div>
-          {openPicker!==null&&<div className="fixed inset-0 z-40" onClick={()=>setOpenPicker(null)}/>}
           <div className="space-y-3">
             <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Split Into</div>
             {splits.map((row,i)=>{
@@ -1389,13 +1426,12 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                         className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
                     </div>
                     <div className="flex-1 relative">
-                      <button type="button" disabled={!hasAmt} onClick={()=>setOpenPicker(openPicker===i?null:i)}
-                        className={`relative z-50 w-full text-left px-2 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs flex items-center justify-between gap-1 ${!hasAmt?"opacity-40 cursor-not-allowed text-slate-400 dark:text-zinc-500":"text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"}`}>
+                      <button ref={el=>pickerBtnRefs.current[i]=el} type="button" disabled={!hasAmt} onClick={()=>setOpenPicker(openPicker===i?null:i)}
+                        className={`relative w-full text-left px-2 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs flex items-center justify-between gap-1 ${!hasAmt?"opacity-40 cursor-not-allowed text-slate-400 dark:text-zinc-500":"text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"}`}>
                         <span className="truncate">{pickerLabel}</span>
                         <span className="shrink-0 text-slate-400 dark:text-zinc-500">▾</span>
                       </button>
-                      {openPicker===i&&(
-                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-800 rounded-xl shadow-xl border border-slate-200 dark:border-zinc-700 overflow-hidden max-h-52 overflow-y-auto">
+                      <DropdownPortal anchorRef={{current:pickerBtnRefs.current[i]}} open={openPicker===i} onClose={()=>setOpenPicker(null)}>
                           <button type="button" onClick={()=>{setRow(i,"propId","unassigned");setOpenPicker(null);}}
                             className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 border-b border-slate-100 dark:border-zinc-700 transition-colors">
                             💼 Leave unassigned
@@ -1413,8 +1449,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                               </button>
                             );
                           })}
-                        </div>
-                      )}
+                      </DropdownPortal>
                     </div>
                     {splits.length>1&&<button type="button" onClick={()=>removeRow(i)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-base transition-colors shrink-0">✕</button>}
                   </div>
