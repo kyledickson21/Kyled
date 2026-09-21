@@ -106,7 +106,10 @@ const propNeeded = (prop, activeLoans) => {
   if (!prop?.purchasePrice&&!prop?.rehabBudget) return prop?.fundingNeeded||0;
   const months = effectiveMonths(prop);
   const monthlyInt = activeLoans.reduce((s,l)=>s+monthlyLoanPayment(l),0);
-  return (prop.purchasePrice||0)+(prop.rehabBudget||0)+(prop.monthlyHolding??500)*months+monthlyInt*months;
+  // Holding costs (taxes, insurance, utilities while the property sits) are a real ongoing
+  // expense but not something lender money gets allocated toward — they're paid out of
+  // pocket/cash flow, so they're left out of what a loan is sized against.
+  return (prop.purchasePrice||0)+(prop.rehabBudget||0)+monthlyInt*months;
 };
 
 const fmtRate = (l) => {
