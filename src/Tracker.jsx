@@ -6225,9 +6225,12 @@ function WhiteboardPage({ data, update }) {
   };
 
   const activeCard = cards.find(c=>c.id===activeId);
-  const nonBillCards = cards.filter(c=>c.kind!=="bill");
-  const totalIn = nonBillCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0);
-  const totalOut = nonBillCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + autoCards.reduce((s,c)=>s+(c.amount||0),0) + billsTotal;
+  // Cards still sitting in Unscheduled haven't been given a day yet, so they don't feed into
+  // any day's balance — exclude them here too, or these totals wouldn't match what the day
+  // columns actually add up to.
+  const scheduledCards = cards.filter(c=>c.kind!=="bill" && c.day);
+  const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0);
+  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + autoCards.reduce((s,c)=>s+(c.amount||0),0) + billsTotal;
   const [sbInput,setSbInput] = useState(String(startingBalance||""));
   useEffect(()=>{ setSbInput(String(startingBalance||"")); }, [startingBalance]);
 
