@@ -5874,68 +5874,63 @@ const wbNextBusinessDay = dateStr => {
 };
 const wbEffectiveDate = card => card.direction==="in" && card.day ? wbNextBusinessDay(card.day) : card.day;
 
-// Shared compact shell for every whiteboard card — a colored left accent bar instead of a
-// full border, amount as the dominant element, and secondary detail (liens, availability,
-// edit/remove) kept small and out of the way until hovered, so a column full of cards scans
-// at a glance instead of reading like a form.
-const WhiteboardCardShell = ({ accent, title, titleOnClick, amountNode, meta, onEdit, onRemove, dragHandleProps, children }) => (
-  <div className={`group relative rounded-lg border-l-[3px] pl-2.5 pr-1.5 py-2 mb-1.5 bg-white dark:bg-zinc-800 shadow-sm select-none ${accent}`}
-    {...(dragHandleProps||{})}>
-    <div className="flex items-start justify-between gap-1.5">
-      <div className="min-w-0 flex-1">
-        {titleOnClick
-          ? <button onClick={e=>{e.stopPropagation();titleOnClick();}} className="font-semibold text-[12px] text-blue-600 dark:text-blue-400 hover:underline truncate text-left block w-full">{title}</button>
-          : <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{title}</div>
-        }
-        {amountNode}
-        {meta}
-      </div>
-      {(onEdit||onRemove)&&(
-        <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-          {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit();}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-[11px]">✏️</button>}
-          {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove();}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
-        </div>
-      )}
-    </div>
-    {children}
-  </div>
-);
-
 const WhiteboardCardVisual = ({ card, h$, liens, availText, onEdit, onRemove, navigate, dragHandleProps }) => {
   const isProp = card.kind==="property";
   const isIn = card.direction==="in";
   const hasAmount = (card.amount||0)>0;
-  const liensShown = (liens||[]).slice(0,3);
+  const liensShown = (liens||[]).slice(0,4);
   const liensExtra = (liens||[]).length - liensShown.length;
   const liensTotal = (liens||[]).reduce((s,l)=>s+l.amt,0);
   return (
-    <WhiteboardCardShell dragHandleProps={dragHandleProps}
-      accent={isIn?"border-emerald-400 dark:border-emerald-600":"border-red-400 dark:border-red-600"}
-      title={card.address}
-      titleOnClick={isProp&&navigate ? ()=>navigate({type:'property',id:card.propId}) : null}
-      onEdit={onEdit?()=>onEdit(card):null}
-      onRemove={onRemove?()=>onRemove(card.id):null}
-      amountNode={hasAmount ? (
-        <div className={`text-[15px] font-black tabular-nums mt-0.5 ${isIn?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>
-          {isIn?"+":"−"}{h$(card.amount)}
+    <div className={`rounded-xl border p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm select-none ${isIn?"border-emerald-300 dark:border-emerald-700":"border-red-300 dark:border-red-700"}`}
+      {...(dragHandleProps||{})}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          {isProp
+            ? <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'property',id:card.propId});}}
+                className="font-semibold text-[13px] text-blue-600 dark:text-blue-400 hover:underline truncate text-left block w-full">{card.address}</button>
+            : <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-100 truncate">{card.address}</div>
+          }
+
+          {isProp&&liensShown.length>0&&(
+            <div className="mt-1.5 mb-1 space-y-0.5">
+              {liensShown.map((l,i)=>(
+                <div key={i} className="flex justify-between text-[10px] text-slate-400 dark:text-zinc-500 gap-2">
+                  <span className="truncate">{l.lenderName||"Unknown"}</span>
+                  <span className="tabular-nums shrink-0">{h$(l.amt)}</span>
+                </div>
+              ))}
+              {liensExtra>0&&<div className="text-[10px] text-slate-300 dark:text-zinc-600">+{liensExtra} more</div>}
+              <div className="flex justify-between text-[10px] font-semibold text-slate-500 dark:text-zinc-400 border-t border-slate-100 dark:border-zinc-700 pt-0.5">
+                <span>Liens</span><span className="tabular-nums">{h$(liensTotal)}</span>
+              </div>
+            </div>
+          )}
+
+          {hasAmount ? (
+            <div className={`text-lg font-black tabular-nums mt-0.5 ${isIn?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>
+              {isIn?"+":"−"}{h$(card.amount)}
+            </div>
+          ) : onEdit ? (
+            <button onClick={e=>{e.stopPropagation();onEdit(card);}}
+              className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">
+              + {isIn?"Add expected amount":"Add amount needed"}
+            </button>
+          ) : (
+            <div className="text-[11px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
+          )}
+          {availText&&(
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Available {availText}</div>
+          )}
         </div>
-      ) : onEdit ? (
-        <button onClick={e=>{e.stopPropagation();onEdit(card);}}
-          className="text-[10.5px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">
-          + {isIn?"add expected amount":"add amount needed"}
-        </button>
-      ) : (
-        <div className="text-[10.5px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
-      )}
-      meta={<>
-        {isProp&&liensShown.length>0&&(
-          <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 truncate">
-            {liensShown.map(l=>l.lenderName||"Unknown").join(", ")}{liensExtra>0?` +${liensExtra}`:""} · {h$(liensTotal)} liens
+        {(onEdit||onRemove)&&(
+          <div className="flex flex-col gap-1 shrink-0">
+            {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-[11px]">✏️</button>}
+            {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
           </div>
         )}
-        {availText&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Available {availText}</div>}
-      </>}
-    />
+      </div>
+    </div>
   );
 };
 
@@ -5953,19 +5948,17 @@ const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, n
   const {setNodeRef,isOver} = useDroppable({id});
   return (
     <div ref={setNodeRef}
-      className={`shrink-0 w-48 rounded-2xl p-2 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"} ${weekStart?"ml-2":""}`}>
-      <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
-        <div>
-          <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
-          {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
-        </div>
+      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"} ${weekStart?"ml-2":""}`}>
+      <div className="px-1 pb-2 mb-2 border-b border-slate-200 dark:border-zinc-700">
+        <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
+        {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
         {!isUnscheduled&&net!==0&&(
-          <div className={`text-xs font-bold tabular-nums shrink-0 ${net>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{net>=0?"+":"−"}{h$(Math.abs(net))}</div>
+          <div className={`text-sm font-bold tabular-nums mt-0.5 ${net>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{net>=0?"+":"−"}{h$(Math.abs(net))}</div>
         )}
       </div>
-      <div className="min-h-[40px]">
+      <div className="min-h-[70px]">
         {children}
-        {empty&&isUnscheduled&&<div className="text-[11px] text-slate-300 dark:text-zinc-600 italic text-center py-4">Drop cards here first</div>}
+        {empty&&<div className="text-[11px] text-slate-300 dark:text-zinc-600 italic text-center py-4">{isUnscheduled?"Drop cards here first":"—"}</div>}
       </div>
     </div>
   );
@@ -6098,37 +6091,45 @@ const upcomingLoanPayments = (data, dayCols) => {
 };
 
 const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
-  <WhiteboardCardShell accent="border-slate-300 dark:border-zinc-600"
-    title={<>🏦 {card.lenderName||"Unknown"}</>}
-    titleOnClick={navigate ? ()=>navigate({type:'loan',loanId:card.loanId,propId:card.propId}) : null}
-    amountNode={<div className="text-[15px] font-black tabular-nums mt-0.5 text-red-500 dark:text-red-400">−{h$(card.amount)}</div>}
-    meta={<div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 truncate">{card.address?`${card.address} · `:""}auto</div>}
-  />
+  <div className="rounded-xl border border-dashed border-slate-300 dark:border-zinc-600 p-3 mb-2 bg-slate-50 dark:bg-zinc-800/60">
+    <div className="flex items-center gap-1.5 mb-0.5">
+      <span className="text-[10px]">🏦</span>
+      <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'loan',loanId:card.loanId,propId:card.propId});}}
+        className="font-semibold text-[12px] text-slate-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline truncate text-left">
+        {card.lenderName||"Unknown"}
+      </button>
+    </div>
+    {card.address&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">{card.address}</div>}
+    <div className="text-base font-black tabular-nums mt-0.5 text-red-500 dark:text-red-400">−{h$(card.amount)}</div>
+    <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Loan payment · auto</div>
+  </div>
 );
 
 // Bills/invoices with no due date — pay-ASAP, ranked by when they came in (default) or a
 // manual override via the up/down arrows, kept in their own queue instead of forced onto a
 // specific day since there isn't one yet.
 const WhiteboardBillCard = ({ card, h$, canMoveUp, canMoveDown, onMove, onEdit, onRemove }) => (
-  <WhiteboardCardShell accent="border-amber-400 dark:border-amber-600"
-    title={card.address}
-    onEdit={onEdit?()=>onEdit(card):null}
-    onRemove={onRemove?()=>onRemove(card.id):null}
-    amountNode={(card.amount||0)>0 ? (
-      <div className="text-[15px] font-black tabular-nums mt-0.5 text-red-500 dark:text-red-400">−{h$(card.amount)}</div>
-    ) : onEdit ? (
-      <button onClick={e=>{e.stopPropagation();onEdit(card);}} className="text-[10.5px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">+ add amount</button>
-    ) : (
-      <div className="text-[10.5px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
-    )}
-    meta={<div className="flex items-center justify-between mt-1">
-      <span className="text-[10px] text-slate-400 dark:text-zinc-500">since {wbFmtDate(card.addedAt||TODAY)}</span>
-      <span className="flex gap-0.5">
-        <button disabled={!canMoveUp} onClick={e=>{e.stopPropagation();onMove(card.id,-1);}} className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[10px]">▲</button>
-        <button disabled={!canMoveDown} onClick={e=>{e.stopPropagation();onMove(card.id,1);}} className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[10px]">▼</button>
-      </span>
-    </div>}
-  />
+  <div className="rounded-xl border border-amber-300 dark:border-amber-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm">
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-100 truncate">{card.address}</div>
+        {(card.amount||0)>0 ? (
+          <div className="text-lg font-black tabular-nums mt-0.5 text-red-600 dark:text-red-400">−{h$(card.amount)}</div>
+        ) : onEdit ? (
+          <button onClick={e=>{e.stopPropagation();onEdit(card);}} className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">+ Add amount</button>
+        ) : (
+          <div className="text-[11px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
+        )}
+        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">since {wbFmtDate(card.addedAt||TODAY)}</div>
+      </div>
+      <div className="flex flex-col gap-1 shrink-0 items-center">
+        <button disabled={!canMoveUp} onClick={e=>{e.stopPropagation();onMove(card.id,-1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[11px]">▲</button>
+        <button disabled={!canMoveDown} onClick={e=>{e.stopPropagation();onMove(card.id,1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[11px]">▼</button>
+        {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-[11px]">✏️</button>}
+        {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
+      </div>
+    </div>
+  </div>
 );
 
 function WhiteboardPage({ data, update }) {
@@ -6245,7 +6246,7 @@ function WhiteboardPage({ data, update }) {
         <DndContext sensors={dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
           <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1">
             {bills.length>0&&(
-              <div className="shrink-0 w-48 rounded-2xl p-2 bg-amber-50/70 dark:bg-amber-900/10">
+              <div className="shrink-0 w-56 rounded-2xl p-2 bg-amber-50/70 dark:bg-amber-900/10">
                 <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
                   <div>
                     <div className="text-[11px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">🧾 Due Now</div>
@@ -6272,7 +6273,7 @@ function WhiteboardPage({ data, update }) {
             ))}
           </div>
           <DragOverlay>
-            {activeCard&&<div className="w-48"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
+            {activeCard&&<div className="w-56"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
           </DragOverlay>
         </DndContext>
       )}
