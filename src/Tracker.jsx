@@ -5834,9 +5834,10 @@ function DrawsPage({ data }) {
 
 // ─── Whiteboard ───────────────────────────────────────────────────────────────
 // A deliberately manual, standalone planning board — separate from the rest of the
-// tracker's auto-computed numbers. Days are grouped into Sun–Sat week rows stacked
-// vertically instead of one long horizontal scroll, so the whole DAYS-day horizon is
-// reachable by scrolling down like the rest of the app, not sideways. Each week has its own
+// tracker's auto-computed numbers. Days are grouped into Sun–Sat weeks, each its own vertical
+// column (7 days stacked top to bottom) so a whole week is visible without scrolling; weeks
+// themselves sit side by side — this week on the left — and you scroll right for later ones,
+// instead of scrolling sideways through every individual day. Each week has its own
 // starting balance (defaults to $0, editable per week) and running/ending balance — weeks
 // aren't chained off one number for the whole board, so a real bank-balance check partway
 // through drops straight into that week. You drag cards onto a day to plan upcoming money in
@@ -5905,12 +5906,15 @@ const WhiteboardCardShell = ({ accent, title, titleOnClick, amountNode, meta, on
 );
 
 const WhiteboardCardVisual = ({ card, h$, liens, availText, onEdit, onRemove, navigate, dragHandleProps }) => {
+  const [expanded,setExpanded] = useState(false);
   const isProp = card.kind==="property";
   const isIn = card.direction==="in";
   const hasAmount = (card.amount||0)>0;
-  const liensShown = (liens||[]).slice(0,3);
-  const liensExtra = (liens||[]).length - liensShown.length;
-  const liensTotal = (liens||[]).reduce((s,l)=>s+l.amt,0);
+  const liensAll = liens||[];
+  const liensTotal = liensAll.reduce((s,l)=>s+l.amt,0);
+  const collapsedCount = 2;
+  const liensShown = expanded ? liensAll : liensAll.slice(0,collapsedCount);
+  const liensHidden = liensAll.length - liensShown.length;
   return (
     <WhiteboardCardShell dragHandleProps={dragHandleProps}
       accent={isIn?"border-emerald-400 dark:border-emerald-600":"border-red-400 dark:border-red-600"}
@@ -5930,13 +5934,24 @@ const WhiteboardCardVisual = ({ card, h$, liens, availText, onEdit, onRemove, na
       ) : (
         <div className="text-[10.5px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
       )}
-      meta={((isProp&&liensShown.length>0)||availText) && (
-        <div className="max-h-0 group-hover:max-h-8 overflow-hidden transition-all">
-          {isProp&&liensShown.length>0&&(
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 truncate">
-              {liensShown.map(l=>l.lenderName||"Unknown").join(", ")}{liensExtra>0?` +${liensExtra}`:""} · {h$(liensTotal)} liens
+      meta={((isProp&&liensAll.length>0)||availText) && (
+        <div className="mt-1">
+          {isProp&&liensAll.length>0&&(<>
+            {liensShown.map((l,i)=>(
+              <div key={i} className="flex justify-between text-[10px] text-slate-400 dark:text-zinc-500 gap-2">
+                <span className="truncate">{l.lenderName||"Unknown"}</span>
+                <span className="tabular-nums shrink-0">{h$(l.amt)}</span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-slate-500 dark:text-zinc-400 mt-0.5">
+              <span>{h$(liensTotal)} liens</span>
+              {liensAll.length>collapsedCount&&(
+                <button onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} className="text-blue-500 dark:text-blue-400 hover:underline">
+                  {expanded?"show less":`+${liensHidden} more`}
+                </button>
+              )}
             </div>
-          )}
+          </>)}
           {availText&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Available {availText}</div>}
         </div>
       )}
@@ -5957,17 +5972,19 @@ const WhiteboardCard = ({ card, h$, liens, availText, onEdit, onRemove, navigate
 // balance is the running cash position AFTER everything through this day — the number that
 // actually answers "will I have enough" — shown big and colored red the instant it goes
 // negative, since that's the one thing worth noticing at a glance.
-const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, balance, h$, children, empty }) => {
+const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, balance, h$, children, empty, full }) => {
   const {setNodeRef,isOver} = useDroppable({id});
   const short = balance<0;
   return (
     <div ref={setNodeRef}
-      className={`shrink-0 w-40 rounded-2xl p-2 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":short?"bg-red-50/70 dark:bg-red-900/10":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-white dark:bg-zinc-900/40"}`}>
-      <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700">
-        <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
-        {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
+      className={`${full?"w-full":"shrink-0 w-40"} rounded-2xl p-2 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":short?"bg-red-50/70 dark:bg-red-900/10":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-white dark:bg-zinc-900/40"}`}>
+      <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
+        <div>
+          <span className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</span>
+          {sub&&<span className="text-[10px] text-slate-400 dark:text-zinc-500 ml-1.5">{sub}</span>}
+        </div>
         {balance!=null&&(
-          <div className={`text-sm font-black tabular-nums mt-0.5 ${short?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{short?"⚠ −":""}{h$(Math.abs(balance))}</div>
+          <div className={`text-sm font-black tabular-nums shrink-0 ${short?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{short?"⚠ −":""}{h$(Math.abs(balance))}</div>
         )}
       </div>
       <div className="min-h-[40px]">
@@ -6104,9 +6121,7 @@ const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
     title={<>🏦 {card.lenderName||"Unknown"}</>}
     titleOnClick={navigate ? ()=>navigate({type:'loan',loanId:card.loanId,propId:card.propId}) : null}
     amountNode={<div className="text-[15px] font-black tabular-nums mt-0.5 text-red-500 dark:text-red-400">−{h$(card.amount)}</div>}
-    meta={<div className="max-h-0 group-hover:max-h-8 overflow-hidden transition-all">
-      <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 truncate">{card.address?`${card.address} · `:""}auto payment</div>
-    </div>}
+    meta={<div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 truncate">{card.address?`${card.address} · `:""}auto payment</div>}
   />
 );
 
@@ -6135,17 +6150,18 @@ const WhiteboardBillCard = ({ card, h$, canMoveUp, canMoveDown, onMove, onEdit, 
   />
 );
 
-// One Sunday–Saturday row: its own starting balance (editable, defaults to $0 — a real
-// balance you check partway through a week drops straight in here) and the resulting ending
-// balance, so weeks don't have to be worked out relative to a single number carried across
-// the whole board.
+// One Sunday–Saturday week, laid out as its own vertical column: its own starting balance
+// (editable, defaults to $0 — a real balance you check partway through a week drops straight
+// in here), the resulting ending balance, and its 7 days stacked top to bottom underneath —
+// no side-scrolling needed to see a whole week. Weeks themselves sit side by side (This Week
+// first, on the left) in a horizontally scrolling row one level up.
 function WhiteboardWeekRow({ wi, week, calc, onSetStart, billsTotal, h$, navigate, cardsFor, autoCardsFor, liensFor, onEdit, onRemove }) {
   const [input,setInput] = useState(String(calc.startBal||""));
   useEffect(()=>{ setInput(String(calc.startBal||"")); }, [calc.startBal]);
   const short = v => v<0;
   return (
-    <div className="bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-2">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700">
+    <div className="shrink-0 w-72 bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700">
         <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
           {wi===0?"This Week":`${wbFmtDate(calc.weekSunday)} – ${wbFmtDate(wbAddDays(calc.weekSunday,6))}`}
         </div>
@@ -6163,11 +6179,11 @@ function WhiteboardWeekRow({ wi, week, calc, onSetStart, billsTotal, h$, navigat
         </div>
       </div>
       {billsTotal>0&&<div className="px-1 -mt-1 mb-1.5 text-[10px] text-slate-400 dark:text-zinc-500">includes −{h$(billsTotal)} in Due Now</div>}
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+      <div className="space-y-2">
         {week.map((day,s)=>{
-          if (!day) return <div key={s} className="shrink-0 w-40"/>;
+          if (!day) return null;
           return (
-            <WhiteboardColumn key={day} id={day} h$={h$}
+            <WhiteboardColumn key={day} id={day} h$={h$} full
               label={day===TODAY?"Today":wbFmtDate(day)}
               sub={wbWeekday(day)}
               isToday={day===TODAY} balance={calc.dayBalances[day]} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
@@ -6296,7 +6312,7 @@ function WhiteboardPage({ data, update }) {
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
-          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">Drag cards onto the day they happen. Each week starts at $0 — type in a real balance for a week if you know it.</p>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">Scroll right for future weeks. Each week starts at $0 — type in a real balance for a week if you know it.</p>
         </div>
         <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>
       </div>
@@ -6331,7 +6347,7 @@ function WhiteboardPage({ data, update }) {
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
             {weeks.map((week,wi)=>(
               <WhiteboardWeekRow key={weekCalcs[wi].weekSunday} wi={wi} week={week} calc={weekCalcs[wi]}
                 onSetStart={v=>setWeekStartBalance(weekCalcs[wi].weekSunday,v)}
@@ -6341,7 +6357,7 @@ function WhiteboardPage({ data, update }) {
             ))}
           </div>
           <DragOverlay>
-            {activeCard&&<div className="w-40"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
+            {activeCard&&<div className="w-64"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
           </DragOverlay>
         </DndContext>
       )}
