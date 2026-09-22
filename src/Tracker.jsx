@@ -102,12 +102,15 @@ const drawRemaining = loan => {
   return Math.max(0,(loan.drawFacility.committed||0)-drawn);
 };
 
-// What lender money actually gets allocated toward: cost to close plus rehab, full stop.
-// Holding costs and interest carry are real expenses but aren't sized against loan
-// proceeds — they're covered out of pocket/cash flow — so neither factors in here.
+// What lender money actually gets allocated toward: cost to close, rehab, and the interest
+// carry expected over the hold period. Holding costs (taxes, insurance, utilities) are a
+// real expense but aren't sized against loan proceeds — they're covered out of pocket/cash
+// flow — so those alone are left out.
 const propNeeded = (prop, activeLoans) => {
   if (!prop?.purchasePrice&&!prop?.rehabBudget) return prop?.fundingNeeded||0;
-  return (prop.purchasePrice||0)+(prop.rehabBudget||0);
+  const months = effectiveMonths(prop);
+  const monthlyInt = (activeLoans||[]).reduce((s,l)=>s+monthlyLoanPayment(l),0);
+  return (prop.purchasePrice||0)+(prop.rehabBudget||0)+monthlyInt*months;
 };
 
 const fmtRate = (l) => {
@@ -2949,10 +2952,14 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           const over=needed>0?Math.max(0,funded-needed):0;
           const rawPct=needed>0?Math.round(funded/needed*100):0;
           const isOpen=!!expanded[prop.id];
+          const months=effectiveMonths(prop);
+          const monthlyInt=active.reduce((s,l)=>s+monthlyLoanPayment(l),0);
           const purchaseAmt=prop.purchasePrice||0;
           const rehabAmt=prop.rehabBudget||0;
+          const intAmt=monthlyInt*months;
           const d1=purchaseAmt/needed*100;
-          const hasBreakdown=purchaseAmt>0||rehabAmt>0;
+          const d2=(purchaseAmt+rehabAmt)/needed*100;
+          const hasBreakdown=purchaseAmt>0||rehabAmt>0||intAmt>0;
           const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);
           const daysOwned=pd?Math.floor((new Date(TODAY)-new Date(pd))/86400000):null;
           const manualMode=propSortMode==="manual";
@@ -2982,7 +2989,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   <>
                     <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5 relative">
                       <div className={`h-full absolute left-0 top-0 transition-all rounded-full ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
-                      {hasBreakdown&&purchaseAmt>0&&rehabAmt>0&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/40" style={{left:`${d1}%`}}/>}
+                      {hasBreakdown&&purchaseAmt>0&&(rehabAmt>0||intAmt>0)&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/40" style={{left:`${d1}%`}}/>}
+                      {hasBreakdown&&(purchaseAmt+rehabAmt)>0&&intAmt>0&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/40" style={{left:`${d2}%`}}/>}
                     </div>
                     <div className="flex justify-between text-[10px]">
                       <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{h$(funded)} funded</span>
@@ -3013,6 +3021,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                       <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
                         {purchaseAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Cost to Buy <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{h$(purchaseAmt)}</strong></span>}
                         {rehabAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Rehab <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{h$(rehabAmt)}</strong></span>}
+                        {intAmt>0&&<span className="text-slate-500 dark:text-zinc-400">Interest <strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{hc(intAmt)}</strong><span className="opacity-60 ml-1">({months}mo)</span></span>}
                         {daysOwned!==null&&<span className="text-slate-400 dark:text-zinc-500">{daysOwned} days owned</span>}
                       </div>
                     </div>
