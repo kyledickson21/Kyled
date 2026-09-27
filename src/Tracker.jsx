@@ -7467,6 +7467,11 @@ function DashboardPage({ data, update, onNavigateTab }) {
     return s + hardMonthlyForProp * effectiveMonths(p);
   }, 0);
   const totalPrivateMoneyNeeded = privateMoneyNeeded + uncommittedRehab + hardMoneyFullTimeline;
+  // Private-type money currently deployed (on active properties) or sitting unassigned —
+  // what's actually on hand right now, as opposed to the tiles above (what's still needed).
+  const privateMoneyOnHand = allActivePlusUnassigned
+    .filter(l => l.loanType === "private")
+    .reduce((s, l) => s + (l.principal || 0) + (l.drawFacility?.committed || 0), 0);
 
   // All active properties ranked by monthly burn — same logic as RehabPriority
   const rollingLoans = data.rollingLoans || [];
@@ -7532,6 +7537,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
     slate:  "text-slate-700 dark:text-zinc-200",
     orange: "text-orange-600 dark:text-orange-400",
     violet: "text-violet-600 dark:text-violet-400",
+    emerald:"text-emerald-600 dark:text-emerald-400",
   };
 
   return (
@@ -7648,7 +7654,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
         </div>
       )}
 
-      {/* ── Stat Grid (8 tiles) ── */}
+      {/* ── Stat Grid (9 tiles) ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         {[
           { label: "Active Properties", value: activePropsData.length, sub: "tap to view",        color: "blue",   icon: "🏠", tab: "Properties"  },
@@ -7659,6 +7665,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
           { label: "Total Payoff",      value: h$(totalPayoff),      sub: "all active balances",  color: "slate",  icon: "💰", tab: "LenderDash"  },
           { label: "Private Money Needed", value: h$(privateMoneyNeeded), sub: "12% of purchase price", color: "violet", icon: "🏦", tab: "Properties" },
           { label: "Total Private Money Needed", value: h$(totalPrivateMoneyNeeded), sub: "+ uncommitted rehab + hard $ carry", color: "violet", icon: "💵", tab: "Properties" },
+          { label: "Private Money On Hand", value: h$(privateMoneyOnHand), sub: "principal + committed",   color: "emerald", icon: "🤝", tab: "LenderDash" },
         ].map(({ label, value, sub, color, icon, tab }) => (
           <button key={label} onClick={() => onNavigateTab(tab)}
             className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
