@@ -7388,6 +7388,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
   const hc$ = v => prv ? maskMoney($$c(v)) : $$c(v);
+  const hs$ = v => prv ? maskMoney($$s(v)) : $$s(v);
   const openPanel = usePanel();
   const [modal, setModal] = useState(null);
   const [fundsOpen, setFundsOpen] = usePersistedState("nx-dashFundsOpen", true);
@@ -7478,6 +7479,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const privateMoneyOnHand = allActivePlusUnassigned
     .filter(l => l.loanType === "private")
     .reduce((s, l) => s + (l.principal || 0) + (l.drawFacility?.committed || 0), 0);
+  const privateMoneyGap = totalPrivateMoneyNeeded - privateMoneyOnHand;
 
   // All active properties ranked by monthly burn — same logic as RehabPriority
   const rollingLoans = data.rollingLoans || [];
@@ -7669,7 +7671,6 @@ function DashboardPage({ data, update, onNavigateTab }) {
           { label: "Draws Available",   value: h$(drawsAvailable),   sub: "14d+ since last event",color: "amber",  icon: "🏗️", tab: "Draws"       },
           { label: "Funding Gap",       value: h$(totalFundingGap),  sub: "short of 100%",        color: "orange", icon: "📉", tab: "PropDash"    },
           { label: "Total Payoff",      value: h$(totalPayoff),      sub: "all active balances",  color: "slate",  icon: "💰", tab: "LenderDash"  },
-          { label: "Private Money Needed", value: h$(privateMoneyNeeded), sub: "12% of purchase price", color: "violet", icon: "🏦", tab: "Properties" },
           { label: "Total Private Money Needed", value: h$(totalPrivateMoneyNeeded), sub: "purchase + rehab + hard $ carry", color: "violet", icon: "💵", tab: "Properties",
             breakdown: [
               { label: "Purchase", value: hc$(privateMoneyNeeded) },
@@ -7678,6 +7679,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
               { label: "Hard $", value: hc$(hardMoneyFullTimeline) },
             ] },
           { label: "Private Money On Hand", value: h$(privateMoneyOnHand), sub: "principal + committed",   color: "emerald", icon: "🤝", tab: "LenderDash" },
+          { label: "Private Money Gap", value: hs$(privateMoneyGap), sub: privateMoneyGap>0?"still needed":"surplus on hand", color: privateMoneyGap>0?"orange":"emerald", icon: "⚖️", tab: "Properties" },
         ].map(({ label, value, sub, color, icon, tab, breakdown }) => (
           <button key={label} onClick={() => onNavigateTab(tab)}
             className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
