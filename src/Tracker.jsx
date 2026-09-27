@@ -7469,9 +7469,21 @@ function DashboardPage({ data, update, onNavigateTab }) {
     if (committed === 0) rehabNoDraws += gap; else rehabDrawGap += gap;
   });
   const uncommittedRehab = rehabNoDraws + rehabDrawGap;
+  // A hard-money loan's own draw facility (committed rehab money not yet pulled) also
+  // carries interest, but not for the full timeline like the base principal — draws trickle
+  // out over the hold period. Assumed drawn in equal monthly chunks, so the outstanding draw
+  // balance ramps from ~0 to the full committed amount; summing each month's interest on
+  // that ramp works out to committed × rate × (months+1) / 2400.
+  const hardDrawCarry = (loan, months) => {
+    if (!loan?.drawFacility?.committed || loan.interestType === "fixed") return 0;
+    return (loan.drawFacility.committed || 0) * ((loan.interestRate || 0) / 100) * (months + 1) / 24;
+  };
   const hardMoneyFullTimeline = activePropsData.reduce((s, p) => {
-    const hardMonthlyForProp = p.loans.filter(l => !l.endDate && l.loanType === "hard").reduce((hs, l) => hs + monthlyLoanPayment(l), 0);
-    return s + hardMonthlyForProp * effectiveMonths(p);
+    const months = effectiveMonths(p);
+    const hardLoans = p.loans.filter(l => !l.endDate && l.loanType === "hard");
+    const hardMonthlyForProp = hardLoans.reduce((hs, l) => hs + monthlyLoanPayment(l), 0);
+    const drawCarryForProp = hardLoans.reduce((ds, l) => ds + hardDrawCarry(l, months), 0);
+    return s + hardMonthlyForProp * months + drawCarryForProp;
   }, 0);
   const totalPrivateMoneyNeeded = privateMoneyNeeded + uncommittedRehab + hardMoneyFullTimeline;
   // Private-type money currently deployed (on active properties) or sitting unassigned —
