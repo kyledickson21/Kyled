@@ -7387,6 +7387,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
 function DashboardPage({ data, update, onNavigateTab }) {
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const hc$ = v => prv ? maskMoney($$c(v)) : $$c(v);
   const openPanel = usePanel();
   const [modal, setModal] = useState(null);
   const [fundsOpen, setFundsOpen] = usePersistedState("nx-dashFundsOpen", true);
@@ -7664,9 +7665,14 @@ function DashboardPage({ data, update, onNavigateTab }) {
           { label: "Funding Gap",       value: h$(totalFundingGap),  sub: "short of 100%",        color: "orange", icon: "📉", tab: "PropDash"    },
           { label: "Total Payoff",      value: h$(totalPayoff),      sub: "all active balances",  color: "slate",  icon: "💰", tab: "LenderDash"  },
           { label: "Private Money Needed", value: h$(privateMoneyNeeded), sub: "12% of purchase price", color: "violet", icon: "🏦", tab: "Properties" },
-          { label: "Total Private Money Needed", value: h$(totalPrivateMoneyNeeded), sub: "+ uncommitted rehab + hard $ carry", color: "violet", icon: "💵", tab: "Properties" },
+          { label: "Total Private Money Needed", value: h$(totalPrivateMoneyNeeded), sub: "purchase + rehab + hard $ carry", color: "violet", icon: "💵", tab: "Properties",
+            breakdown: [
+              { label: "Purchase", value: hc$(privateMoneyNeeded) },
+              { label: "Rehab", value: hc$(uncommittedRehab) },
+              { label: "Hard $", value: hc$(hardMoneyFullTimeline) },
+            ] },
           { label: "Private Money On Hand", value: h$(privateMoneyOnHand), sub: "principal + committed",   color: "emerald", icon: "🤝", tab: "LenderDash" },
-        ].map(({ label, value, sub, color, icon, tab }) => (
+        ].map(({ label, value, sub, color, icon, tab, breakdown }) => (
           <button key={label} onClick={() => onNavigateTab(tab)}
             className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
             <div className="flex items-start justify-between mb-2">
@@ -7680,6 +7686,13 @@ function DashboardPage({ data, update, onNavigateTab }) {
                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/>
               </svg>
             </div>
+            {breakdown&&(
+              <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-x-2.5 gap-y-0.5">
+                {breakdown.map(b=>(
+                  <span key={b.label} className="text-[9px] text-slate-400 dark:text-zinc-500">{b.label} <strong className="text-slate-600 dark:text-zinc-300 tabular-nums">{b.value}</strong></span>
+                ))}
+              </div>
+            )}
           </button>
         ))}
       </div>
