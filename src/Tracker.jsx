@@ -7452,7 +7452,21 @@ function DashboardPage({ data, update, onNavigateTab }) {
     return s + Math.max(0, propNeeded(prop, active) - funded);
   }, 0);
   const totalPayoff = allActivePlusUnassigned.reduce((s, l) => s + calcBalance(l), 0);
-  const privateMoneyNeeded = activePropsData.reduce((s, p) => s + (p.purchasePrice || 0), 0) * 0.10;
+  const totalPurchasePrice = activePropsData.reduce((s, p) => s + (p.purchasePrice || 0), 0);
+  const privateMoneyNeeded = totalPurchasePrice * 0.12;
+  // Rehab money still needed beyond what's already committed via a draw facility, plus the
+  // full-timeline cost of hard money's monthly interest (not just next month's) — on top of
+  // the same 12% of purchase price, for a fuller "what private money do we actually need"
+  // number than the purchase-price-only tile above.
+  const uncommittedRehab = activePropsData.reduce((s, p) => {
+    const committed = p.loans.filter(l => !l.endDate).reduce((cs, l) => cs + (l.drawFacility?.committed || 0), 0);
+    return s + Math.max(0, (p.rehabBudget || 0) - committed);
+  }, 0);
+  const hardMoneyFullTimeline = activePropsData.reduce((s, p) => {
+    const hardMonthlyForProp = p.loans.filter(l => !l.endDate && l.loanType === "hard").reduce((hs, l) => hs + monthlyLoanPayment(l), 0);
+    return s + hardMonthlyForProp * effectiveMonths(p);
+  }, 0);
+  const totalPrivateMoneyNeeded = privateMoneyNeeded + uncommittedRehab + hardMoneyFullTimeline;
 
   // All active properties ranked by monthly burn — same logic as RehabPriority
   const rollingLoans = data.rollingLoans || [];
@@ -7634,7 +7648,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
         </div>
       )}
 
-      {/* ── Stat Grid (7 tiles) ── */}
+      {/* ── Stat Grid (8 tiles) ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         {[
           { label: "Active Properties", value: activePropsData.length, sub: "tap to view",        color: "blue",   icon: "🏠", tab: "Properties"  },
@@ -7643,7 +7657,8 @@ function DashboardPage({ data, update, onNavigateTab }) {
           { label: "Draws Available",   value: h$(drawsAvailable),   sub: "14d+ since last event",color: "amber",  icon: "🏗️", tab: "Draws"       },
           { label: "Funding Gap",       value: h$(totalFundingGap),  sub: "short of 100%",        color: "orange", icon: "📉", tab: "PropDash"    },
           { label: "Total Payoff",      value: h$(totalPayoff),      sub: "all active balances",  color: "slate",  icon: "💰", tab: "LenderDash"  },
-          { label: "Private Money Needed", value: h$(privateMoneyNeeded), sub: "10% of purchase price", color: "violet", icon: "🏦", tab: "Properties" },
+          { label: "Private Money Needed", value: h$(privateMoneyNeeded), sub: "12% of purchase price", color: "violet", icon: "🏦", tab: "Properties" },
+          { label: "Total Private Money Needed", value: h$(totalPrivateMoneyNeeded), sub: "+ uncommitted rehab + hard $ carry", color: "violet", icon: "💵", tab: "Properties" },
         ].map(({ label, value, sub, color, icon, tab }) => (
           <button key={label} onClick={() => onNavigateTab(tab)}
             className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
