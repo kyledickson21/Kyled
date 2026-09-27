@@ -7458,11 +7458,16 @@ function DashboardPage({ data, update, onNavigateTab }) {
   // Rehab money still needed beyond what's already committed via a draw facility, plus the
   // full-timeline cost of hard money's monthly interest (not just next month's) — on top of
   // the same 12% of purchase price, for a fuller "what private money do we actually need"
-  // number than the purchase-price-only tile above.
-  const uncommittedRehab = activePropsData.reduce((s, p) => {
+  // number than the purchase-price-only tile above. Split into properties with no draw
+  // facility committed at all vs. ones with a facility whose committed amount falls short.
+  let rehabNoDraws = 0, rehabDrawGap = 0;
+  activePropsData.forEach(p => {
     const committed = p.loans.filter(l => !l.endDate).reduce((cs, l) => cs + (l.drawFacility?.committed || 0), 0);
-    return s + Math.max(0, (p.rehabBudget || 0) - committed);
-  }, 0);
+    const gap = Math.max(0, (p.rehabBudget || 0) - committed);
+    if (gap <= 0) return;
+    if (committed === 0) rehabNoDraws += gap; else rehabDrawGap += gap;
+  });
+  const uncommittedRehab = rehabNoDraws + rehabDrawGap;
   const hardMoneyFullTimeline = activePropsData.reduce((s, p) => {
     const hardMonthlyForProp = p.loans.filter(l => !l.endDate && l.loanType === "hard").reduce((hs, l) => hs + monthlyLoanPayment(l), 0);
     return s + hardMonthlyForProp * effectiveMonths(p);
@@ -7668,7 +7673,8 @@ function DashboardPage({ data, update, onNavigateTab }) {
           { label: "Total Private Money Needed", value: h$(totalPrivateMoneyNeeded), sub: "purchase + rehab + hard $ carry", color: "violet", icon: "💵", tab: "Properties",
             breakdown: [
               { label: "Purchase", value: hc$(privateMoneyNeeded) },
-              { label: "Rehab", value: hc$(uncommittedRehab) },
+              { label: "No Draws", value: hc$(rehabNoDraws) },
+              { label: "Draw Gap", value: hc$(rehabDrawGap) },
               { label: "Hard $", value: hc$(hardMoneyFullTimeline) },
             ] },
           { label: "Private Money On Hand", value: h$(privateMoneyOnHand), sub: "principal + committed",   color: "emerald", icon: "🤝", tab: "LenderDash" },
