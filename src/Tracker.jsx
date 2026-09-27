@@ -7480,6 +7480,9 @@ function DashboardPage({ data, update, onNavigateTab }) {
     .filter(l => l.loanType === "private")
     .reduce((s, l) => s + (l.principal || 0) + (l.drawFacility?.committed || 0), 0);
   const privateMoneyGap = totalPrivateMoneyNeeded - privateMoneyOnHand;
+  // Hypothetical: what Total Private Money Needed would be if every property's rehab were
+  // fully covered by a committed draw facility — i.e. the rehab component drops out entirely.
+  const totalPrivateMoneyNeededIfFullyDrawn = privateMoneyNeeded + hardMoneyFullTimeline;
 
   // All active properties ranked by monthly burn — same logic as RehabPriority
   const rollingLoans = data.rollingLoans || [];
@@ -7662,7 +7665,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
         </div>
       )}
 
-      {/* ── Stat Grid (9 tiles) ── */}
+      {/* ── Stat Grid (10 tiles) ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         {[
           { label: "Active Properties", value: activePropsData.length, sub: "tap to view",        color: "blue",   icon: "🏠", tab: "Properties"  },
@@ -7680,6 +7683,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
             ] },
           { label: "Private Money On Hand", value: h$(privateMoneyOnHand), sub: "principal + committed",   color: "emerald", icon: "🤝", tab: "LenderDash" },
           { label: "Private Money Gap", value: hs$(privateMoneyGap), sub: privateMoneyGap>0?"still needed":"surplus on hand", color: privateMoneyGap>0?"orange":"emerald", icon: "⚖️", tab: "Properties" },
+          { label: "Needed If Rehab Fully Drawn", value: h$(totalPrivateMoneyNeededIfFullyDrawn), sub: "purchase + hard $ carry only", color: "violet", icon: "🏗️", tab: "Properties" },
         ].map(({ label, value, sub, color, icon, tab, breakdown }) => (
           <button key={label} onClick={() => onNavigateTab(tab)}
             className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
