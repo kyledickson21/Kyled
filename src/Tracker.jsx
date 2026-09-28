@@ -2334,7 +2334,19 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
             <button type="button" onClick={()=>removeLoanDraft(d.id)} className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>
           </div>
         ))}
-        <button type="button" onClick={()=>setAddingLoan(true)} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">+ Add a Loan</button>
+        {/* Inline, not a popup — this is the real LenderMoneyForm, just rendered in place
+            instead of stacked as a second modal on top of the Add Property one, which was
+            forcing a scroll back up to it every time. */}
+        {addingLoan ? (
+          <div className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/30 dark:bg-blue-900/10">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-2">Add a Loan</div>
+            <LenderMoneyForm properties={[draftProp]} lenders={lenders||[]} init={{destination:draftPropId}}
+              lockDestinationTo={{id:draftPropId,label:f.address||"this property"}}
+              onSave={addLoanDraft} onClose={()=>setAddingLoan(false)}/>
+          </div>
+        ) : (
+          <button type="button" onClick={()=>setAddingLoan(true)} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">+ Add a Loan</button>
+        )}
       </div>
 
       {!hudComplete&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Every Cost to Buy line needs a number or N/A before this can be saved.</p>}
@@ -2342,14 +2354,6 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
         <Btn onClick={()=>hudComplete&&onSave({...f,purchasePrice:String(purchase),closingBuy,loanDrafts,id:draftPropId})} color={hudComplete?"blue":"ghost"} disabled={!hudComplete} full>Save Property</Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
       </div>
-
-      {addingLoan&&(
-        <Modal title="Add Lender Money" onClose={()=>setAddingLoan(false)}>
-          <LenderMoneyForm properties={[draftProp]} lenders={lenders||[]} init={{destination:draftPropId}}
-            lockDestinationTo={{id:draftPropId,label:f.address||"this property"}}
-            onSave={addLoanDraft} onClose={()=>setAddingLoan(false)}/>
-        </Modal>
-      )}
     </div>
   );
 }
