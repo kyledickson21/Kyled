@@ -343,6 +343,23 @@ const DateInp = ({label,value,onChange,helpText,autoFocus,onBlur}) => (
   </div>
 );
 
+// A field that has to be explicitly confirmed (✓) before it locks — grayed out and
+// unclickable until ✏️ reopens it. Guards against a stray tap or a scroll-triggered click
+// silently overwriting a number that's often copied straight off a HUD or term sheet: once
+// confirmed, nothing short of deliberately tapping Edit can change it again. Wraps a
+// <fieldset> so it works around any input type (Inp, Sel, DateInp, MoneyField, a checkbox)
+// without those components needing their own disabled-state plumbing.
+const Lockable = ({ locked, onToggle, children }) => (
+  <div className="relative">
+    <fieldset disabled={locked} className={locked?"opacity-50":""}>{children}</fieldset>
+    <button type="button" onClick={onToggle}
+      className={`absolute top-0 right-0 w-6 h-6 flex items-center justify-center rounded-full text-[11px] font-bold transition-colors ${locked?"bg-slate-200 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 hover:bg-slate-300 dark:hover:bg-zinc-600":"bg-emerald-500 hover:bg-emerald-600 text-white"}`}
+      title={locked?"Edit this field":"Confirm and lock this field"}>
+      {locked?"✏️":"✓"}
+    </button>
+  </div>
+);
+
 // Drag wrapper for manual property sorting — reuses the whole element as the drag
 // surface (tap still works normally via the PointerSensor's activation distance).
 // `children` can be a node (whole item is the drag handle) or a render-prop
@@ -527,6 +544,19 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const [editingDueDate,setEditingDueDate]=useState(false);
   const paymentTypeLabel = {closing:"Pay at Closing", monthly_rate:"Monthly Interest-Only", monthly_fixed:"Monthly Fixed Amount"};
   const s = k => v => sf(p=>({...p,[k]:v}));
+  // Fields that already had a real value when this form opened start locked (protecting an
+  // already-correct number that's often copied off a term sheet); a brand-new, empty entry
+  // starts open since there's nothing yet to protect.
+  const [locked,setLocked]=useState(()=>({
+    lender:!!initName,
+    startDate:!!init?.startDate,
+    principal:!!init?.principal,
+    interestType:init?.interestRate!=null,
+    interestRate:init?.interestRate!=null,
+    monthlyPayment:!!init?.monthlyPayment,
+    drawCommitted:!!init?.drawFacility?.committed,
+  }));
+  const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
 
   // Default "How Is Interest Paid?" by loan type — hard money to monthly interest-only,
   // private money to paid-at-closing — and keep it in sync as the user picks a lender or
@@ -637,29 +667,31 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   return (
     <div>
       {/* Lender */}
-      <div className="mb-3">
-        <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">
-          Lender <span className="text-red-400">*</span>
-        </label>
-        <select value={lenderSel} onChange={e=>setLenderSel(e.target.value)}
-          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none">
-          <option value="">— Select a lender —</option>
-          <option value="_new_">➕ Add New Lender</option>
-          {[...lenders].sort((a,b)=>a.name.localeCompare(b.name)).map(l=>(
-            <option key={l.id} value={l.id}>{l.name} ({l.loanType==="hard"?"Hard Money":"Private Money"})</option>
-          ))}
-        </select>
-      </div>
-      {lenderSel==="_new_"&&(
-        <div className="mb-3 p-3.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 space-y-2">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-2">New Lender Info</div>
-          <Inp label="Lender Name *" value={newName} onChange={setNewName} placeholder="John Doe"/>
-          <Sel label="Lender Type *" value={newType} onChange={setNewType} options={[
-            ["private","Private Money — individual lender"],
-            ["hard","Hard Money — institutional / company lender"],
-          ]}/>
+      <Lockable locked={locked.lender} onToggle={()=>toggleLock("lender")}>
+        <div className="mb-3">
+          <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">
+            Lender <span className="text-red-400">*</span>
+          </label>
+          <select value={lenderSel} onChange={e=>setLenderSel(e.target.value)}
+            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none">
+            <option value="">— Select a lender —</option>
+            <option value="_new_">➕ Add New Lender</option>
+            {[...lenders].sort((a,b)=>a.name.localeCompare(b.name)).map(l=>(
+              <option key={l.id} value={l.id}>{l.name} ({l.loanType==="hard"?"Hard Money":"Private Money"})</option>
+            ))}
+          </select>
         </div>
-      )}
+        {lenderSel==="_new_"&&(
+          <div className="mb-3 p-3.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 space-y-2">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-2">New Lender Info</div>
+            <Inp label="Lender Name *" value={newName} onChange={setNewName} placeholder="John Doe"/>
+            <Sel label="Lender Type *" value={newType} onChange={setNewType} options={[
+              ["private","Private Money — individual lender"],
+              ["hard","Hard Money — institutional / company lender"],
+            ]}/>
+          </div>
+        )}
+      </Lockable>
       {activeLender&&(
         <div className="mb-3 flex items-center gap-2 px-1">
           <TypeBadge type={activeLender.loanType}/>
@@ -672,18 +704,26 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
       {/* Loan details */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1">
         <div className="grid grid-cols-2 gap-3">
-          <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
-          <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
+          <Lockable locked={locked.startDate} onToggle={()=>toggleLock("startDate")}>
+            <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
+          </Lockable>
+          <Lockable locked={locked.principal} onToggle={()=>toggleLock("principal")}>
+            <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
+          </Lockable>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={[
-            ["percentage","% Rate"],
-            ["fixed","Fixed Amount"],
-          ]}/>
-          {isFixed
-            ? <Inp label="Fixed Interest ($) *" money value={f.interestRate} onChange={s("interestRate")} placeholder="5000"/>
-            : <Inp label="Annual Rate (%) *" percent value={f.interestRate} onChange={s("interestRate")} placeholder="10"/>
-          }
+          <Lockable locked={locked.interestType} onToggle={()=>toggleLock("interestType")}>
+            <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={[
+              ["percentage","% Rate"],
+              ["fixed","Fixed Amount"],
+            ]}/>
+          </Lockable>
+          <Lockable locked={locked.interestRate} onToggle={()=>toggleLock("interestRate")}>
+            {isFixed
+              ? <Inp label="Fixed Interest ($) *" money value={f.interestRate} onChange={s("interestRate")} placeholder="5000"/>
+              : <Inp label="Annual Rate (%) *" percent value={f.interestRate} onChange={s("interestRate")} placeholder="10"/>
+            }
+          </Lockable>
         </div>
         {isFixed&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-3">Total interest they receive — e.g. lend $100k, get back $105k → enter 5000.</p>}
 
@@ -718,7 +758,9 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           </button>
         )}
         {f.paymentType==="monthly_fixed"&&(
-          <Inp label="Monthly Payment Amount ($) *" money value={f.monthlyPayment} onChange={s("monthlyPayment")} placeholder="500" helpText="Fixed dollar amount lender receives each month"/>
+          <Lockable locked={locked.monthlyPayment} onToggle={()=>toggleLock("monthlyPayment")}>
+            <Inp label="Monthly Payment Amount ($) *" money value={f.monthlyPayment} onChange={s("monthlyPayment")} placeholder="500" helpText="Fixed dollar amount lender receives each month"/>
+          </Lockable>
         )}
       </div>
       {currentLoanType==="hard"&&(
@@ -734,8 +776,10 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           </label>
           {f.drawFacility&&(
             <div className="mt-3 space-y-3">
-              <Inp label="Total Committed ($)" money value={String(f.drawFacility.committed||"")}
-                onChange={v=>sf(p=>({...p,drawFacility:{...p.drawFacility,committed:v}}))} placeholder="100000"/>
+              <Lockable locked={locked.drawCommitted} onToggle={()=>toggleLock("drawCommitted")}>
+                <Inp label="Total Committed ($)" money value={String(f.drawFacility.committed||"")}
+                  onChange={v=>sf(p=>({...p,drawFacility:{...p.drawFacility,committed:v}}))} placeholder="100000"/>
+              </Lockable>
               {(f.drawFacility.draws||[]).length>0&&(
                 <div>
                   <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Draws Taken</div>
@@ -2198,6 +2242,21 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
     prepaidInterest:init?.closingBuy?.prepaidInterest!=null?String(init.closingBuy.prepaidInterest):(init&&!init.closingBuy?"N/A":""),
   }));
   const s=k=>v=>sf(p=>({...p,[k]:v}));
+  // Fields that already had a real value when the form opened start locked — that's exactly
+  // the case worth protecting (an already-correct number sitting there) — a brand-new,
+  // empty field starts open since there's nothing yet to accidentally overwrite.
+  const [locked,setLocked]=useState(()=>({
+    address:!!init?.address,
+    purchaseDate:!!init?.purchaseDate,
+    cashFromBorrower:!!(init?.closingBuy?.cashFromBorrower??init?.purchasePrice),
+    depositEarnest:init?.closingBuy?.depositEarnest!=null||!!(init&&!init.closingBuy),
+    loanToTitle:init?.closingBuy?.loanToTitle!=null||!!(init&&!init.closingBuy),
+    rehabHoldback:init?.closingBuy?.rehabHoldback!=null||!!(init&&!init.closingBuy),
+    loanPointsFees:init?.closingBuy?.loanPointsFees!=null||!!(init&&!init.closingBuy),
+    prepaidInterest:init?.closingBuy?.prepaidInterest!=null||!!(init&&!init.closingBuy),
+    rehabBudget:!!init?.rehabBudget,
+  }));
+  const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
   const rehab=parseFloat(f.rehabBudget)||0;
   const autoMonths=rehab?Math.ceil((rehab/1000+60)/30):2;
   const months=f.projectMonths!==""?Math.max(0.5,parseFloat(f.projectMonths)||2):autoMonths;
@@ -2230,8 +2289,12 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
 
   return (
     <div>
-      <Inp label="Property Address" value={f.address} onChange={s("address")} placeholder="123 Oak Ave, Nashville, TN"/>
-      <DateInp label="Purchase Date" value={f.purchaseDate} onChange={s("purchaseDate")} helpText="Reference only — does not affect calculations"/>
+      <Lockable locked={locked.address} onToggle={()=>toggleLock("address")}>
+        <Inp label="Property Address" value={f.address} onChange={s("address")} placeholder="123 Oak Ave, Nashville, TN"/>
+      </Lockable>
+      <Lockable locked={locked.purchaseDate} onToggle={()=>toggleLock("purchaseDate")}>
+        <DateInp label="Purchase Date" value={f.purchaseDate} onChange={s("purchaseDate")} helpText="Reference only — does not affect calculations"/>
+      </Lockable>
 
       {/* Cost to buy — itemized straight off the HUD/Closing Disclosure instead of one
           hand-totaled number, to cut down on transcription mistakes. Every line is required —
@@ -2251,14 +2314,16 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
           const trimmed=raw.trim();
           const invalid=trimmed!==""&&trimmed!=="N/A"&&isNaN(parseFloat(trimmed));
           return (
-            <div key={key} className="mb-3">
-              <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
-              <input type="text" value={raw} onChange={e=>s(key)(e.target.value)} placeholder={placeholder}
-                className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 transition-all ${invalid?"border-red-300 dark:border-red-700 focus:ring-red-500":"border-slate-200 dark:border-zinc-700 focus:ring-blue-500"}`}/>
-              <p className={`text-[11px] mt-1.5 ${invalid?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>
-                {invalid?"Enter a dollar amount, or type N/A if this doesn't apply":(help||"Required — type N/A if this doesn't apply")}
-              </p>
-            </div>
+            <Lockable key={key} locked={locked[key]} onToggle={()=>toggleLock(key)}>
+              <div className="mb-3">
+                <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
+                <input type="text" value={raw} onChange={e=>s(key)(e.target.value)} placeholder={placeholder}
+                  className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 transition-all ${invalid?"border-red-300 dark:border-red-700 focus:ring-red-500":"border-slate-200 dark:border-zinc-700 focus:ring-blue-500"}`}/>
+                <p className={`text-[11px] mt-1.5 ${invalid?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>
+                  {invalid?"Enter a dollar amount, or type N/A if this doesn't apply":(help||"Required — type N/A if this doesn't apply")}
+                </p>
+              </div>
+            </Lockable>
           );
         })}
         <div className="flex justify-between items-center pt-2 mt-1 border-t border-slate-200 dark:border-zinc-700">
@@ -2267,7 +2332,9 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
         </div>
       </div>
 
-      <Inp label="Rehab Budget ($)" money value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
+      <Lockable locked={locked.rehabBudget} onToggle={()=>toggleLock("rehabBudget")}>
+        <Inp label="Rehab Budget ($)" money value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
+      </Lockable>
 
       {/* Project length + monthly holding — auto-filled from rehab and rarely touched, so
           they sit as a small muted row until tapped, instead of taking up full-size fields. */}
