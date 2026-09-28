@@ -15,12 +15,13 @@ const TODAY = (() => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 })();
 const uid   = () => Math.random().toString(36).slice(2, 9);
-const $$    = n  => "$" + Math.round(Math.abs(n ?? 0)).toLocaleString();
-const $$s   = n  => { if (n==null) return "—"; const a=Math.round(Math.abs(n)).toLocaleString(); return n>=0?`+$${a}`:`-$${a}`; };
-const $$c   = n  => { const a=Math.round(Math.abs(n??0)); if(a>=1e6){const m=a/1e6;return "$"+(m>=10?m.toFixed(1):m.toFixed(2)).replace(/\.?0+$/,"")+"M";} if(a>=1e3)return "$"+Math.round(a/1e3)+"K"; return "$"+a; };
-// Penny-precise formatters for the closing modal
+// Penny-precise everywhere — so a number on screen always matches the bank statement or
+// closing doc exactly, nothing hidden by rounding. $$c is the one exception: a compact
+// K/M shorthand kept for glance-only dashboard summary tiles, where exact cents would
+// just be noise.
 const $$p   = n  => "$" + Math.abs(n??0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
 const $$ps  = n  => { if(n==null) return "—"; const a=Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); return n>=0?`+$${a}`:`-$${a}`; };
+const $$c   = n  => { const a=Math.round(Math.abs(n??0)); if(a>=1e6){const m=a/1e6;return "$"+(m>=10?m.toFixed(1):m.toFixed(2)).replace(/\.?0+$/,"")+"M";} if(a>=1e3)return "$"+Math.round(a/1e3)+"K"; return "$"+a; };
 const pct   = (a,b) => b>0 ? Math.min(100, Math.round(a/b*100)) : 0;
 
 // Sort key for an address that ignores the house number and a leading directional
@@ -639,7 +640,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const handleMerge = candidate => {
     const lenderName = activeLender ? activeLender.name : (lenderSel === "_new_" ? newName.trim() : "");
     if (!lenderName) { alert("Please select or enter a lender."); return; }
-    if (!window.confirm(`Merge this ${$$(parseFloat(f.principal)||0)} fund with the ${$$(candidate.principal)} fund started ${candidate.startDate}? This can't be undone.`)) return;
+    if (!window.confirm(`Merge this ${$$p(parseFloat(f.principal)||0)} fund with the ${$$p(candidate.principal)} fund started ${candidate.startDate}? This can't be undone.`)) return;
     const loanType = currentLoanType;
     const newLender = (lenderSel === "_new_" && lenderName)
       ? {id: uid(), name: lenderName, loanType: newType}
@@ -807,7 +808,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
                   <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Draws Taken</div>
                   {f.drawFacility.draws.map(d=>(
                     <div key={d.id} className="flex items-center justify-between text-sm py-1.5 border-b border-slate-200 dark:border-zinc-700 last:border-0">
-                      <span className="text-slate-600 dark:text-zinc-300 tabular-nums">{d.date} · {$$(d.amount)}</span>
+                      <span className="text-slate-600 dark:text-zinc-300 tabular-nums">{d.date} · {$$p(d.amount)}</span>
                       <button type="button" onClick={()=>sf(p=>({...p,drawFacility:{...p.drawFacility,draws:p.drawFacility.draws.filter(x=>x.id!==d.id)}}))}
                         className="text-red-400 hover:text-red-600 text-xs p-1 transition-colors">✕</button>
                     </div>
@@ -832,7 +833,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           <div className="space-y-1.5">
             {mergeCandidates.map(c=>(
               <div key={c.id} className="flex items-center justify-between gap-2 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2">
-                <span className="text-xs text-slate-700 dark:text-zinc-200 tabular-nums">{$$(c.principal)} · started {c.startDate}</span>
+                <span className="text-xs text-slate-700 dark:text-zinc-200 tabular-nums">{$$p(c.principal)} · started {c.startDate}</span>
                 <button type="button" onClick={()=>handleMerge(c)}
                   className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline shrink-0">Merge →</button>
               </div>
@@ -879,21 +880,21 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
                   <button key={p.id} type="button" onClick={()=>{handleDestClick(p.id);setDestPickerOpen(false);}}
                     className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-between gap-2">
                     <span className="truncate">🏠 {p.address}</span>
-                    <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                    <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                   </button>
                 ))}
                 {blockedSize.map(p=>(
                   <button key={p.id} type="button" disabled
                     className="w-full text-left px-3 py-2.5 text-xs font-medium opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500 flex items-center justify-between gap-2">
                     <span className="truncate">📐 {p.address} — no funding gap</span>
-                    <span className="shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                    <span className="shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                   </button>
                 ))}
                 {blockedDate.map(p=>(
                   <button key={p.id} type="button" disabled
                     className="w-full text-left px-3 py-2.5 text-xs font-medium opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500 flex items-center justify-between gap-2">
                     <span className="truncate">🕐 {p.address} — timing conflict</span>
-                    <span className="shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                    <span className="shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                   </button>
                 ))}
                 {available.length===0&&blockedSize.length===0&&blockedDate.length===0&&(
@@ -905,7 +906,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
                 <button key={p.id} type="button" onClick={()=>{handleDestClick(p.id);setDestPickerOpen(false);}}
                   className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-between gap-2">
                   <span className="truncate">🏠 {p.address}</span>
-                  <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                  <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                 </button>
               ))
             ) : (
@@ -1000,7 +1001,7 @@ function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
     <Modal title={`Place ${fund.lenderName}'s Money`} onClose={onClose}>
       <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
         <div className="font-bold text-slate-900 dark:text-zinc-100">{fund.lenderName}</div>
-        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(loanAmt)} · {fmtRate(fund)} · <TypeLabel type={fund.loanType}/></div>
+        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$p(loanAmt)} · {fmtRate(fund)} · <TypeLabel type={fund.loanType}/></div>
       </div>
       {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-3">{blockMsg}</div>}
       <div className="space-y-4">
@@ -1075,7 +1076,7 @@ function MoveModal({ item, properties, onMove, onClose }) {
     <Modal title="Move Lender Money" onClose={onClose}>
       <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
         <div className="font-bold text-slate-900 dark:text-zinc-100">{lenderName}</div>
-        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(amount)} · on <span className="font-medium">{currentLoc}</span></div>
+        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$p(amount)} · on <span className="font-medium">{currentLoc}</span></div>
       </div>
       <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No valid destination — all other properties have a timing conflict with this loan's start date.</p>
       <Btn onClick={onClose} color="ghost" full>Close</Btn>
@@ -1094,7 +1095,7 @@ function MoveModal({ item, properties, onMove, onClose }) {
     <Modal title="Move Lender Money" onClose={onClose}>
       <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
         <div className="font-bold text-slate-900 dark:text-zinc-100">{lenderName}</div>
-        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(amount)} · on <span className="font-medium">{currentLoc}</span></div>
+        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$p(amount)} · on <span className="font-medium">{currentLoc}</span></div>
       </div>
       {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-3">{blockMsg}</div>}
       <div className="space-y-4">
@@ -1203,7 +1204,7 @@ function QuickDrawModal({ data, onSave, onClose }) {
             className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
             {drawLoans.map(l=>(
               <option key={l.id} value={l.id}>
-                {l.propAddress} — {l.lenderName} ({$$(l.remaining)} avail
+                {l.propAddress} — {l.lenderName} ({$$p(l.remaining)} avail
                 {l.daysSinceEvent!=null?`, ${l.daysSinceEvent}d since ${l.lastDrawDate&&l.lastDrawDate===l.lastEventDate?"last draw":"purchase"}`:""})
               </option>
             ))}
@@ -1214,15 +1215,15 @@ function QuickDrawModal({ data, onSave, onClose }) {
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-xl bg-slate-50 dark:bg-zinc-800 p-3 text-center">
               <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-1">Committed</div>
-              <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 tabular-nums">{$$(totalCommitted)}</div>
+              <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 tabular-nums">{$$p(totalCommitted)}</div>
             </div>
             <div className="rounded-xl bg-slate-50 dark:bg-zinc-800 p-3 text-center">
               <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-1">Drawn</div>
-              <div className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums">{$$(totalDrawn)}</div>
+              <div className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums">{$$p(totalDrawn)}</div>
             </div>
             <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 p-3 text-center">
               <div className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-semibold mb-1">Available</div>
-              <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{$$(maxDraw)}</div>
+              <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{$$p(maxDraw)}</div>
             </div>
             <div className="rounded-xl bg-slate-50 dark:bg-zinc-800 p-3 text-center">
               <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-1">Days Since</div>
@@ -1241,7 +1242,7 @@ function QuickDrawModal({ data, onSave, onClose }) {
         </Lockable>
 
         {amt>maxDraw&&maxDraw>0&&(
-          <p className="text-xs text-red-500 dark:text-red-400">Amount exceeds available balance of {$$(maxDraw)}</p>
+          <p className="text-xs text-red-500 dark:text-red-400">Amount exceeds available balance of {$$p(maxDraw)}</p>
         )}
 
         <div className="flex gap-2 pt-1">
@@ -1275,7 +1276,7 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
     <Modal title={`Split Funds — ${loan.lenderName}`} onClose={onClose}>
       <div className="space-y-4">
         <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm space-y-1">
-          <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total available</span><span className="tabular-nums font-semibold text-slate-900 dark:text-zinc-100">{$$(loan.principal||loan.amount||0)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total available</span><span className="tabular-nums font-semibold text-slate-900 dark:text-zinc-100">{$$p(loan.principal||loan.amount||0)}</span></div>
           <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Rate / Terms</span><span className="text-slate-700 dark:text-zinc-200">{loan.interestRate||0}{loan.interestType==="fixed"?" (fixed fee)":"%"} · {loan.paymentType||"closing"}</span></div>
         </div>
 
@@ -1315,10 +1316,10 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
                 </div>
                 {gapInfo&&(
                   <div className="ml-[136px] flex items-center gap-2 text-[10px]">
-                    <span className="text-slate-400 dark:text-zinc-500">Equity gap: <span className="font-semibold text-amber-600 dark:text-amber-400">{$$(gapInfo.shortage)}</span></span>
+                    <span className="text-slate-400 dark:text-zinc-500">Equity gap: <span className="font-semibold text-amber-600 dark:text-amber-400">{$$p(gapInfo.shortage)}</span></span>
                     {rowAmt>0&&<span className="text-slate-300 dark:text-zinc-600">→</span>}
                     {rowAmt>0&&<span className={gapInfo.afterSplit<=0?"text-emerald-600 dark:text-emerald-400 font-semibold":"text-slate-500 dark:text-zinc-400"}>
-                      {gapInfo.afterSplit<=0?"Fully covered":""+$$(gapInfo.afterSplit)+" remaining"}
+                      {gapInfo.afterSplit<=0?"Fully covered":""+$$p(gapInfo.afterSplit)+" remaining"}
                     </span>}
                   </div>
                 )}
@@ -1330,10 +1331,10 @@ function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
 
         <div className={`flex justify-between text-sm font-semibold border-t border-slate-200 dark:border-zinc-700 pt-3 ${Math.abs(remaining)<0.01?"text-emerald-600 dark:text-emerald-400":remaining<0?"text-red-500 dark:text-red-400":"text-amber-600 dark:text-amber-400"}`}>
           <span>Unallocated</span>
-          <span className="tabular-nums">{$$(remaining)} {Math.abs(remaining)<0.01?"✓":remaining<0?"(over!)":""}</span>
+          <span className="tabular-nums">{$$p(remaining)} {Math.abs(remaining)<0.01?"✓":remaining<0?"(over!)":""}</span>
         </div>
 
-        {!valid&&<p className="text-xs text-slate-400 dark:text-zinc-500">All rows need a property and amount, and amounts must sum to {$$(loan.principal||0)}.</p>}
+        {!valid&&<p className="text-xs text-slate-400 dark:text-zinc-500">All rows need a property and amount, and amounts must sum to {$$p(loan.principal||0)}.</p>}
 
         <div className="flex gap-2 pt-1">
           <Btn onClick={()=>valid&&onConfirm(splits.map(r=>({propId:r.propId,amount:parseFloat(r.amount)})))} color={valid?"blue":"ghost"} full>Split Funds →</Btn>
@@ -1390,7 +1391,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
     <Modal title={`${currentPropId?"Move":"Place"} — ${loan.lenderName}`} onClose={onClose}>
       <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
         <div className="font-bold text-slate-900 dark:text-zinc-100">{loan.lenderName}</div>
-        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(loanAmt)} · {fmtRate(loan)}</div>
+        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$p(loanAmt)} · {fmtRate(loan)}</div>
       </div>
       <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">No valid destination — all other properties have a timing conflict with this loan's start date.</p>
       <Btn onClick={onClose} color="ghost" full>Close</Btn>
@@ -1412,7 +1413,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
     <Modal title={title} onClose={onClose}>
       <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
         <div className="font-bold text-slate-900 dark:text-zinc-100">{loan.lenderName}</div>
-        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$(loanAmt)} · {fmtRate(loan)} · <TypeLabel type={loan.loanType}/></div>
+        <div className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">{$$p(loanAmt)} · {fmtRate(loan)} · <TypeLabel type={loan.loanType}/></div>
       </div>
       <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-zinc-800 p-1 rounded-xl">
         <button type="button" onClick={()=>{setMode("place");setBlockMsg("");}}
@@ -1444,7 +1445,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                   <button key={p.id} type="button" onClick={()=>{setBlockMsg("");handlePlace(p.id);}}
                     className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex items-center justify-between gap-2">
                     <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200 truncate">🏠 {p.address}</span>
-                    <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                    <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                   </button>
                 ))}
               </div>
@@ -1458,7 +1459,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                   <button key={p.id} type="button" disabled
                     className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed flex items-center justify-between gap-2">
                     <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500 truncate">📐 {p.address}</span>
-                    <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                    <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                   </button>
                 ))}
               </div>
@@ -1472,7 +1473,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                   <button key={p.id} type="button" disabled
                     className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed flex items-center justify-between gap-2">
                     <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500 truncate">🕐 {p.address}</span>
-                    <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(p))} avail</span>
+                    <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                   </button>
                 ))}
               </div>
@@ -1484,7 +1485,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
       {mode==="split"&&(
         <div className="space-y-4">
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm">
-            <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total to split</span><span className="tabular-nums font-semibold text-slate-900 dark:text-zinc-100">{$$(loanAmt)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total to split</span><span className="tabular-nums font-semibold text-slate-900 dark:text-zinc-100">{$$p(loanAmt)}</span></div>
           </div>
           <div className="space-y-3">
             <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Split Into</div>
@@ -1539,7 +1540,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                                 onClick={()=>{setRow(i,"propId",prop.id);setOpenPicker(null);}}
                                 className={`w-full text-left px-3 py-2.5 text-xs font-medium transition-colors flex items-center justify-between gap-2 ${disabled?"opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500":"text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
                                 <span className="truncate">{emoji} {prop.address}{suffix}</span>
-                                <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$(propGap(prop))} avail</span>
+                                <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$p(propGap(prop))} avail</span>
                               </button>
                             );
                           })}
@@ -1554,9 +1555,9 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
           </div>
           <div className={`flex justify-between text-sm font-semibold border-t border-slate-200 dark:border-zinc-700 pt-3 ${Math.abs(remaining)<0.01?"text-emerald-600 dark:text-emerald-400":remaining<0?"text-red-500 dark:text-red-400":"text-amber-600 dark:text-amber-400"}`}>
             <span>Unallocated</span>
-            <span className="tabular-nums">{$$(remaining)} {Math.abs(remaining)<0.01?"✓":remaining<0?"(over!)":""}</span>
+            <span className="tabular-nums">{$$p(remaining)} {Math.abs(remaining)<0.01?"✓":remaining<0?"(over!)":""}</span>
           </div>
-          {!splitValid&&<p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">{splits.some(r=>rowConflict(r))?"A destination has a conflict — reduce that amount or pick another property.":`All rows need a destination and amount, and must sum to ${$$(loanAmt)}.`}</p>}
+          {!splitValid&&<p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">{splits.some(r=>rowConflict(r))?"A destination has a conflict — reduce that amount or pick another property.":`All rows need a destination and amount, and must sum to ${$$p(loanAmt)}.`}</p>}
           <div className="flex gap-2 pt-1">
             <Btn onClick={()=>onConfirm({type:"split",splits:splits.map(r=>({propId:r.propId,amount:parseFloat(r.amount)}))})} color={splitValid?"blue":"ghost"} full disabled={!splitValid}>Split Funds →</Btn>
             <Btn onClick={onClose} color="ghost">Cancel</Btn>
@@ -2412,7 +2413,7 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
                 <button type="button" onClick={()=>addHudEntry(key)} className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">+ Add another</button>
                 {multi&&(
                   <div className="flex justify-between text-[11px] font-semibold text-slate-500 dark:text-zinc-400 mt-1.5">
-                    <span>Subtotal</span><span className="tabular-nums">{$$(sumHudEntries(entries))}</span>
+                    <span>Subtotal</span><span className="tabular-nums">{$$p(sumHudEntries(entries))}</span>
                   </div>
                 )}
                 <p className={`text-[11px] mt-1.5 ${!fieldValid?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>
@@ -2424,7 +2425,7 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
         })}
         <div className="flex justify-between items-center pt-2 mt-1 border-t border-slate-200 dark:border-zinc-700">
           <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Cost to Buy</span>
-          <span className="text-base font-black text-slate-900 dark:text-zinc-100 tabular-nums">{$$(purchase)}</span>
+          <span className="text-base font-black text-slate-900 dark:text-zinc-100 tabular-nums">{$$p(purchase)}</span>
         </div>
       </div>
 
@@ -2467,7 +2468,7 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
         <button type="button" onClick={()=>setEditingHolding(true)}
           className="w-full flex items-center justify-between px-3 py-1.5 mb-3 rounded-lg text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors">
           <span>Monthly Utilities & Insurance</span>
-          <span className="tabular-nums font-medium">{$$(holding)}/mo</span>
+          <span className="tabular-nums font-medium">{$$p(holding)}/mo</span>
         </button>
       )}
 
@@ -2475,10 +2476,10 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
         <div className="mb-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs space-y-1">
           <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Estimated Capital Need</div>
           {[["Cost to Buy",purchase],["Rehab",rehab],[`Holding (${months} mo × $${holding}/mo)`,holding*months]].filter(([,v])=>v>0).map(([l,v])=>(
-            <div key={l} className="flex justify-between text-slate-600 dark:text-zinc-300"><span>{l}</span><span className="tabular-nums">{$$(v)}</span></div>
+            <div key={l} className="flex justify-between text-slate-600 dark:text-zinc-300"><span>{l}</span><span className="tabular-nums">{$$p(v)}</span></div>
           ))}
           <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-slate-200 dark:border-zinc-700 pt-2 mt-1">
-            <span>Base Total</span><span className="tabular-nums">{$$(totalBase)}</span>
+            <span>Base Total</span><span className="tabular-nums">{$$p(totalBase)}</span>
           </div>
           <p className="text-[10px] text-slate-400 dark:text-zinc-500 pt-1">+ monthly interest × {months} mo added once loans are entered</p>
         </div>
@@ -2491,7 +2492,7 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
         {loanDrafts.map(d=>(
           <div key={d.id} className="flex items-center justify-between gap-2 px-3.5 py-2.5 mb-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100 truncate">{d.lenderName||"Unknown"} <span className="font-normal text-slate-400 dark:text-zinc-500">· {$$(d.principal)}</span></div>
+              <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100 truncate">{d.lenderName||"Unknown"} <span className="font-normal text-slate-400 dark:text-zinc-500">· {$$p(d.principal)}</span></div>
               <div className="text-[11px] text-slate-400 dark:text-zinc-500">{fmtRate(d)}</div>
             </div>
             <button type="button" onClick={()=>removeLoanDraft(d.id)} className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>
@@ -2559,7 +2560,7 @@ function SortDropdown({ value, onChange, options }) {
 function CollapsibleUnassigned({ funds, total, onPlace, onEdit, onDelete }) {
   const prv=usePrivacy();
   const openPanel=usePanel();
-  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const h$=v=>prv?maskMoney($$p(v)):$$p(v);
   const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
   const [open,setOpen]=useState(false);
   const sorted=[...funds].sort((a,b)=>(a.startDate||"").localeCompare(b.startDate||""));
@@ -2782,7 +2783,7 @@ const computeInverse = (prev, next) => {
 function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const prv=usePrivacy();
   const openPanel=usePanel();
-  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const h$=v=>prv?maskMoney($$p(v)):$$p(v);
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hn=n=>n??"";
   const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
@@ -3205,14 +3206,14 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                       <td className="py-2.5 px-4 tabular-nums text-[11px] text-slate-300 dark:text-zinc-600">{rankMap[prop.id]}</td>
                       <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">{prop.address||"Unnamed"}</td>
                       <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">{active.length}</td>
-                      <td className="py-2.5 px-4 text-right tabular-nums text-slate-700 dark:text-zinc-200 font-medium">{funded>0?$$(funded):"—"}</td>
-                      <td className="py-2.5 px-4 text-right tabular-nums text-slate-400 dark:text-zinc-500">{needed>0?$$(needed):"—"}</td>
+                      <td className="py-2.5 px-4 text-right tabular-nums text-slate-700 dark:text-zinc-200 font-medium">{funded>0?$$p(funded):"—"}</td>
+                      <td className="py-2.5 px-4 text-right tabular-nums text-slate-400 dark:text-zinc-500">{needed>0?$$p(needed):"—"}</td>
                       <td className="py-2.5 px-4 text-right whitespace-nowrap">
                         {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 font-semibold">Sold</span>}
-                        {full&&short===0&&over>needed*0.05&&<span className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">+{$$(over)} over</span>}
+                        {full&&short===0&&over>needed*0.05&&<span className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">+{$$p(over)} over</span>}
                         {full&&short===0&&over<=needed*0.05&&<span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Full</span>}
-                        {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">−{$$(short)}</span>}
-                        {under&&<span className="text-red-500 dark:text-red-400 font-bold tabular-nums">−{$$(short)}</span>}
+                        {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">−{$$p(short)}</span>}
+                        {under&&<span className="text-red-500 dark:text-red-400 font-bold tabular-nums">−{$$p(short)}</span>}
                         {!prop.dateSold&&!full&&!under&&funded===0&&<span className="text-slate-300 dark:text-zinc-600">—</span>}
                       </td>
                       <td className="py-2.5 px-2 text-right">
@@ -3527,7 +3528,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 function LenderDashboard({ data }) {
   const prv = usePrivacy();
   const navigate = usePanel();
-  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const [search, setSearch] = useState("");
   const [lenderFilter, setLenderFilter] = usePersistedState("nx-lenderFilter", "active");
   const [sortBy, setSortBy] = usePersistedState("nx-lenderSortBy2", "name");
@@ -3679,7 +3680,7 @@ function LenderDashboard({ data }) {
 function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilter }) {
   const prv = usePrivacy();
   const navigate = usePanel();
-  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [filter, setFilter] = usePersistedState("nx-loansFilter", "active");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -3899,7 +3900,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
 // ─── Property Dashboard ───────────────────────────────────────────────────────
 function PropertyDashboard({ data }) {
   const prv=usePrivacy();
-  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const h$=v=>prv?maskMoney($$p(v)):$$p(v);
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
   const hn=n=>n??"";
   const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
@@ -4632,9 +4633,9 @@ function EditClosingModal({ prop, onSave, onClose }) {
 function ClosedDealsPage({ data, update }) {
   const prv=usePrivacy();
   const openPanel=usePanel();
-  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const h$=v=>prv?maskMoney($$p(v)):$$p(v);
   const hc=v=>prv?maskMoney($$c(v)):$$c(v);
-  const hs=v=>prv?maskMoney($$s(v)):$$s(v);
+  const hs=v=>prv?maskMoney($$ps(v)):$$ps(v);
   const hn=n=>n??"";
   const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
   const [view,setView]=usePersistedState("nx-closedView","flips");
@@ -4930,8 +4931,6 @@ function ClosedDealsPage({ data, update }) {
 function HistoryPage({ data }) {
   const prv=usePrivacy();
   const openPanel=usePanel();
-  // Penny-precise everywhere on this page (not the rounded $$/$$s used elsewhere) so amounts
-  // can be matched exactly against a bank statement.
   const h$=v=>prv?maskMoney($$p(v)):$$p(v);
   const hs=v=>prv?maskMoney($$ps(v)):$$ps(v);
   const hn=n=>n??"";
@@ -5512,7 +5511,7 @@ function HistoryPage({ data }) {
 // ─── Rehab Priority ───────────────────────────────────────────────────────────
 function RehabPriorityPage({ data, update }) {
   const prv=usePrivacy();
-  const h$=v=>prv?maskMoney($$(v)):$$(v);
+  const h$=v=>prv?maskMoney($$p(v)):$$p(v);
   const [dir,setDir]=usePersistedState("nx-rehabDir","desc");
   const [rehabSearch,setRehabSearch]=useState("");
   const [projectFull,setProjectFull]=usePersistedState("nx-rehabProject",false);
@@ -5809,7 +5808,7 @@ function CloseLenderModal({ data, update, onClose }) {
                   className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${selectedIds.includes(l.id)?'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700':'bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700'}`}>
                   <div className="min-w-0">
                     <div className="text-[12px] font-semibold text-slate-800 dark:text-zinc-200 truncate">{l.propAddress||'Unassigned'}</div>
-                    <div className="text-[11px] text-slate-500 dark:text-zinc-400">{$$(l.principal)} · started {l.startDate}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-zinc-400">{$$p(l.principal)} · started {l.startDate}</div>
                   </div>
                   <div className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedIds.includes(l.id)?'bg-blue-500 border-blue-500':'border-slate-300 dark:border-zinc-600'}`}>
                     {selectedIds.includes(l.id)&&<span className="text-white text-[10px] leading-none">✓</span>}
@@ -5821,7 +5820,7 @@ function CloseLenderModal({ data, update, onClose }) {
           {selectedFixedLoans.length>1&&(
             <div className="mt-3 p-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
               <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">
-                Fixed Interest — {$$(totalFixedInterest)} total across {selectedFixedLoans.length} pieces
+                Fixed Interest — {$$p(totalFixedInterest)} total across {selectedFixedLoans.length} pieces
               </div>
               <div className="flex gap-2 mb-2">
                 <button type="button" onClick={()=>setInterestMode('split')}
@@ -5839,11 +5838,11 @@ function CloseLenderModal({ data, update, onClose }) {
                     <button key={l.id} type="button" onClick={()=>setConsolidateLoanId(l.id)}
                       className={`w-full text-left px-3 py-2 rounded-lg border text-xs flex items-center justify-between transition-all ${consolidateLoanId===l.id?'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700':'bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700'}`}>
                       <span className="font-medium text-slate-800 dark:text-zinc-200">{l.propAddress||'Unassigned'}</span>
-                      <span className="text-slate-400 dark:text-zinc-500 tabular-nums">currently {$$(l.interestRate||0)}</span>
+                      <span className="text-slate-400 dark:text-zinc-500 tabular-nums">currently {$$p(l.interestRate||0)}</span>
                     </button>
                   ))}
                   {!consolidateLoanId&&(
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400">Pick which property gets the full {$$(totalFixedInterest)} — the rest will show $0 interest.</p>
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400">Pick which property gets the full {$$p(totalFixedInterest)} — the rest will show $0 interest.</p>
                   )}
                 </div>
               )}
@@ -6050,7 +6049,7 @@ function ManageLendersPage({ data }) {
 // ─── Draws Page ───────────────────────────────────────────────────────────────
 function DrawsPage({ data }) {
   const privacy = usePrivacy();
-  const h$ = v => { const s=$$(v); return privacy?maskMoney(s):s; };
+  const h$ = v => { const s=$$p(v); return privacy?maskMoney(s):s; };
   const [drawSearch,setDrawSearch]=useState("");
   const [drawSort,setDrawSort]=usePersistedState("nx-drawSort","chance");
   const [drawSortDir,setDrawSortDir]=usePersistedState("nx-drawSortDir","desc");
@@ -6691,7 +6690,7 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
 function WhiteboardPage({ data, update }) {
   const prv = usePrivacy();
   const navigate = usePanel();
-  const h$ = v => prv?maskMoney($$(v)):$$(v);
+  const h$ = v => prv?maskMoney($$p(v)):$$p(v);
   const cards = data.whiteboard?.cards || [];
   const [addOpen,setAddOpen] = useState(false);
   const [editCard,setEditCard] = useState(null);
@@ -6866,8 +6865,8 @@ function WhiteboardPage({ data, update }) {
 // ─── Entity Detail Pages ──────────────────────────────────────────────────────
 function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const prv = usePrivacy();
-  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
-  const hs = v => prv ? maskMoney($$s(v)) : $$s(v);
+  const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
+  const hs = v => prv ? maskMoney($$ps(v)) : $$ps(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [editing, setEditing] = useState(false);
   const [moveLoan, setMoveLoan] = useState(null);
@@ -7235,7 +7234,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
 
 function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const prv = usePrivacy();
-  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [editing, setEditing] = useState(false);
   const [expandedYears, setExpandedYears] = useState({});
@@ -7653,7 +7652,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
 
 function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startEditing }) {
   const prv = usePrivacy();
-  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [editing, setEditing] = useState(false);
   const [ef, setEf] = useState(null);
@@ -7846,7 +7845,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
                       <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Draws Taken</div>
                       {ef.drawFacility.draws.map(d=>(
                         <div key={d.id} className="flex items-center justify-between text-sm py-1.5 border-b border-slate-200 dark:border-zinc-700 last:border-0">
-                          <span className="text-slate-600 dark:text-zinc-300 tabular-nums">{d.date} · {$$(d.amount)}</span>
+                          <span className="text-slate-600 dark:text-zinc-300 tabular-nums">{d.date} · {$$p(d.amount)}</span>
                           <button type="button" onClick={()=>setEf(f=>({...f,drawFacility:{...f.drawFacility,draws:f.drawFacility.draws.filter(x=>x.id!==d.id)}}))}
                             className="text-red-400 hover:text-red-600 text-xs p-1 transition-colors">✕</button>
                         </div>
@@ -7969,9 +7968,9 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
 
 function DashboardPage({ data, update, onNavigateTab }) {
   const prv = usePrivacy();
-  const h$ = v => prv ? maskMoney($$(v)) : $$(v);
+  const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const hc$ = v => prv ? maskMoney($$c(v)) : $$c(v);
-  const hs$ = v => prv ? maskMoney($$s(v)) : $$s(v);
+  const hs$ = v => prv ? maskMoney($$ps(v)) : $$ps(v);
   const openPanel = usePanel();
   const [modal, setModal] = useState(null);
   const [fundsOpen, setFundsOpen] = usePersistedState("nx-dashFundsOpen", true);
@@ -8610,10 +8609,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         results.push({
           kind:'lender',
           label:l.lenderName,
-          sub:`${loans.length} loan${loans.length!==1?'s':''} · ${$$(totPrin)} active`,
+          sub:`${loans.length} loan${loans.length!==1?'s':''} · ${$$p(totPrin)} active`,
           entity:{type:'lender',name:l.lenderName},
           loans:loans.map(x=>({
-            label:`${$$(x.principal)} · ${x.propAddress||'Unassigned'}`,
+            label:`${$$p(x.principal)} · ${x.propAddress||'Unassigned'}`,
             entity:{type:'loan',loanId:x.id,propId:x.propId||null},
           })),
         });

@@ -84,11 +84,9 @@ update(d => ({...d, properties: [{newField: value}]}))
 
 ## Key Module-Level Helpers (Tracker.jsx, top of file)
 ```js
-const $$ = n => "$" + round(abs(n)).toLocaleString()         // $150,000
-const $$s = n => n>=0 ? `+$${...}` : `-$${...}`             // signed compact
-const $$c = n => compact ($150K, $1.5M)                      // very compact
-const $$p = n => penny-precise ($150,000.00)
-const $$ps = n => signed penny-precise
+const $$p = n => penny-precise ($150,000.00)                 // used everywhere by default
+const $$ps = n => signed penny-precise (+$150,000.00)
+const $$c = n => compact ($150K, $1.5M)                       // glance-only dashboard KPI tiles ONLY
 
 const calcBalance(loan, asOf=TODAY)   // current balance including interest
 const calcIntEarned(loan, asOf=TODAY) // interest earned so far
