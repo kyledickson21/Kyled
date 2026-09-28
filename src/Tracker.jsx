@@ -5005,7 +5005,7 @@ function HistoryPage({ data }) {
       }
     });
     if(prop.dateSold&&prop.closingData){
-      raw.push({date:prop.dateSold,sx:"c",etype:"saleSummary",property:prop.address,propId:prop.id,closingData:prop.closingData,loanId:`sale-${prop.id}`});
+      raw.push({date:prop.dateSold,sx:"c",etype:"saleSummary",property:prop.address,propId:prop.id,closingData:prop.closingData,overageChecks:prop.overageChecks||[],loanId:`sale-${prop.id}`});
     }
     (prop.overageChecks||[]).forEach(c=>{
       raw.push({date:c.date,sx:"d",etype:"overageCheck",property:prop.address,propId:prop.id,amount:c.amount||0,source:c.source,notes:c.notes||"",loanId:`overage-${c.id}`});
@@ -5443,6 +5443,19 @@ function HistoryPage({ data }) {
                     <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{h$(cd.wire)}</span></div>
                   </div>
                 </div>
+                {ev.overageChecks.length>0&&(
+                  <div className="mt-3 pt-3 border-t border-blue-100 dark:border-blue-900/40">
+                    <div className="text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-widest mb-2">Overage Checks — Received After Closing</div>
+                    <div className="space-y-1 text-xs">
+                      {ev.overageChecks.map(c=>(
+                        <div key={c.id} className="flex justify-between text-slate-600 dark:text-zinc-300">
+                          <span>{overageSourceLabel(c.source)} <span className="text-slate-400 dark:text-zinc-500">· {c.date}</span></span>
+                          <span className="tabular-nums font-medium text-emerald-600 dark:text-emerald-400">+{h$(c.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           }
@@ -5973,17 +5986,19 @@ function OverageCheckPropertyPickerModal({ properties, onPick, onClose }) {
     </Modal>
   );
 }
-function OverageCheckModal({ prop, onSave, onClose }) {
-  const [date,setDate]=useState(TODAY);
-  const [amount,setAmount]=useState("");
-  const [source,setSource]=useState(OVERAGE_SOURCES[0][0]);
-  const [notes,setNotes]=useState("");
-  const [locked,setLocked]=useState({});
+function OverageCheckModal({ prop, init, onSave, onDelete, onClose }) {
+  const [date,setDate]=useState(init?.date||TODAY);
+  const [amount,setAmount]=useState(init?String(init.amount||""):"");
+  const [source,setSource]=useState(init?.source||OVERAGE_SOURCES[0][0]);
+  const [notes,setNotes]=useState(init?.notes||"");
+  // Editing an existing entry: it's already a real, checked number — start locked so it
+  // can't be bumped by accident while fixing a typo elsewhere on the form.
+  const [locked,setLocked]=useState(()=>({date:!!init,amount:!!init}));
   const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
   const amt=parseFloat(amount)||0;
   const canSave=amt>0&&!!date;
   return (
-    <Modal title={`Overage Check — ${prop.address}`} onClose={onClose}>
+    <Modal title={`${init?"Edit":"Overage Check —"} ${prop.address}`} onClose={onClose}>
       <div className="space-y-1">
         <Lockable locked={locked.date} onToggle={()=>toggleLock("date")}>
           <DateInp label="Date Received" value={date} onChange={setDate}/>
@@ -5994,7 +6009,10 @@ function OverageCheckModal({ prop, onSave, onClose }) {
         <Sel label="Where's This From?" value={source} onChange={setSource} options={OVERAGE_SOURCES}/>
         <Inp label="Notes" value={notes} onChange={setNotes} placeholder="What this was for, exactly — for the bookkeepers"/>
         <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-2">Counts toward this property's profit and shows up in History for the bookkeepers.</p>
-        <Btn onClick={()=>canSave&&onSave({date,amount:amt,source,notes})} color={canSave?"blue":"ghost"} disabled={!canSave} full>Save Overage Check</Btn>
+        <div className="flex gap-2">
+          <Btn onClick={()=>canSave&&onSave({date,amount:amt,source,notes})} color={canSave?"blue":"ghost"} disabled={!canSave} full>{init?"Save Changes":"Save Overage Check"}</Btn>
+          {onDelete&&<Btn onClick={()=>{if(window.confirm("Delete this overage check? This can't be undone."))onDelete();}} color="red">Delete</Btn>}
+        </div>
       </div>
     </Modal>
   );
@@ -6930,6 +6948,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const [moveLoan, setMoveLoan] = useState(null);
   const [addingLoan, setAddingLoan] = useState(false);
   const [addingOverage, setAddingOverage] = useState(false);
+  const [editingOverage, setEditingOverage] = useState(null);
 
   const prop = data.properties.find(p => p.id === propId);
   if (!prop) return (
@@ -7000,6 +7019,14 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const saveOverageCheck = entry => {
     update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,overageChecks:[...(p.overageChecks||[]),{id:uid(),...entry}]})}));
     setAddingOverage(false);
+  };
+  const saveEditedOverageCheck = (id,entry) => {
+    update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,overageChecks:(p.overageChecks||[]).map(c=>c.id!==id?c:{...c,...entry})})}));
+    setEditingOverage(null);
+  };
+  const deleteOverageCheck = id => {
+    update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,overageChecks:(p.overageChecks||[]).filter(c=>c.id!==id)})}));
+    setEditingOverage(null);
   };
 
   const SectionHead = ({title, count}) => (
@@ -7097,34 +7124,44 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
         </div>
       ) : null}
 
-      {/* Overage checks — insurance/tax/overcharge refunds that show up after closing.
-          Only relevant once a property is closed, since that's the only time they arrive. */}
-      {prop.dateSold && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-3">
-            <SectionHead title="Overage Checks" count={(prop.overageChecks||[]).length}/>
-            <button onClick={()=>setAddingOverage(true)}
-              className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition-colors">+ Overage Check</button>
-          </div>
-          {(prop.overageChecks||[]).length===0 && (
-            <div className="px-5 py-6 text-center text-sm text-slate-400 dark:text-zinc-500">No overage checks recorded yet</div>
-          )}
-          <div className="divide-y divide-slate-50 dark:divide-zinc-800">
-            {(prop.overageChecks||[]).map(c=>(
-              <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100">{overageSourceLabel(c.source)} <span className="font-normal text-slate-400 dark:text-zinc-500">· {c.date}</span></div>
-                  {c.notes && <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 truncate">{c.notes}</div>}
-                </div>
-                <span className="shrink-0 font-bold tabular-nums text-emerald-600 dark:text-emerald-400">+{h$(c.amount)}</span>
-              </div>
-            ))}
-          </div>
+      {/* Overage checks — insurance/tax/overcharge refunds that can show up any time, on a
+          property still owned or one already closed. */}
+      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-3">
+          <SectionHead title="Overage Checks" count={(prop.overageChecks||[]).length}/>
+          <button onClick={()=>setAddingOverage(true)}
+            className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition-colors">+ Overage Check</button>
         </div>
-      )}
+        {(prop.overageChecks||[]).length===0 && (
+          <div className="px-5 py-6 text-center text-sm text-slate-400 dark:text-zinc-500">No overage checks recorded yet</div>
+        )}
+        <div className="divide-y divide-slate-50 dark:divide-zinc-800">
+          {(prop.overageChecks||[]).map(c=>(
+            <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100">{overageSourceLabel(c.source)} <span className="font-normal text-slate-400 dark:text-zinc-500">· {c.date}</span></div>
+                {c.notes && <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 truncate">{c.notes}</div>}
+              </div>
+              <div className="shrink-0 flex items-center gap-2">
+                <span className="font-bold tabular-nums text-emerald-600 dark:text-emerald-400">+{h$(c.amount)}</span>
+                <button onClick={()=>setEditingOverage(c)}
+                  className="w-6 h-6 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs" title="Edit">✏️</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
       {addingOverage && (
         <div className="mb-4">
           <OverageCheckModal prop={prop} onSave={saveOverageCheck} onClose={()=>setAddingOverage(false)}/>
+        </div>
+      )}
+      {editingOverage && (
+        <div className="mb-4">
+          <OverageCheckModal prop={prop} init={editingOverage}
+            onSave={entry=>saveEditedOverageCheck(editingOverage.id,entry)}
+            onDelete={()=>deleteOverageCheck(editingOverage.id)}
+            onClose={()=>setEditingOverage(null)}/>
         </div>
       )}
 
