@@ -2162,29 +2162,61 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 function PropertyForm({ init, onSave, onClose }) {
   const [f,sf]=useState(()=>({
     address:init?.address||"",
-    purchasePrice:String(init?.purchasePrice||(!init?.rehabBudget&&init?.fundingNeeded?init.fundingNeeded:"")||""),
     rehabBudget:String(init?.rehabBudget||""),
     projectMonths:init?.projectMonths!=null?String(init.projectMonths):"",
     monthlyHolding:String(init?.monthlyHolding??500),
     purchaseDate:init?.purchaseDate||"",
+    // Cost to buy, itemized straight off the HUD instead of one hand-totaled number. If this
+    // property predates the breakdown, seed "Cash Due From Borrower" with its old single
+    // purchasePrice so the total doesn't silently drop to zero — everything else stays blank.
+    cashFromBorrower:String(init?.closingBuy?.cashFromBorrower ?? (!init?.closingBuy&&init?.purchasePrice?init.purchasePrice:"")),
+    depositEarnest:String(init?.closingBuy?.depositEarnest||""),
+    loanToTitle:String(init?.closingBuy?.loanToTitle||""),
+    rehabHoldback:String(init?.closingBuy?.rehabHoldback||""),
+    loanPointsFees:String(init?.closingBuy?.loanPointsFees||""),
+    prepaidInterest:String(init?.closingBuy?.prepaidInterest||""),
   }));
   const s=k=>v=>sf(p=>({...p,[k]:v}));
   const rehab=parseFloat(f.rehabBudget)||0;
   const autoMonths=rehab?Math.ceil((rehab/1000+60)/30):2;
   const months=f.projectMonths!==""?Math.max(0.5,parseFloat(f.projectMonths)||2):autoMonths;
   const holding=parseFloat(f.monthlyHolding)||500;
-  const purchase=parseFloat(f.purchasePrice)||0;
+  const closingBuy=closingBuyFromForm(f);
+  const purchase=purchasePriceFromClosingBuy(closingBuy);
   const totalBase=purchase+rehab+holding*months;
   const [editingMonths,setEditingMonths]=useState(false);
   const [editingHolding,setEditingHolding]=useState(false);
+
+  // Loans that start the day this property is bought, entered right here instead of added
+  // separately afterward. A blank draft (no lender name or amount yet) is silently dropped
+  // on save rather than creating a $0 loan.
+  const [loanDrafts,setLoanDrafts]=useState([]);
+  const addLoanDraft=()=>setLoanDrafts(ds=>[...ds,{id:uid(),lenderName:"",loanType:"private",principal:"",interestRate:"",interestType:"percentage",paymentType:"closing",monthlyPayment:"",hasDraw:false,drawCommitted:""}]);
+  const updateLoanDraft=(id,k,v)=>setLoanDrafts(ds=>ds.map(d=>d.id===id?{...d,[k]:v}:d));
+  const removeLoanDraft=id=>setLoanDrafts(ds=>ds.filter(d=>d.id!==id));
+
   return (
     <div>
       <Inp label="Property Address" value={f.address} onChange={s("address")} placeholder="123 Oak Ave, Nashville, TN"/>
-      <DateInp label="Purchase Date" value={f.purchaseDate} onChange={s("purchaseDate")} helpText="Reference only — does not affect calculations"/>
-      <div className="grid grid-cols-2 gap-3">
-        <Inp label="Cost to Buy ($)" money value={f.purchasePrice} onChange={s("purchasePrice")} placeholder="150000"/>
-        <Inp label="Rehab Budget ($)" money value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
+      <DateInp label="Purchase Date" value={f.purchaseDate} onChange={s("purchaseDate")} helpText="Also becomes the start date for any loans added below"/>
+
+      {/* Cost to buy — itemized straight off the HUD/Closing Disclosure instead of one
+          hand-totaled number, to cut down on transcription mistakes. */}
+      <div className="mb-3 p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60">
+        <div className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">Cost to Buy — From the HUD</div>
+        <Inp label="Cash Due From Borrower ($)" money value={f.cashFromBorrower} onChange={s("cashFromBorrower")} placeholder="150000" helpText="The exact wire we send to title"/>
+        <Inp label="Deposit / Earnest Money Sent Before Closing ($)" money value={f.depositEarnest} onChange={s("depositEarnest")} placeholder="5000"/>
+        <Inp label="Loan Amount Sent Directly to Title ($)" money value={f.loanToTitle} onChange={s("loanToTitle")} placeholder="100000"/>
+        <Inp label="− Rehab Holdback ($)" money value={f.rehabHoldback} onChange={s("rehabHoldback")} placeholder="0" helpText="Money the lender held back for rehab draws, if any"/>
+        <Inp label="− Loan Points / Fees ($)" money value={f.loanPointsFees} onChange={s("loanPointsFees")} placeholder="0"/>
+        <Inp label="− Prepaid Interest at Closing ($)" money value={f.prepaidInterest} onChange={s("prepaidInterest")} placeholder="0"/>
+        <div className="flex justify-between items-center pt-2 mt-1 border-t border-slate-200 dark:border-zinc-700">
+          <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Cost to Buy</span>
+          <span className="text-base font-black text-slate-900 dark:text-zinc-100 tabular-nums">{$$(purchase)}</span>
+        </div>
       </div>
+
+      <Inp label="Rehab Budget ($)" money value={f.rehabBudget} onChange={s("rehabBudget")} placeholder="50000"/>
 
       {/* Project length + monthly holding — auto-filled from rehab and rarely touched, so
           they sit as a small muted row until tapped, instead of taking up full-size fields. */}
@@ -2237,8 +2269,38 @@ function PropertyForm({ init, onSave, onClose }) {
           <p className="text-[10px] text-slate-400 dark:text-zinc-500 pt-1">+ monthly interest × {months} mo added once loans are entered</p>
         </div>
       )}
+
+      {/* Loans that start the day this property is bought — added right here instead of a
+          separate step afterward. Existing loans (when editing) are managed on the property's
+          own page; this is only for brand-new ones. */}
+      <div className="mb-3">
+        <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">Loans (start {f.purchaseDate||"on purchase"})</label>
+        {loanDrafts.map(ld=>(
+          <div key={ld.id} className="relative p-3 mb-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+            <button type="button" onClick={()=>removeLoanDraft(ld.id)} className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-sm">✕</button>
+            <Inp label="Lender Name" value={ld.lenderName} onChange={v=>updateLoanDraft(ld.id,"lenderName",v)} placeholder="John Smith"/>
+            <div className="grid grid-cols-2 gap-3">
+              <Sel label="Loan Type" value={ld.loanType} onChange={v=>updateLoanDraft(ld.id,"loanType",v)} options={[["private","Private Money"],["hard","Hard Money"]]}/>
+              <Inp label="Principal ($)" money value={ld.principal} onChange={v=>updateLoanDraft(ld.id,"principal",v)} placeholder="100000"/>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Inp label={ld.interestType==="fixed"?"Fixed Fee ($)":"Rate (%/yr)"} money={ld.interestType==="fixed"} value={ld.interestRate} onChange={v=>updateLoanDraft(ld.id,"interestRate",v)} placeholder={ld.interestType==="fixed"?"5000":"10"}/>
+              <Sel label="Interest Type" value={ld.interestType} onChange={v=>updateLoanDraft(ld.id,"interestType",v)} options={[["percentage","% Per Year"],["fixed","Fixed $ Amount"]]}/>
+            </div>
+            <Sel label="How Is Interest Paid?" value={ld.paymentType} onChange={v=>updateLoanDraft(ld.id,"paymentType",v)} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"]]}/>
+            {ld.paymentType==="monthly_fixed"&&<Inp label="Monthly Payment ($)" money value={ld.monthlyPayment} onChange={v=>updateLoanDraft(ld.id,"monthlyPayment",v)} placeholder="1000"/>}
+            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-zinc-300 mb-1 cursor-pointer">
+              <input type="checkbox" checked={ld.hasDraw} onChange={e=>updateLoanDraft(ld.id,"hasDraw",e.target.checked)}/>
+              Draw facility for rehab funds
+            </label>
+            {ld.hasDraw&&<Inp label="Committed ($)" money value={ld.drawCommitted} onChange={v=>updateLoanDraft(ld.id,"drawCommitted",v)} placeholder="50000"/>}
+          </div>
+        ))}
+        <button type="button" onClick={addLoanDraft} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">+ Add a Loan</button>
+      </div>
+
       <div className="flex gap-2 pt-2">
-        <Btn onClick={()=>onSave(f)} full>Save Property</Btn>
+        <Btn onClick={()=>onSave({...f,purchasePrice:String(purchase),closingBuy,loanDrafts})} full>Save Property</Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
       </div>
     </div>
@@ -2368,6 +2430,53 @@ const upsertLender = (d, newLender) => {
   const withSettings = settings ? {...newLender, paymentSettings:settings} : newLender;
   return {...d, lenders:[...(d.lenders||[]).filter(x=>x.name!==withSettings.name), withSettings]};
 };
+
+// Loans added inline on the property form (so they start the day you buy instead of being
+// added separately afterward). A draft only becomes a real loan once it has a lender name
+// and a principal — half-filled rows are silently dropped rather than saved as $0 loans.
+const loanFromDraft = (draft, startDate) => ({
+  id: uid(),
+  lenderName: draft.lenderName.trim(),
+  loanType: draft.loanType || "private",
+  principal: parseFloat(draft.principal) || 0,
+  startDate: startDate || TODAY,
+  interestRate: parseFloat(draft.interestRate) || 0,
+  interestType: draft.interestType || "percentage",
+  paymentType: draft.paymentType || "closing",
+  monthlyPayment: parseFloat(draft.monthlyPayment) || 0,
+  drawFacility: draft.hasDraw ? { committed: parseFloat(draft.drawCommitted) || 0, draws: [] } : null,
+  specialTerms: "", endDate: null, dueDate: null,
+});
+// Turns a property form's loan drafts into real loan objects plus an updated lenders list —
+// only registering payment-settings defaults for names that aren't already a known lender,
+// so an existing lender's own settings are never silently overwritten.
+const loansFromDrafts = (data, loanDrafts, startDate) => {
+  const valid = (loanDrafts || []).filter(d => d.lenderName?.trim() && (parseFloat(d.principal) || 0) > 0);
+  const newLoans = valid.map(d => loanFromDraft(d, startDate));
+  let lenders = data.lenders || [];
+  valid.forEach(d => {
+    const name = d.lenderName.trim();
+    if (lenders.some(l => l.name === name)) return;
+    const settings = newLenderDefaultSettings(d.loanType);
+    lenders = [...lenders, settings ? { name, loanType: d.loanType, paymentSettings: settings } : { name, loanType: d.loanType }];
+  });
+  return { newLoans, lenders };
+};
+// The HUD-derived cost-to-buy breakdown: what actually funds the purchase, from the wire we
+// send plus any money sent straight to title, minus anything held back or taken off the top
+// before it ever reaches the cost of the house — entered as its own line items straight off
+// the HUD instead of one hand-calculated number, to cut down on transcription mistakes.
+const closingBuyFromForm = f => ({
+  cashFromBorrower: parseFloat(f.cashFromBorrower) || 0,
+  depositEarnest: parseFloat(f.depositEarnest) || 0,
+  loanToTitle: parseFloat(f.loanToTitle) || 0,
+  rehabHoldback: parseFloat(f.rehabHoldback) || 0,
+  loanPointsFees: parseFloat(f.loanPointsFees) || 0,
+  prepaidInterest: parseFloat(f.prepaidInterest) || 0,
+});
+const purchasePriceFromClosingBuy = cb =>
+  (cb.cashFromBorrower || 0) + (cb.depositEarnest || 0) + (cb.loanToTitle || 0)
+  - (cb.rehabHoldback || 0) - (cb.loanPointsFees || 0) - (cb.prepaidInterest || 0);
 
 // ── Undo support ──────────────────────────────────────────────────────────────
 // Rather than snapshot the whole blob (which would blindly clobber any concurrent
@@ -2515,8 +2624,12 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     const rehabBudget=parseFloat(f.rehabBudget)||0;
     const projectMonths=f.projectMonths!==""&&f.projectMonths!=null?parseFloat(f.projectMonths)||null:null;
     const monthlyHolding=parseFloat(f.monthlyHolding)||500;
-    const p={...(existing??{id:uid(),loans:[]}),address:f.address,purchasePrice,rehabBudget,projectMonths,monthlyHolding,fundingNeeded:purchasePrice+rehabBudget,dateSold:existing?.dateSold??null,purchaseDate:f.purchaseDate||null};
-    update(d=>({...d,properties:existing?d.properties.map(x=>x.id===p.id?p:x):[...d.properties,p]}));
+    const p={...(existing??{id:uid(),loans:[]}),address:f.address,purchasePrice,rehabBudget,projectMonths,monthlyHolding,fundingNeeded:purchasePrice+rehabBudget,dateSold:existing?.dateSold??null,purchaseDate:f.purchaseDate||null,closingBuy:f.closingBuy||null};
+    update(d=>{
+      const {newLoans,lenders}=loansFromDrafts(d,f.loanDrafts,f.purchaseDate);
+      const finalP={...p,loans:[...p.loans,...newLoans]};
+      return {...d,lenders,properties:existing?d.properties.map(x=>x.id===finalP.id?finalP:x):[...d.properties,finalP]};
+    });
     setModal(null);
   };
 
@@ -6486,15 +6599,20 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
         <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
           <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-4">Edit Property Details</div>
           <PropertyForm init={prop} onSave={f=>{
-            update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{
-              ...p,
-              address:f.address||p.address,
-              purchaseDate:f.purchaseDate,
-              purchasePrice:f.purchasePrice!==""?parseFloat(f.purchasePrice)||0:p.purchasePrice,
-              rehabBudget:f.rehabBudget!==""?parseFloat(f.rehabBudget)||0:p.rehabBudget,
-              monthlyHolding:f.monthlyHolding!==""?parseFloat(f.monthlyHolding)||500:p.monthlyHolding,
-              projectMonths:f.projectMonths!==""?parseFloat(f.projectMonths)||null:p.projectMonths,
-            })}));
+            update(d=>{
+              const {newLoans,lenders}=loansFromDrafts(d,f.loanDrafts,f.purchaseDate);
+              return {...d,lenders,properties:d.properties.map(p=>p.id!==propId?p:{
+                ...p,
+                address:f.address||p.address,
+                purchaseDate:f.purchaseDate,
+                purchasePrice:parseFloat(f.purchasePrice)||0,
+                closingBuy:f.closingBuy||null,
+                rehabBudget:f.rehabBudget!==""?parseFloat(f.rehabBudget)||0:p.rehabBudget,
+                monthlyHolding:f.monthlyHolding!==""?parseFloat(f.monthlyHolding)||500:p.monthlyHolding,
+                projectMonths:f.projectMonths!==""?parseFloat(f.projectMonths)||null:p.projectMonths,
+                loans:[...p.loans,...newLoans],
+              })};
+            });
             setEditing(false);
           }} onClose={()=>setEditing(false)}/>
         </div>
