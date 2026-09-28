@@ -2159,7 +2159,12 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 }
 
 // ─── Property Form ────────────────────────────────────────────────────────────
-function PropertyForm({ init, onSave, onClose }) {
+function PropertyForm({ init, properties, lenders, onSave, onClose }) {
+  // A stable id for this property before it's ever saved, so the real Add Lender Money
+  // screen (LenderMoneyForm, unmodified) can show it as a normal pickable destination —
+  // same picker as everywhere else, just fed a live draft of this property alongside the
+  // real ones instead of a special-cased "this property" shortcut.
+  const [draftPropId] = useState(()=>init?.id || uid());
   const [f,sf]=useState(()=>({
     address:init?.address||"",
     rehabBudget:String(init?.rehabBudget||""),
@@ -2190,6 +2195,32 @@ function PropertyForm({ init, onSave, onClose }) {
   const hudComplete=HUD_KEYS.every(k=>isValidHudValue(f[k]));
   const [editingMonths,setEditingMonths]=useState(false);
   const [editingHolding,setEditingHolding]=useState(false);
+
+  // Loans added via the real Add Lender Money popup while this property form is still open —
+  // queued locally (not written to the database) until Save Property, since this property
+  // may not have an id yet. A live draft of the in-progress property (current address, cost
+  // to buy, rehab, and any loans already queued for it) is injected into that popup's own
+  // property list so its picker can offer "this property" as a normal option, funding-gap
+  // math and all — no special-casing inside LenderMoneyForm itself.
+  const [loanDrafts,setLoanDrafts]=useState([]);
+  const [addingLoan,setAddingLoan]=useState(false);
+  const draftProp={id:draftPropId,address:f.address||"(this property)",purchasePrice:purchase,rehabBudget:rehab,purchaseDate:f.purchaseDate||null,dateSold:null,
+    // Existing (already-saved) loans plus anything queued locally for this property, so the
+    // funding-gap math accounts for what's already funded, not just what's mid-edit.
+    loans:[...(init?.loans||[]), ...loanDrafts.filter(d=>(d._destination||draftPropId)===draftPropId)]};
+  const pickerProperties=[draftProp,...(properties||[]).filter(p=>p.id!==draftPropId)];
+  const addLoanDraft=lf=>{
+    const loan=loanFields(lf);
+    setLoanDrafts(ds=>[...ds,{...loan,id:uid(),_destination:lf.destination,_newLender:lf.newLender}]);
+    setAddingLoan(false);
+  };
+  const removeLoanDraft=id=>setLoanDrafts(ds=>ds.filter(d=>d.id!==id));
+  const loanDraftDestLabel=d=>{
+    const dest=d._destination||draftPropId;
+    if(dest==="unassigned") return "Unassigned";
+    if(dest===draftPropId) return "this property";
+    return (properties||[]).find(p=>p.id===dest)?.address||"another property";
+  };
 
   return (
     <div>
@@ -2284,11 +2315,34 @@ function PropertyForm({ init, onSave, onClose }) {
         </div>
       )}
 
+      {/* Loans — the real Add Lender Money screen, opened right here so a loan can start
+          when the property is bought instead of a separate trip afterward. */}
+      <div className="mb-3">
+        <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">Loans</label>
+        {loanDrafts.map(d=>(
+          <div key={d.id} className="flex items-center justify-between gap-2 px-3.5 py-2.5 mb-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100 truncate">{d.lenderName||"Unknown"} <span className="font-normal text-slate-400 dark:text-zinc-500">· {$$(d.principal)}</span></div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500">{loanDraftDestLabel(d)}</div>
+            </div>
+            <button type="button" onClick={()=>removeLoanDraft(d.id)} className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>
+          </div>
+        ))}
+        <button type="button" onClick={()=>setAddingLoan(true)} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">+ Add a Loan</button>
+      </div>
+
       {!hudComplete&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Every Cost to Buy line needs a number or N/A before this can be saved.</p>}
       <div className="flex gap-2 pt-2">
-        <Btn onClick={()=>hudComplete&&onSave({...f,purchasePrice:String(purchase),closingBuy})} color={hudComplete?"blue":"ghost"} disabled={!hudComplete} full>Save Property</Btn>
+        <Btn onClick={()=>hudComplete&&onSave({...f,purchasePrice:String(purchase),closingBuy,loanDrafts,id:draftPropId})} color={hudComplete?"blue":"ghost"} disabled={!hudComplete} full>Save Property</Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
       </div>
+
+      {addingLoan&&(
+        <Modal title="Add Lender Money" onClose={()=>setAddingLoan(false)}>
+          <LenderMoneyForm properties={pickerProperties} lenders={lenders||[]} init={{destination:draftPropId}}
+            onSave={addLoanDraft} onClose={()=>setAddingLoan(false)}/>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -2415,6 +2469,27 @@ const upsertLender = (d, newLender) => {
   const settings = newLender.paymentSettings || newLenderDefaultSettings(newLender.loanType);
   const withSettings = settings ? {...newLender, paymentSettings:settings} : newLender;
   return {...d, lenders:[...(d.lenders||[]).filter(x=>x.name!==withSettings.name), withSettings]};
+};
+
+// Loans queued up via the real Add Lender Money screen (LenderMoneyForm) while a property
+// form is still open, not yet written to the database — each one already carries whatever
+// destination its own picker resolved to (this property, a different existing one, or
+// Unassigned), so saving the property just has to route each draft to the right bucket and
+// register any brand-new lender, exactly like the standalone "Add Lender Money" flow does.
+const routeLoanDrafts = (data, loanDrafts, defaultPropId) => {
+  let lenders = data.lenders || [];
+  let unassigned = data.unassigned || [];
+  const propLoanAdds = {};
+  (loanDrafts||[]).forEach(({_destination,_newLender,...loan}) => {
+    const dest = _destination || defaultPropId;
+    if (dest === "unassigned") unassigned = [...unassigned, loan];
+    else propLoanAdds[dest] = [...(propLoanAdds[dest]||[]), loan];
+    if (_newLender && !lenders.some(l=>l.name===_newLender.name)) {
+      const settings = _newLender.paymentSettings || newLenderDefaultSettings(_newLender.loanType);
+      lenders = [...lenders, settings ? {..._newLender,paymentSettings:settings} : _newLender];
+    }
+  });
+  return { lenders, unassigned, propLoanAdds };
 };
 // The HUD-derived cost-to-buy breakdown: what actually funds the purchase, from the wire we
 // send plus any money sent straight to title, minus anything held back or taken off the top
@@ -2582,12 +2657,18 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     const rehabBudget=parseFloat(f.rehabBudget)||0;
     const projectMonths=f.projectMonths!==""&&f.projectMonths!=null?parseFloat(f.projectMonths)||null:null;
     const monthlyHolding=parseFloat(f.monthlyHolding)||500;
-    const p={...(existing??{id:uid(),loans:[]}),address:f.address,purchasePrice,rehabBudget,projectMonths,monthlyHolding,fundingNeeded:purchasePrice+rehabBudget,dateSold:existing?.dateSold??null,purchaseDate:f.purchaseDate||null,closingBuy:f.closingBuy||null};
-    update(d=>({...d,properties:existing?d.properties.map(x=>x.id===p.id?p:x):[...d.properties,p]}));
-    // Brand-new property — immediately offer the same Add Lender Money screen used
-    // everywhere else, pre-targeted at it, so a loan can start right when it's bought
-    // without a separate trip to find the button afterward.
-    setModal(existing?null:{type:"addMoney",propId:p.id});
+    // f.id is the same id the property form's embedded loan picker already showed this
+    // property as (minted before the first save) — reuse it instead of generating a new
+    // one, or loans queued for "this property" would end up pointing at the wrong id.
+    const p={...(existing??{id:f.id||uid(),loans:[]}),address:f.address,purchasePrice,rehabBudget,projectMonths,monthlyHolding,fundingNeeded:purchasePrice+rehabBudget,dateSold:existing?.dateSold??null,purchaseDate:f.purchaseDate||null,closingBuy:f.closingBuy||null};
+    update(d=>{
+      const {lenders,unassigned,propLoanAdds}=routeLoanDrafts(d,f.loanDrafts,p.id);
+      const finalP={...p,loans:[...p.loans,...(propLoanAdds[p.id]||[])]};
+      let properties=existing?d.properties.map(x=>x.id===finalP.id?finalP:x):[...d.properties,finalP];
+      properties=properties.map(x=>x.id===finalP.id?x:(propLoanAdds[x.id]?{...x,loans:[...x.loans,...propLoanAdds[x.id]]}:x));
+      return {...d,lenders,unassigned,properties};
+    });
+    setModal(null);
   };
 
   const saveEditedLoan = (propId,f,existing) => {
@@ -3185,8 +3266,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       )}
 
       {(modal==="addMoney"||modal?.type==="addMoney")&&<Modal title="Add Lender Money" onClose={()=>setModal(null)}><LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={modal?.propId?{destination:modal.propId}:undefined} onSave={saveMoneyForm} onClose={()=>setModal(null)}/></Modal>}
-      {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
-      {modal?.type==="editProp"&&<Modal title="Edit Property" onClose={()=>setModal(null)}><PropertyForm init={modal.prop} onSave={f=>saveProp(f,modal.prop)} onClose={()=>setModal(null)}/></Modal>}
+      {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm properties={data.properties} lenders={data.lenders||[]} onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
+      {modal?.type==="editProp"&&<Modal title="Edit Property" onClose={()=>setModal(null)}><PropertyForm init={modal.prop} properties={data.properties} lenders={data.lenders||[]} onSave={f=>saveProp(f,modal.prop)} onClose={()=>setModal(null)}/></Modal>}
       {modal?.type==="editLoan"&&<Modal title="Edit Loan" onClose={()=>setModal(null)}>
         <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={{...modal.loan,destination:modal.propId,principal:String(modal.loan.principal),interestRate:String(modal.loan.interestRate||""),interestType:modal.loan.interestType||"percentage",paymentType:modal.loan.paymentType||"closing",monthlyPayment:String(modal.loan.monthlyPayment||""),drawFacility:modal.loan.drawFacility||null}}
           onSave={f=>saveEditedLoan(modal.propId,f,modal.loan)} onClose={()=>setModal(null)}/>
@@ -6576,17 +6657,23 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
       {editing && !prop.dateSold && (
         <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
           <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-4">Edit Property Details</div>
-          <PropertyForm init={prop} onSave={f=>{
-            update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{
-              ...p,
-              address:f.address||p.address,
-              purchaseDate:f.purchaseDate,
-              purchasePrice:parseFloat(f.purchasePrice)||0,
-              closingBuy:f.closingBuy||null,
-              rehabBudget:f.rehabBudget!==""?parseFloat(f.rehabBudget)||0:p.rehabBudget,
-              monthlyHolding:f.monthlyHolding!==""?parseFloat(f.monthlyHolding)||500:p.monthlyHolding,
-              projectMonths:f.projectMonths!==""?parseFloat(f.projectMonths)||null:p.projectMonths,
-            })}));
+          <PropertyForm init={prop} properties={data.properties} lenders={data.lenders||[]} onSave={f=>{
+            update(d=>{
+              const {lenders,unassigned,propLoanAdds}=routeLoanDrafts(d,f.loanDrafts,propId);
+              let properties=d.properties.map(p=>p.id!==propId?p:{
+                ...p,
+                address:f.address||p.address,
+                purchaseDate:f.purchaseDate,
+                purchasePrice:parseFloat(f.purchasePrice)||0,
+                closingBuy:f.closingBuy||null,
+                rehabBudget:f.rehabBudget!==""?parseFloat(f.rehabBudget)||0:p.rehabBudget,
+                monthlyHolding:f.monthlyHolding!==""?parseFloat(f.monthlyHolding)||500:p.monthlyHolding,
+                projectMonths:f.projectMonths!==""?parseFloat(f.projectMonths)||null:p.projectMonths,
+                loans:[...p.loans,...(propLoanAdds[propId]||[])],
+              });
+              properties=properties.map(x=>x.id===propId?x:(propLoanAdds[x.id]?{...x,loans:[...x.loans,...propLoanAdds[x.id]]}:x));
+              return {...d,lenders,unassigned,properties};
+            });
             setEditing(false);
           }} onClose={()=>setEditing(false)}/>
         </div>
