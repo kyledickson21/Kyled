@@ -2166,15 +2166,18 @@ function PropertyForm({ init, onSave, onClose }) {
     projectMonths:init?.projectMonths!=null?String(init.projectMonths):"",
     monthlyHolding:String(init?.monthlyHolding??500),
     purchaseDate:init?.purchaseDate||"",
-    // Cost to buy, itemized straight off the HUD instead of one hand-totaled number. If this
-    // property predates the breakdown, seed "Cash Due From Borrower" with its old single
-    // purchasePrice so the total doesn't silently drop to zero — everything else stays blank.
+    // Cost to buy, itemized straight off the HUD instead of one hand-totaled number, and
+    // every line required from here on. A brand-new property starts every line blank on
+    // purpose. A property that predates this breakdown would otherwise be locked out of
+    // saving ANY edit until five new fields get backfilled — instead, seed "Cash Due From
+    // Borrower" with its old single purchasePrice and default the rest to N/A, so existing
+    // data is already valid and only genuinely new entries have to be typed out for real.
     cashFromBorrower:String(init?.closingBuy?.cashFromBorrower ?? (!init?.closingBuy&&init?.purchasePrice?init.purchasePrice:"")),
-    depositEarnest:String(init?.closingBuy?.depositEarnest||""),
-    loanToTitle:String(init?.closingBuy?.loanToTitle||""),
-    rehabHoldback:String(init?.closingBuy?.rehabHoldback||""),
-    loanPointsFees:String(init?.closingBuy?.loanPointsFees||""),
-    prepaidInterest:String(init?.closingBuy?.prepaidInterest||""),
+    depositEarnest:init?.closingBuy?.depositEarnest!=null?String(init.closingBuy.depositEarnest):(init&&!init.closingBuy?"N/A":""),
+    loanToTitle:init?.closingBuy?.loanToTitle!=null?String(init.closingBuy.loanToTitle):(init&&!init.closingBuy?"N/A":""),
+    rehabHoldback:init?.closingBuy?.rehabHoldback!=null?String(init.closingBuy.rehabHoldback):(init&&!init.closingBuy?"N/A":""),
+    loanPointsFees:init?.closingBuy?.loanPointsFees!=null?String(init.closingBuy.loanPointsFees):(init&&!init.closingBuy?"N/A":""),
+    prepaidInterest:init?.closingBuy?.prepaidInterest!=null?String(init.closingBuy.prepaidInterest):(init&&!init.closingBuy?"N/A":""),
   }));
   const s=k=>v=>sf(p=>({...p,[k]:v}));
   const rehab=parseFloat(f.rehabBudget)||0;
@@ -2184,6 +2187,7 @@ function PropertyForm({ init, onSave, onClose }) {
   const closingBuy=closingBuyFromForm(f);
   const purchase=purchasePriceFromClosingBuy(closingBuy);
   const totalBase=purchase+rehab+holding*months;
+  const hudComplete=HUD_KEYS.every(k=>isValidHudValue(f[k]));
   const [editingMonths,setEditingMonths]=useState(false);
   const [editingHolding,setEditingHolding]=useState(false);
 
@@ -2201,15 +2205,33 @@ function PropertyForm({ init, onSave, onClose }) {
       <DateInp label="Purchase Date" value={f.purchaseDate} onChange={s("purchaseDate")} helpText="Also becomes the start date for any loans added below"/>
 
       {/* Cost to buy — itemized straight off the HUD/Closing Disclosure instead of one
-          hand-totaled number, to cut down on transcription mistakes. */}
+          hand-totaled number, to cut down on transcription mistakes. Every line is required —
+          type N/A (exactly) for anything that doesn't apply to this deal, rather than leaving
+          it blank, so a blank field always means "not entered yet," never "doesn't apply." */}
       <div className="mb-3 p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60">
         <div className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">Cost to Buy — From the HUD</div>
-        <Inp label="Cash Due From Borrower ($)" money value={f.cashFromBorrower} onChange={s("cashFromBorrower")} placeholder="150000" helpText="The exact wire we send to title"/>
-        <Inp label="Deposit / Earnest Money Sent Before Closing ($)" money value={f.depositEarnest} onChange={s("depositEarnest")} placeholder="5000"/>
-        <Inp label="Loan Amount Sent Directly to Title ($)" money value={f.loanToTitle} onChange={s("loanToTitle")} placeholder="100000"/>
-        <Inp label="− Rehab Holdback ($)" money value={f.rehabHoldback} onChange={s("rehabHoldback")} placeholder="0" helpText="Money the lender held back for rehab draws, if any"/>
-        <Inp label="− Loan Points / Fees ($)" money value={f.loanPointsFees} onChange={s("loanPointsFees")} placeholder="0"/>
-        <Inp label="− Prepaid Interest at Closing ($)" money value={f.prepaidInterest} onChange={s("prepaidInterest")} placeholder="0"/>
+        {[
+          ["cashFromBorrower","Cash Due From Borrower ($)","150000 or N/A","The exact wire we send to title"],
+          ["depositEarnest","Deposit / Earnest Money Sent Before Closing ($)","5000 or N/A",null],
+          ["loanToTitle","Loan Amount Sent Directly to Title ($)","100000 or N/A",null],
+          ["rehabHoldback","− Rehab Holdback ($)","0 or N/A","Money the lender held back for rehab draws, if any"],
+          ["loanPointsFees","− Loan Points / Fees ($)","0 or N/A",null],
+          ["prepaidInterest","− Prepaid Interest at Closing ($)","0 or N/A",null],
+        ].map(([key,label,placeholder,help])=>{
+          const raw=f[key]||"";
+          const trimmed=raw.trim();
+          const invalid=trimmed!==""&&trimmed!=="N/A"&&isNaN(parseFloat(trimmed));
+          return (
+            <div key={key} className="mb-3">
+              <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
+              <input type="text" value={raw} onChange={e=>s(key)(e.target.value)} placeholder={placeholder}
+                className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 transition-all ${invalid?"border-red-300 dark:border-red-700 focus:ring-red-500":"border-slate-200 dark:border-zinc-700 focus:ring-blue-500"}`}/>
+              <p className={`text-[11px] mt-1.5 ${invalid?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>
+                {invalid?"Enter a dollar amount, or type N/A if this doesn't apply":(help||"Required — type N/A if this doesn't apply")}
+              </p>
+            </div>
+          );
+        })}
         <div className="flex justify-between items-center pt-2 mt-1 border-t border-slate-200 dark:border-zinc-700">
           <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Cost to Buy</span>
           <span className="text-base font-black text-slate-900 dark:text-zinc-100 tabular-nums">{$$(purchase)}</span>
@@ -2299,8 +2321,9 @@ function PropertyForm({ init, onSave, onClose }) {
         <button type="button" onClick={addLoanDraft} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">+ Add a Loan</button>
       </div>
 
+      {!hudComplete&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Every Cost to Buy line needs a number or N/A before this can be saved.</p>}
       <div className="flex gap-2 pt-2">
-        <Btn onClick={()=>onSave({...f,purchasePrice:String(purchase),closingBuy,loanDrafts})} full>Save Property</Btn>
+        <Btn onClick={()=>hudComplete&&onSave({...f,purchasePrice:String(purchase),closingBuy,loanDrafts})} color={hudComplete?"blue":"ghost"} disabled={!hudComplete} full>Save Property</Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
       </div>
     </div>
@@ -2466,6 +2489,10 @@ const loansFromDrafts = (data, loanDrafts, startDate) => {
 // send plus any money sent straight to title, minus anything held back or taken off the top
 // before it ever reaches the cost of the house — entered as its own line items straight off
 // the HUD instead of one hand-calculated number, to cut down on transcription mistakes.
+// Every line is required: a blank field is incomplete, not "zero" — N/A (typed exactly) is
+// the only way to say a line doesn't apply to this deal.
+const HUD_KEYS = ["cashFromBorrower","depositEarnest","loanToTitle","rehabHoldback","loanPointsFees","prepaidInterest"];
+const isValidHudValue = v => { const t=(v||"").trim(); return t==="N/A" || (t!==""&&!isNaN(parseFloat(t))); };
 const closingBuyFromForm = f => ({
   cashFromBorrower: parseFloat(f.cashFromBorrower) || 0,
   depositEarnest: parseFloat(f.depositEarnest) || 0,
