@@ -489,7 +489,7 @@ function LenderAutocomplete({ value, onChange, properties }) {
 }
 
 // ─── Lender Money Form ────────────────────────────────────────────────────────
-function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSave, onMerge, onClose }) {
+function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSave, onMerge, onClose, lockDestinationTo }) {
   const activeProps = properties.filter(p=>!p.dateSold);
 
   const initName = init?.lenderName || "";
@@ -559,7 +559,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         setBlockMsg(c==='date'
           ? "Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period."
           : "Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need.");
-        sf(p=>({...p,destination:"unassigned"}));
+        if (!lockDestinationTo) sf(p=>({...p,destination:"unassigned"}));
         return;
       }
     }
@@ -775,7 +775,19 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         </div>
       )}
 
-      {/* Where does this money go? — collapsed picker, same style as the split-loan picker */}
+      {/* Where does this money go? — collapsed picker, same style as the split-loan picker.
+          Locked (no picker at all) when this form is opened from inside a specific
+          property's own flow — adding a loan there obviously means that property, so there's
+          nothing to choose and no "Unassigned"/other-property option to confuse it with. */}
+      {lockDestinationTo ? (
+        <div className="mt-3 mb-1">
+          <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">This Loan Goes On</label>
+          {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-2">{blockMsg}</div>}
+          <div className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-sm text-slate-700 dark:text-zinc-200 truncate">
+            🏠 {lockDestinationTo.label}
+          </div>
+        </div>
+      ) : (
       <div className="mt-3 mb-1 relative">
         <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">
           Where Does This Money Go?
@@ -838,6 +850,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           <div className="text-[11px] text-slate-400 dark:text-zinc-500 italic px-1 mt-1.5">Enter amount and start date above to see property availability.</div>
         )}
       </div>
+      )}
 
       {/* End date + notes — kept at the very bottom since a loan is normally left active */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-3">
@@ -2159,7 +2172,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 }
 
 // ─── Property Form ────────────────────────────────────────────────────────────
-function PropertyForm({ init, properties, lenders, onSave, onClose }) {
+function PropertyForm({ init, lenders, onSave, onClose }) {
   // A stable id for this property before it's ever saved, so the real Add Lender Money
   // screen (LenderMoneyForm, unmodified) can show it as a normal pickable destination —
   // same picker as everywhere else, just fed a live draft of this property alongside the
@@ -2208,19 +2221,12 @@ function PropertyForm({ init, properties, lenders, onSave, onClose }) {
     // Existing (already-saved) loans plus anything queued locally for this property, so the
     // funding-gap math accounts for what's already funded, not just what's mid-edit.
     loans:[...(init?.loans||[]), ...loanDrafts.filter(d=>(d._destination||draftPropId)===draftPropId)]};
-  const pickerProperties=[draftProp,...(properties||[]).filter(p=>p.id!==draftPropId)];
   const addLoanDraft=lf=>{
     const loan=loanFields(lf);
     setLoanDrafts(ds=>[...ds,{...loan,id:uid(),_destination:lf.destination,_newLender:lf.newLender}]);
     setAddingLoan(false);
   };
   const removeLoanDraft=id=>setLoanDrafts(ds=>ds.filter(d=>d.id!==id));
-  const loanDraftDestLabel=d=>{
-    const dest=d._destination||draftPropId;
-    if(dest==="unassigned") return "Unassigned";
-    if(dest===draftPropId) return "this property";
-    return (properties||[]).find(p=>p.id===dest)?.address||"another property";
-  };
 
   return (
     <div>
@@ -2323,7 +2329,7 @@ function PropertyForm({ init, properties, lenders, onSave, onClose }) {
           <div key={d.id} className="flex items-center justify-between gap-2 px-3.5 py-2.5 mb-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
             <div className="min-w-0">
               <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100 truncate">{d.lenderName||"Unknown"} <span className="font-normal text-slate-400 dark:text-zinc-500">· {$$(d.principal)}</span></div>
-              <div className="text-[11px] text-slate-400 dark:text-zinc-500">{loanDraftDestLabel(d)}</div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500">{fmtRate(d)}</div>
             </div>
             <button type="button" onClick={()=>removeLoanDraft(d.id)} className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>
           </div>
@@ -2339,7 +2345,8 @@ function PropertyForm({ init, properties, lenders, onSave, onClose }) {
 
       {addingLoan&&(
         <Modal title="Add Lender Money" onClose={()=>setAddingLoan(false)}>
-          <LenderMoneyForm properties={pickerProperties} lenders={lenders||[]} init={{destination:draftPropId}}
+          <LenderMoneyForm properties={[draftProp]} lenders={lenders||[]} init={{destination:draftPropId}}
+            lockDestinationTo={{id:draftPropId,label:f.address||"this property"}}
             onSave={addLoanDraft} onClose={()=>setAddingLoan(false)}/>
         </Modal>
       )}
@@ -3266,8 +3273,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       )}
 
       {(modal==="addMoney"||modal?.type==="addMoney")&&<Modal title="Add Lender Money" onClose={()=>setModal(null)}><LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={modal?.propId?{destination:modal.propId}:undefined} onSave={saveMoneyForm} onClose={()=>setModal(null)}/></Modal>}
-      {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm properties={data.properties} lenders={data.lenders||[]} onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
-      {modal?.type==="editProp"&&<Modal title="Edit Property" onClose={()=>setModal(null)}><PropertyForm init={modal.prop} properties={data.properties} lenders={data.lenders||[]} onSave={f=>saveProp(f,modal.prop)} onClose={()=>setModal(null)}/></Modal>}
+      {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm lenders={data.lenders||[]} onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
+      {modal?.type==="editProp"&&<Modal title="Edit Property" onClose={()=>setModal(null)}><PropertyForm init={modal.prop} lenders={data.lenders||[]} onSave={f=>saveProp(f,modal.prop)} onClose={()=>setModal(null)}/></Modal>}
       {modal?.type==="editLoan"&&<Modal title="Edit Loan" onClose={()=>setModal(null)}>
         <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={{...modal.loan,destination:modal.propId,principal:String(modal.loan.principal),interestRate:String(modal.loan.interestRate||""),interestType:modal.loan.interestType||"percentage",paymentType:modal.loan.paymentType||"closing",monthlyPayment:String(modal.loan.monthlyPayment||""),drawFacility:modal.loan.drawFacility||null}}
           onSave={f=>saveEditedLoan(modal.propId,f,modal.loan)} onClose={()=>setModal(null)}/>
@@ -6657,7 +6664,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
       {editing && !prop.dateSold && (
         <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
           <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-4">Edit Property Details</div>
-          <PropertyForm init={prop} properties={data.properties} lenders={data.lenders||[]} onSave={f=>{
+          <PropertyForm init={prop} lenders={data.lenders||[]} onSave={f=>{
             update(d=>{
               const {lenders,unassigned,propLoanAdds}=routeLoanDrafts(d,f.loanDrafts,propId);
               let properties=d.properties.map(p=>p.id!==propId?p:{
@@ -6864,7 +6871,8 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
       {addingLoan&&(
         <Modal title="Add Lender Money" onClose={()=>setAddingLoan(false)}>
           <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} unassigned={data.unassigned}
-            init={{destination:propId}} onSave={saveNewLoan} onClose={()=>setAddingLoan(false)}/>
+            init={{destination:propId}} lockDestinationTo={{id:propId,label:prop.address}}
+            onSave={saveNewLoan} onClose={()=>setAddingLoan(false)}/>
         </Modal>
       )}
     </div>
