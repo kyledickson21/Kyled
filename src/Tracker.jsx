@@ -1372,6 +1372,8 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
     {propId:"",amount:""},
     {propId:"",amount:""},
   ]);
+  const [amtLocked,setAmtLocked] = useState({});
+  const toggleAmtLock=i=>setAmtLocked(l=>({...l,[i]:!l[i]}));
   const addRow=()=>setSplits(s=>[...s,{propId:"",amount:""}]);
   const removeRow=i=>setSplits(s=>s.filter((_,j)=>j!==i));
   const setRow=(i,field,val)=>setSplits(s=>s.map((r,j)=>j===i?{...r,[field]:val}:r));
@@ -1503,17 +1505,19 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                 <div key={i} className="space-y-1.5">
                   <div className="flex gap-2 items-center">
                     <div className="w-32 shrink-0">
-                      <MoneyField placeholder="$ Amount" value={row.amount}
-                        onChange={val=>{
-                          const newAmt=parseFloat(val)||0;
-                          let newPropId=row.propId;
-                          if(row.propId&&row.propId!=="unassigned"){
-                            const p=activeProps.find(x=>x.id===row.propId);
-                            if(p&&propConflict(loan.startDate,newAmt,p)!==null) newPropId="";
-                          }
-                          setSplits(s=>s.map((r,j)=>j===i?{...r,amount:val,propId:newPropId}:r));
-                        }}
-                        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
+                      <LockableInline locked={amtLocked[i]} onToggle={()=>toggleAmtLock(i)}>
+                        <MoneyField placeholder="$ Amount" value={row.amount}
+                          onChange={val=>{
+                            const newAmt=parseFloat(val)||0;
+                            let newPropId=row.propId;
+                            if(row.propId&&row.propId!=="unassigned"){
+                              const p=activeProps.find(x=>x.id===row.propId);
+                              if(p&&propConflict(loan.startDate,newAmt,p)!==null) newPropId="";
+                            }
+                            setSplits(s=>s.map((r,j)=>j===i?{...r,amount:val,propId:newPropId}:r));
+                          }}
+                          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
+                      </LockableInline>
                     </div>
                     <div className="flex-1 relative">
                       <button ref={el=>pickerBtnRefs.current[i]=el} type="button" disabled={!hasAmt} onClick={()=>setOpenPicker(openPicker===i?null:i)}
@@ -7042,6 +7046,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const currentLoanType = allLoans[0]?.loanType || "private";
   const [psForm, setPsForm] = useState(() => resolveLenderSettings(data, name, currentLoanType));
   const [psSaved, setPsSaved] = useState(false);
+  const [drawFeeLocked, setDrawFeeLocked] = useState(!!resolveLenderSettings(data, name, currentLoanType).drawFee);
   const savePaymentSettings = () => {
     update(d => {
       const existing = (d.lenders||[]).find(l => l.name===name);
@@ -7260,7 +7265,9 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
               options={[["perDiem","Per-Diem (actual days)"],["flat","Flat (rate ÷ 12)"]]}/>
           </div>
 
-          <Inp label="Fee Per Draw ($)" money value={String(psForm.drawFee||"")} onChange={v=>setPsForm(f=>({...f,drawFee:parseFloat(v)||0}))} placeholder="0"/>
+          <Lockable locked={drawFeeLocked} onToggle={()=>setDrawFeeLocked(l=>!l)}>
+            <Inp label="Fee Per Draw ($)" money value={String(psForm.drawFee||"")} onChange={v=>setPsForm(f=>({...f,drawFee:parseFloat(v)||0}))} placeholder="0"/>
+          </Lockable>
 
           <div className="flex gap-2 pt-1">
             <Btn color="blue" onClick={savePaymentSettings}>{psSaved?"✓ Saved":"Save Settings"}</Btn>
@@ -7435,10 +7442,14 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [editing, setEditing] = useState(false);
   const [ef, setEf] = useState(null);
+  const [efLocked, setEfLocked] = useState({});
+  const toggleEfLock = k => setEfLocked(l=>({...l,[k]:!l[k]}));
   const [closeModal, setCloseModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [drawDate, setDrawDate] = useState(TODAY);
   const [drawAmt, setDrawAmt] = useState("");
+  const [drawLocked, setDrawLocked] = useState({});
+  const toggleDrawLock = k => setDrawLocked(l=>({...l,[k]:!l[k]}));
 
   let loan = null, prop = null;
   if (propId) { prop = data.properties.find(p => p.id === propId); loan = prop?.loans.find(l => l.id === loanId); }
@@ -7471,6 +7482,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       specialTerms: loan.specialTerms||"",
       drawFacility: loan.drawFacility||null,
     });
+    setEfLocked({});
     setEditing(true);
   };
 
@@ -7481,6 +7493,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
     if (!amount || !drawDate) return;
     setEf(f=>({...f,drawFacility:{...f.drawFacility,draws:[...(f.drawFacility?.draws||[]),{id:uid(),date:drawDate,amount}]}}));
     setDrawAmt("");
+    setDrawLocked({});
   };
 
   const saveEdit = () => {
@@ -7572,14 +7585,28 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
         <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
           <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-4">Edit Loan Terms</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Inp label="Principal ($)" value={ef.principal} onChange={v=>setEf(f=>({...f,principal:v}))} money/>
-            <DateInp label="Start Date" value={ef.startDate} onChange={v=>setEf(f=>({...f,startDate:v}))}/>
-            <DateInp label="End Date (leave blank if active)" value={ef.endDate} onChange={v=>setEf(f=>({...f,endDate:v}))}/>
-            <DateInp label="Due Date (optional)" value={ef.dueDate} onChange={v=>setEf(f=>({...f,dueDate:v}))} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
+            <Lockable locked={efLocked.principal} onToggle={()=>toggleEfLock("principal")}>
+              <Inp label="Principal ($)" value={ef.principal} onChange={v=>setEf(f=>({...f,principal:v}))} money/>
+            </Lockable>
+            <Lockable locked={efLocked.startDate} onToggle={()=>toggleEfLock("startDate")}>
+              <DateInp label="Start Date" value={ef.startDate} onChange={v=>setEf(f=>({...f,startDate:v}))}/>
+            </Lockable>
+            <Lockable locked={efLocked.endDate} onToggle={()=>toggleEfLock("endDate")}>
+              <DateInp label="End Date (leave blank if active)" value={ef.endDate} onChange={v=>setEf(f=>({...f,endDate:v}))}/>
+            </Lockable>
+            <Lockable locked={efLocked.dueDate} onToggle={()=>toggleEfLock("dueDate")}>
+              <DateInp label="Due Date (optional)" value={ef.dueDate} onChange={v=>setEf(f=>({...f,dueDate:v}))} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
+            </Lockable>
             <Sel label="Interest Type" value={ef.interestType} onChange={v=>setEf(f=>({...f,interestType:v}))} options={[["percentage","% Per Year"],["fixed","Fixed $ Amount"]]}/>
-            <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} money={ef.interestType==="fixed"} percent={ef.interestType!=="fixed"}/>
+            <Lockable locked={efLocked.interestRate} onToggle={()=>toggleEfLock("interestRate")}>
+              <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} money={ef.interestType==="fixed"} percent={ef.interestType!=="fixed"}/>
+            </Lockable>
             <Sel label="Payment Type" value={ef.paymentType} onChange={v=>setEf(f=>({...f,paymentType:v}))} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"]]}/>
-            {ef.paymentType==="monthly_fixed"&&<Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={v=>setEf(f=>({...f,monthlyPayment:v}))} money/>}
+            {ef.paymentType==="monthly_fixed"&&(
+              <Lockable locked={efLocked.monthlyPayment} onToggle={()=>toggleEfLock("monthlyPayment")}>
+                <Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={v=>setEf(f=>({...f,monthlyPayment:v}))} money/>
+              </Lockable>
+            )}
             <div className="sm:col-span-2"><Inp label="Notes" value={ef.specialTerms} onChange={v=>setEf(f=>({...f,specialTerms:v}))}/></div>
           </div>
           {loan.loanType==="hard"&&(
@@ -7595,8 +7622,10 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
               </label>
               {ef.drawFacility&&(
                 <div className="mt-3 space-y-3">
-                  <Inp label="Total Committed ($)" money value={String(ef.drawFacility.committed||"")}
-                    onChange={v=>setEf(f=>({...f,drawFacility:{...f.drawFacility,committed:v}}))} placeholder="100000"/>
+                  <Lockable locked={efLocked.drawCommitted} onToggle={()=>toggleEfLock("drawCommitted")}>
+                    <Inp label="Total Committed ($)" money value={String(ef.drawFacility.committed||"")}
+                      onChange={v=>setEf(f=>({...f,drawFacility:{...f.drawFacility,committed:v}}))} placeholder="100000"/>
+                  </Lockable>
                   {(ef.drawFacility.draws||[]).length>0&&(
                     <div>
                       <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Draws Taken</div>
@@ -7611,8 +7640,12 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
                   )}
                   <div className="pt-1 border-t border-slate-200 dark:border-zinc-700">
                     <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Add Draw</div>
-                    <DateInp label="Draw Date" value={drawDate} onChange={setDrawDate}/>
-                    <Inp label="Amount ($)" money value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
+                    <Lockable locked={drawLocked.date} onToggle={()=>toggleDrawLock("date")}>
+                      <DateInp label="Draw Date" value={drawDate} onChange={setDrawDate}/>
+                    </Lockable>
+                    <Lockable locked={drawLocked.amt} onToggle={()=>toggleDrawLock("amt")}>
+                      <Inp label="Amount ($)" money value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
+                    </Lockable>
                     <Btn onClick={addDraw} sm color="navy" full>+ Record Draw</Btn>
                   </div>
                 </div>
