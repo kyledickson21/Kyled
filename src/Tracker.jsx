@@ -2270,38 +2270,57 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
   // same picker as everywhere else, just fed a live draft of this property alongside the
   // real ones instead of a special-cased "this property" shortcut.
   const [draftPropId] = useState(()=>init?.id || uid());
+  // Cost to buy, itemized straight off the HUD instead of one hand-totaled number. Each line
+  // can hold MULTIPLE entries (e.g. a rehab holdback per lender, or several fee lines) that
+  // get summed automatically — added with "+ Add another" — instead of the user pre-adding
+  // them in their head before typing a single number.
+  const hudDefault = key => {
+    if (key==="cashFromBorrower") {
+      return init?.closingBuy?.cashFromBorrower!=null
+        ? String(init.closingBuy.cashFromBorrower)
+        : (!init?.closingBuy&&init?.purchasePrice?String(init.purchasePrice):"");
+    }
+    const flat = init?.closingBuy?.[key];
+    if (flat!=null) return String(flat);
+    // A property that predates this breakdown would otherwise be locked out of saving ANY
+    // edit until five new fields get backfilled — instead, default the rest to N/A, so
+    // existing data is already valid and only genuinely new entries have to be typed out.
+    return (init&&!init.closingBuy) ? "N/A" : "";
+  };
+  const seedHudEntries = key => {
+    const items = init?.closingBuy?.[key+"Items"];
+    if (items&&items.length) return items.map(it=>({id:it.id||uid(),note:it.note||"",value:String(it.value??"")}));
+    return [{id:uid(),note:"",value:hudDefault(key)}];
+  };
   const [f,sf]=useState(()=>({
     address:init?.address||"",
     rehabBudget:String(init?.rehabBudget||""),
     projectMonths:init?.projectMonths!=null?String(init.projectMonths):"",
     monthlyHolding:String(init?.monthlyHolding??500),
     purchaseDate:init?.purchaseDate||"",
-    // Cost to buy, itemized straight off the HUD instead of one hand-totaled number, and
-    // every line required from here on. A brand-new property starts every line blank on
-    // purpose. A property that predates this breakdown would otherwise be locked out of
-    // saving ANY edit until five new fields get backfilled — instead, seed "Cash Due From
-    // Borrower" with its old single purchasePrice and default the rest to N/A, so existing
-    // data is already valid and only genuinely new entries have to be typed out for real.
-    cashFromBorrower:String(init?.closingBuy?.cashFromBorrower ?? (!init?.closingBuy&&init?.purchasePrice?init.purchasePrice:"")),
-    depositEarnest:init?.closingBuy?.depositEarnest!=null?String(init.closingBuy.depositEarnest):(init&&!init.closingBuy?"N/A":""),
-    loanToTitle:init?.closingBuy?.loanToTitle!=null?String(init.closingBuy.loanToTitle):(init&&!init.closingBuy?"N/A":""),
-    rehabHoldback:init?.closingBuy?.rehabHoldback!=null?String(init.closingBuy.rehabHoldback):(init&&!init.closingBuy?"N/A":""),
-    loanPointsFees:init?.closingBuy?.loanPointsFees!=null?String(init.closingBuy.loanPointsFees):(init&&!init.closingBuy?"N/A":""),
-    prepaidInterest:init?.closingBuy?.prepaidInterest!=null?String(init.closingBuy.prepaidInterest):(init&&!init.closingBuy?"N/A":""),
+    cashFromBorrower:seedHudEntries("cashFromBorrower"),
+    depositEarnest:seedHudEntries("depositEarnest"),
+    loanToTitle:seedHudEntries("loanToTitle"),
+    rehabHoldback:seedHudEntries("rehabHoldback"),
+    loanPointsFees:seedHudEntries("loanPointsFees"),
+    prepaidInterest:seedHudEntries("prepaidInterest"),
   }));
   const s=k=>v=>sf(p=>({...p,[k]:v}));
+  const addHudEntry=key=>sf(p=>({...p,[key]:[...p[key],{id:uid(),note:"",value:""}]}));
+  const removeHudEntry=(key,id)=>sf(p=>({...p,[key]:p[key].filter(e=>e.id!==id)}));
+  const updateHudEntry=(key,field,id,val)=>sf(p=>({...p,[key]:p[key].map(e=>e.id===id?{...e,[field]:val}:e)}));
   // Fields that already had a real value when the form opened start locked — that's exactly
   // the case worth protecting (an already-correct number sitting there) — a brand-new,
   // empty field starts open since there's nothing yet to accidentally overwrite.
   const [locked,setLocked]=useState(()=>({
     address:!!init?.address,
     purchaseDate:!!init?.purchaseDate,
-    cashFromBorrower:!!(init?.closingBuy?.cashFromBorrower??init?.purchasePrice),
-    depositEarnest:init?.closingBuy?.depositEarnest!=null||!!(init&&!init.closingBuy),
-    loanToTitle:init?.closingBuy?.loanToTitle!=null||!!(init&&!init.closingBuy),
-    rehabHoldback:init?.closingBuy?.rehabHoldback!=null||!!(init&&!init.closingBuy),
-    loanPointsFees:init?.closingBuy?.loanPointsFees!=null||!!(init&&!init.closingBuy),
-    prepaidInterest:init?.closingBuy?.prepaidInterest!=null||!!(init&&!init.closingBuy),
+    cashFromBorrower:hudDefault("cashFromBorrower")!=="",
+    depositEarnest:hudDefault("depositEarnest")!=="",
+    loanToTitle:hudDefault("loanToTitle")!=="",
+    rehabHoldback:hudDefault("rehabHoldback")!=="",
+    loanPointsFees:hudDefault("loanPointsFees")!=="",
+    prepaidInterest:hudDefault("prepaidInterest")!=="",
     rehabBudget:!!init?.rehabBudget,
   }));
   const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
@@ -2312,7 +2331,7 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
   const closingBuy=closingBuyFromForm(f);
   const purchase=purchasePriceFromClosingBuy(closingBuy);
   const totalBase=purchase+rehab+holding*months;
-  const hudComplete=HUD_KEYS.every(k=>isValidHudValue(f[k]));
+  const hudComplete=HUD_KEYS.every(k=>hudFieldValid(f[k]));
   // Every lockable field has to actually be confirmed (✓), not just filled in, before this
   // can save — the whole point is that nothing gets saved without a deliberate confirm.
   const allConfirmed=["address","purchaseDate",...HUD_KEYS,"rehabBudget"].every(k=>locked[k]);
@@ -2351,7 +2370,9 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
       {/* Cost to buy — itemized straight off the HUD/Closing Disclosure instead of one
           hand-totaled number, to cut down on transcription mistakes. Every line is required —
           type N/A (exactly) for anything that doesn't apply to this deal, rather than leaving
-          it blank, so a blank field always means "not entered yet," never "doesn't apply." */}
+          it blank, so a blank field always means "not entered yet," never "doesn't apply."
+          Each line can also hold multiple entries (e.g. a rehab holdback per lender, or
+          several separate fees) that sum automatically via "+ Add another". */}
       <div className="mb-3 p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60">
         <div className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">Cost to Buy — From the HUD</div>
         {[
@@ -2362,17 +2383,40 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
           ["loanPointsFees","− Loan Points / Fees ($)","0 or N/A",null],
           ["prepaidInterest","− Prepaid Interest at Closing ($)","0 or N/A",null],
         ].map(([key,label,placeholder,help])=>{
-          const raw=f[key]||"";
-          const trimmed=raw.trim();
-          const invalid=trimmed!==""&&trimmed!=="N/A"&&isNaN(parseFloat(trimmed));
+          const entries=f[key]||[];
+          const multi=entries.length>1;
+          const fieldValid=hudFieldValid(entries);
           return (
             <Lockable key={key} locked={locked[key]} onToggle={()=>toggleLock(key)}>
               <div className="mb-3">
                 <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
-                <input type="text" value={raw} onChange={e=>s(key)(e.target.value)} placeholder={placeholder}
-                  className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 transition-all ${invalid?"border-red-300 dark:border-red-700 focus:ring-red-500":"border-slate-200 dark:border-zinc-700 focus:ring-blue-500"}`}/>
-                <p className={`text-[11px] mt-1.5 ${invalid?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>
-                  {invalid?"Enter a dollar amount, or type N/A if this doesn't apply":(help||"Required — type N/A if this doesn't apply")}
+                {entries.map((entry,idx)=>{
+                  const t=(entry.value||"").trim();
+                  const invalid=t!==""&&t!=="N/A"&&isNaN(parseFloat(t));
+                  return (
+                    <div key={entry.id} className="flex gap-1.5 mb-1.5">
+                      {multi&&(
+                        <input type="text" value={entry.note} onChange={e=>updateHudEntry(key,"note",entry.id,e.target.value)}
+                          placeholder={`Item ${idx+1} (optional)`}
+                          className="w-28 shrink-0 border border-slate-200 dark:border-zinc-700 rounded-xl px-2.5 py-3 text-xs bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                      )}
+                      <input type="text" value={entry.value} onChange={e=>updateHudEntry(key,"value",entry.id,e.target.value)} placeholder={placeholder}
+                        className={`flex-1 border rounded-xl px-4 py-3 text-sm bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 transition-all ${invalid?"border-red-300 dark:border-red-700 focus:ring-red-500":"border-slate-200 dark:border-zinc-700 focus:ring-blue-500"}`}/>
+                      {multi&&(
+                        <button type="button" onClick={()=>removeHudEntry(key,entry.id)}
+                          className="shrink-0 w-8 flex items-center justify-center rounded-xl text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors">✕</button>
+                      )}
+                    </div>
+                  );
+                })}
+                <button type="button" onClick={()=>addHudEntry(key)} className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">+ Add another</button>
+                {multi&&(
+                  <div className="flex justify-between text-[11px] font-semibold text-slate-500 dark:text-zinc-400 mt-1.5">
+                    <span>Subtotal</span><span className="tabular-nums">{$$(sumHudEntries(entries))}</span>
+                  </div>
+                )}
+                <p className={`text-[11px] mt-1.5 ${!fieldValid?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>
+                  {!fieldValid?"Enter a dollar amount, or type N/A if this doesn't apply":(help||"Required — type N/A if this doesn't apply")}
                 </p>
               </div>
             </Lockable>
@@ -2630,14 +2674,24 @@ const routeLoanDrafts = (data, loanDrafts, defaultPropId) => {
 // the only way to say a line doesn't apply to this deal.
 const HUD_KEYS = ["cashFromBorrower","depositEarnest","loanToTitle","rehabHoldback","loanPointsFees","prepaidInterest"];
 const isValidHudValue = v => { const t=(v||"").trim(); return t==="N/A" || (t!==""&&!isNaN(parseFloat(t))); };
-const closingBuyFromForm = f => ({
-  cashFromBorrower: parseFloat(f.cashFromBorrower) || 0,
-  depositEarnest: parseFloat(f.depositEarnest) || 0,
-  loanToTitle: parseFloat(f.loanToTitle) || 0,
-  rehabHoldback: parseFloat(f.rehabHoldback) || 0,
-  loanPointsFees: parseFloat(f.loanPointsFees) || 0,
-  prepaidInterest: parseFloat(f.prepaidInterest) || 0,
-});
+// Each HUD line can hold several entries (e.g. one rehab holdback per lender) that sum
+// automatically instead of forcing the user to add them up by hand before typing one number.
+const sumHudEntries = entries => (entries||[]).reduce((sum,e)=>{
+  const t=(e.value||"").trim();
+  if (t===""||t==="N/A") return sum;
+  const n=parseFloat(t);
+  return isNaN(n) ? sum : sum+n;
+},0);
+const hudFieldValid = entries => (entries||[]).length>0 && entries.every(e=>isValidHudValue(e.value));
+const closingBuyFromForm = f => {
+  const out = {};
+  HUD_KEYS.forEach(key=>{
+    out[key] = sumHudEntries(f[key]);
+    const items = (f[key]||[]).filter(e=>(e.value||"").trim()!=="");
+    if (items.length) out[key+"Items"] = items.map(e=>({id:e.id,note:e.note||"",value:e.value}));
+  });
+  return out;
+};
 const purchasePriceFromClosingBuy = cb =>
   (cb.cashFromBorrower || 0) + (cb.depositEarnest || 0) + (cb.loanToTitle || 0)
   - (cb.rehabHoldback || 0) - (cb.loanPointsFees || 0) - (cb.prepaidInterest || 0);
