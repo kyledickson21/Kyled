@@ -1566,6 +1566,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
 // ─── Close Loan Modal ─────────────────────────────────────────────────────────
 function CloseLoanModal({ loan, onConfirm, onClose }) {
   const [closeDate, setCloseDate] = useState(TODAY);
+  const [dateLocked, setDateLocked] = useState(false);
   const payoff = Math.round(calcBalance(loan, closeDate) * 100) / 100;
   const intEarned = Math.round(calcIntEarned(loan, closeDate) * 100) / 100;
   const inputCls = "flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500";
@@ -1574,7 +1575,9 @@ function CloseLoanModal({ loan, onConfirm, onClose }) {
       <div className="space-y-4">
         <div className="flex items-center gap-3">
           <span className="w-32 text-sm text-slate-600 dark:text-zinc-300 shrink-0">Close Date</span>
-          <input type="date" value={closeDate} onChange={e=>setCloseDate(e.target.value)} className={inputCls}/>
+          <LockableInline locked={dateLocked} onToggle={()=>setDateLocked(l=>!l)} className="flex-1">
+            <input type="date" value={closeDate} onChange={e=>setCloseDate(e.target.value)} className={inputCls}/>
+          </LockableInline>
         </div>
         <div className="rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-700 p-4 space-y-2 text-sm">
           <div className="flex justify-between text-slate-600 dark:text-zinc-300">
@@ -1617,6 +1620,8 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const [step,setStep]=useState(1);
   const [soldDate,setSoldDate]=useState(TODAY);
   const [isRental,setIsRental]=useState(false);
+  const [locked,setLocked]=useState({});
+  const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
 
   // Per-lender rows — includes principal/interest/fees breakdown
   const [rows,setRows]=useState(()=>[
@@ -1803,7 +1808,9 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
         {/* ── Step 1: Settle Lenders ── */}
         {step===1&&(
           <div className="space-y-4">
-            <DateInp label="Date Sold" value={soldDate} onChange={setSoldDate}/>
+            <Lockable locked={locked.soldDate} onToggle={()=>toggleLock("soldDate")}>
+              <DateInp label="Date Sold" value={soldDate} onChange={setSoldDate}/>
+            </Lockable>
 
             <div>
               <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Settle Lenders</div>
@@ -2104,11 +2111,15 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Cash to Close</span>
-                  <MoneyField value={cashToCloseIn} onChange={setCashToCloseIn} className={inputCls}/>
+                  <LockableInline locked={locked.cashToClose} onToggle={()=>toggleLock("cashToClose")} className="flex-1">
+                    <MoneyField value={cashToCloseIn} onChange={setCashToCloseIn} className={inputCls}/>
+                  </LockableInline>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Rehab</span>
-                  <MoneyField value={rehabIn} onChange={setRehabIn} className={inputCls}/>
+                  <LockableInline locked={locked.rehab} onToggle={()=>toggleLock("rehab")} className="flex-1">
+                    <MoneyField value={rehabIn} onChange={setRehabIn} className={inputCls}/>
+                  </LockableInline>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Money Costs <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(from step 1)</span></span>
@@ -2117,7 +2128,9 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
-                  <MoneyField value={miscIn} onChange={handleMiscChange} className={inputCls}/>
+                  <LockableInline locked={locked.misc} onToggle={()=>toggleLock("misc")} className="flex-1">
+                    <MoneyField value={miscIn} onChange={handleMiscChange} className={inputCls}/>
+                  </LockableInline>
                 </div>
                 <div className="flex items-center gap-3 pt-2 border-t border-slate-200 dark:border-zinc-700">
                   <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Total Deployed</span>
@@ -2129,8 +2142,10 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
             {/* Wire Received */}
             <div className="flex items-center gap-3">
               <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Wire Received</span>
-              <MoneyField value={wireIn} onChange={handleWireChange} placeholder="0"
-                  className="flex-1 border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
+              <LockableInline locked={locked.wire} onToggle={()=>toggleLock("wire")} className="flex-1">
+                <MoneyField value={wireIn} onChange={handleWireChange} placeholder="0"
+                    className="w-full border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
+              </LockableInline>
             </div>
 
             {/* Deal Profit — always visible */}
@@ -3982,6 +3997,8 @@ function EditClosingModal({ prop, onSave, onClose }) {
   const [step,setStep]=useState(1);
   const [dateSold,setDateSold]=useState(prop.dateSold||"");
   const [isRental,setIsRental]=useState(prop.isRental||false);
+  const [locked,setLocked]=useState({});
+  const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
 
   // Loans settled exactly at this sale vs. ones already closed earlier (paid out early,
   // interest still charged to this deal) — same split MarkSoldModal made at close time,
@@ -4118,7 +4135,9 @@ function EditClosingModal({ prop, onSave, onClose }) {
         {/* ── Step 1: Settle Lenders ── */}
         {step===1&&(
           <div className="space-y-4">
-            <DateInp label="Date Sold" value={dateSold} onChange={setDateSold}/>
+            <Lockable locked={locked.dateSold} onToggle={()=>toggleLock("dateSold")}>
+              <DateInp label="Date Sold" value={dateSold} onChange={setDateSold}/>
+            </Lockable>
 
             <div>
               <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Settle Lenders</div>
@@ -4381,11 +4400,15 @@ function EditClosingModal({ prop, onSave, onClose }) {
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Cash to Close</span>
-                  <MoneyField value={cashToCloseIn} onChange={setCashToCloseIn} className={inputCls}/>
+                  <LockableInline locked={locked.cashToClose} onToggle={()=>toggleLock("cashToClose")} className="flex-1">
+                    <MoneyField value={cashToCloseIn} onChange={setCashToCloseIn} className={inputCls}/>
+                  </LockableInline>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Rehab</span>
-                  <MoneyField value={rehabIn} onChange={setRehabIn} className={inputCls}/>
+                  <LockableInline locked={locked.rehab} onToggle={()=>toggleLock("rehab")} className="flex-1">
+                    <MoneyField value={rehabIn} onChange={setRehabIn} className={inputCls}/>
+                  </LockableInline>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Money Costs <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(from step 1)</span></span>
@@ -4394,7 +4417,9 @@ function EditClosingModal({ prop, onSave, onClose }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
-                  <MoneyField value={miscIn} onChange={handleMiscChange} className={inputCls}/>
+                  <LockableInline locked={locked.misc} onToggle={()=>toggleLock("misc")} className="flex-1">
+                    <MoneyField value={miscIn} onChange={handleMiscChange} className={inputCls}/>
+                  </LockableInline>
                 </div>
                 <div className="flex items-center gap-3 pt-2 border-t border-slate-200 dark:border-zinc-700">
                   <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Total Deployed</span>
@@ -4406,8 +4431,10 @@ function EditClosingModal({ prop, onSave, onClose }) {
             {/* Wire Received */}
             <div className="flex items-center gap-3">
               <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Wire Received</span>
-              <MoneyField value={wireIn} onChange={handleWireChange} placeholder="0"
-                  className="flex-1 border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
+              <LockableInline locked={locked.wire} onToggle={()=>toggleLock("wire")} className="flex-1">
+                <MoneyField value={wireIn} onChange={handleWireChange} placeholder="0"
+                    className="w-full border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
+              </LockableInline>
             </div>
 
             {/* Deal Profit — always visible */}
