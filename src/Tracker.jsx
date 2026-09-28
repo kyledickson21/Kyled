@@ -360,6 +360,19 @@ const Lockable = ({ locked, onToggle, children }) => (
     </div>
   </div>
 );
+// Same protection as Lockable, but for a field sitting inline in a single-line row or a
+// tight table cell — a small icon-only toggle right next to the field instead of a full
+// labeled pill underneath, since there's no room for one there.
+const LockableInline = ({ locked, onToggle, children, className="" }) => (
+  <div className={`flex items-center gap-1 ${className}`}>
+    <fieldset disabled={locked} className={`flex-1 min-w-0 ${locked?"opacity-50":""}`}>{children}</fieldset>
+    <button type="button" onClick={onToggle}
+      className={`shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold transition-colors ${locked?"bg-slate-200 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 hover:bg-slate-300 dark:hover:bg-zinc-600":"bg-emerald-500 hover:bg-emerald-600 text-white"}`}
+      title={locked?"Edit":"Confirm"}>
+      {locked?"✏️":"✓"}
+    </button>
+  </div>
+);
 
 // Drag wrapper for manual property sorting — reuses the whole element as the drag
 // surface (tap still works normally via the PointerSensor's activation distance).
@@ -1164,6 +1177,8 @@ function QuickDrawModal({ data, onSave, onClose }) {
   const [selId,setSelId]=useState(drawLoans[0]?.id??'');
   const [date,setDate]=useState(TODAY);
   const [amount,setAmount]=useState('');
+  const [locked,setLocked]=useState({});
+  const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
 
   const sel=drawLoans.find(l=>l.id===selId);
   const maxDraw=sel?.remaining??0;
@@ -1218,8 +1233,12 @@ function QuickDrawModal({ data, onSave, onClose }) {
           </div>
         )}
 
-        <DateInp label="Draw Date" value={date} onChange={setDate}/>
-        <Inp label="Draw Amount" money value={amount} onChange={setAmount} placeholder="0"/>
+        <Lockable locked={locked.date} onToggle={()=>toggleLock("date")}>
+          <DateInp label="Draw Date" value={date} onChange={setDate}/>
+        </Lockable>
+        <Lockable locked={locked.amount} onToggle={()=>toggleLock("amount")}>
+          <Inp label="Draw Amount" money value={amount} onChange={setAmount} placeholder="0"/>
+        </Lockable>
 
         {amt>maxDraw&&maxDraw>0&&(
           <p className="text-xs text-red-500 dark:text-red-400">Amount exceeds available balance of {$$(maxDraw)}</p>
@@ -5564,6 +5583,7 @@ function CloseLenderModal({ data, update, onClose }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [interestMode, setInterestMode] = useState('split'); // 'split' | 'consolidate'
   const [consolidateLoanId, setConsolidateLoanId] = useState('');
+  const [dateLocked,setDateLocked]=useState(false);
 
   const allActiveLoans = [
     ...(data.properties||[]).filter(p=>!p.dateSold).flatMap(p=>
@@ -5620,7 +5640,9 @@ function CloseLenderModal({ data, update, onClose }) {
       )}
       {lenderName&&lenderLoans.length>0&&(
         <>
-          <DateInp label="Close Date" value={date} onChange={setDate}/>
+          <Lockable locked={dateLocked} onToggle={()=>setDateLocked(l=>!l)}>
+            <DateInp label="Close Date" value={date} onChange={setDate}/>
+          </Lockable>
           <div className="mt-3">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">
               <span>Loans to Close</span>
