@@ -350,13 +350,14 @@ const DateInp = ({label,value,onChange,helpText,autoFocus,onBlur}) => (
 // <fieldset> so it works around any input type (Inp, Sel, DateInp, MoneyField, a checkbox)
 // without those components needing their own disabled-state plumbing.
 const Lockable = ({ locked, onToggle, children }) => (
-  <div className="relative">
+  <div className="mb-3">
     <fieldset disabled={locked} className={locked?"opacity-50":""}>{children}</fieldset>
-    <button type="button" onClick={onToggle}
-      className={`absolute top-0 right-0 w-6 h-6 flex items-center justify-center rounded-full text-[11px] font-bold transition-colors ${locked?"bg-slate-200 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 hover:bg-slate-300 dark:hover:bg-zinc-600":"bg-emerald-500 hover:bg-emerald-600 text-white"}`}
-      title={locked?"Edit this field":"Confirm and lock this field"}>
-      {locked?"✏️":"✓"}
-    </button>
+    <div className="flex justify-end -mt-2">
+      <button type="button" onClick={onToggle}
+        className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${locked?"bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700":"bg-emerald-500 hover:bg-emerald-600 text-white"}`}>
+        {locked?"✏️ Edit":"✓ Confirm"}
+      </button>
+    </div>
   </div>
 );
 
@@ -576,11 +577,19 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
     sf(p=>({...p,drawFacility:{...p.drawFacility,draws:[...(p.drawFacility?.draws||[]),{id:uid(),date:drawDate,amount}]}}));
     setDrawAmt("");
   };
+  // Every lockable field has to actually be confirmed (✓), not just filled in, before this
+  // can save — conditional ones (monthly payment, draw commitment) only count when they're
+  // actually shown.
+  const requiredLockKeys = ["lender","startDate","principal","interestType","interestRate",
+    ...(f.paymentType==="monthly_fixed"?["monthlyPayment"]:[]),
+    ...(f.drawFacility?["drawCommitted"]:[])];
+  const allConfirmed = requiredLockKeys.every(k=>locked[k]);
   const handleSave = () => {
     const lenderName = activeLender ? activeLender.name : (lenderSel === "_new_" ? newName.trim() : "");
     if (!lenderName) { alert("Please select or enter a lender."); return; }
     if (!(parseFloat(f.principal) > 0)) { alert("Please enter an amount greater than zero."); return; }
     if (!f.startDate) { alert("Please enter a start date."); return; }
+    if (!allConfirmed) { alert("Tap ✓ Confirm on every field before this can be saved."); return; }
     const destProp = f.destination && f.destination!=="unassigned"
       ? activeProps.find(x=>x.id===f.destination) : null;
     if (destProp) {
@@ -910,8 +919,9 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         <Inp label="Notes (optional)" value={f.specialTerms} onChange={s("specialTerms")} placeholder="Balloon, prepayment penalty, etc."/>
       </div>
 
+      {!allConfirmed&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-2 mb-2">Tap ✓ Confirm on every field above before this can be saved.</p>}
       <div className="flex gap-2 pt-1">
-        <Btn onClick={handleSave} color={f.destination==="unassigned"?"purple":"green"} full>
+        <Btn onClick={handleSave} color={f.destination==="unassigned"?"purple":"green"} disabled={!allConfirmed} full>
           {f.destination==="unassigned" ? "💼  Save as Unassigned" : "🏠  Place on Property"}
         </Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
@@ -2265,6 +2275,10 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
   const purchase=purchasePriceFromClosingBuy(closingBuy);
   const totalBase=purchase+rehab+holding*months;
   const hudComplete=HUD_KEYS.every(k=>isValidHudValue(f[k]));
+  // Every lockable field has to actually be confirmed (✓), not just filled in, before this
+  // can save — the whole point is that nothing gets saved without a deliberate confirm.
+  const allConfirmed=["address","purchaseDate",...HUD_KEYS,"rehabBudget"].every(k=>locked[k]);
+  const canSaveProperty=hudComplete&&allConfirmed;
   const [editingMonths,setEditingMonths]=useState(false);
   const [editingHolding,setEditingHolding]=useState(false);
 
@@ -2417,8 +2431,9 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
       </div>
 
       {!hudComplete&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Every Cost to Buy line needs a number or N/A before this can be saved.</p>}
+      {hudComplete&&!allConfirmed&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Tap ✓ Confirm on every field above before this can be saved.</p>}
       <div className="flex gap-2 pt-2">
-        <Btn onClick={()=>hudComplete&&onSave({...f,purchasePrice:String(purchase),closingBuy,loanDrafts,id:draftPropId})} color={hudComplete?"blue":"ghost"} disabled={!hudComplete} full>Save Property</Btn>
+        <Btn onClick={()=>canSaveProperty&&onSave({...f,purchasePrice:String(purchase),closingBuy,loanDrafts,id:draftPropId})} color={canSaveProperty?"blue":"ghost"} disabled={!canSaveProperty} full>Save Property</Btn>
         <Btn onClick={onClose} color="ghost">Cancel</Btn>
       </div>
     </div>
