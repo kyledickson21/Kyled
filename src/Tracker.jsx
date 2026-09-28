@@ -2696,6 +2696,17 @@ const purchasePriceFromClosingBuy = cb =>
   (cb.cashFromBorrower || 0) + (cb.depositEarnest || 0) + (cb.loanToTitle || 0)
   - (cb.rehabHoldback || 0) - (cb.loanPointsFees || 0) - (cb.prepaidInterest || 0);
 
+// ── Overage checks ──────────────────────────────────────────────────────────
+// Checks that show up AFTER a property closes — an insurance refund, a tax proration
+// correction, an overcharge title catches later — with no way to know in advance what
+// they'll be for or how much. They're recorded against the closed property as they come
+// in and count straight toward that property's profit, on top of the profit figure that
+// was locked in at closing.
+const OVERAGE_SOURCES = [["insurance","Insurance"],["taxes","Taxes"],["overcharge","Closing Overcharge"]];
+const overageSourceLabel = src => (OVERAGE_SOURCES.find(([v])=>v===src)||[])[1] || "Overage";
+const overageCheckTotal = prop => (prop.overageChecks||[]).reduce((s,c)=>s+(c.amount||0),0);
+const effectiveProfit = prop => (prop.closingData?.profit||0) + overageCheckTotal(prop);
+
 // ── Undo support ──────────────────────────────────────────────────────────────
 // Rather than snapshot the whole blob (which would blindly clobber any concurrent
 // change from another tab/device when undone), diff prev vs next by id and build a
@@ -2864,6 +2875,11 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 
   const handleCloseLoan = (propId, loan, closeDate) => {
     update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:p.loans.map(l=>l.id!==loan.id?l:{...l,endDate:closeDate})})}));
+    setModal(null);
+  };
+
+  const saveOverageCheck = (propId,entry) => {
+    update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,overageChecks:[...(p.overageChecks||[]),{id:uid(),...entry}]})}));
     setModal(null);
   };
 
@@ -3501,6 +3517,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       {modal==="closeLender"&&<CloseLenderModal data={data} update={update} onClose={()=>setModal(null)}/>}
       {modal?.type==="closePropPicker"&&<ClosePropertyPickerModal properties={data.properties} order={data.propertyOrder||[]} onPick={prop=>setModal({type:"markSold",prop})} onClose={()=>setModal(null)}/>}
       {modal?.type==="quickDraw"&&<QuickDrawModal data={data} onSave={handleQuickDraw} onClose={()=>setModal(null)}/>}
+      {modal?.type==="overageCheckPicker"&&<OverageCheckPropertyPickerModal properties={data.properties} onPick={prop=>setModal({type:"overageCheck",prop})} onClose={()=>setModal(null)}/>}
+      {modal?.type==="overageCheck"&&<OverageCheckModal prop={modal.prop} onSave={entry=>saveOverageCheck(modal.prop.id,entry)} onClose={()=>setModal(null)}/>}
     </div>
   );
 }
@@ -4681,7 +4699,7 @@ function ClosedDealsPage({ data, update }) {
     return arr
       .filter(p=>!search||p.address?.toLowerCase().includes(q)||p.loans.some(l=>l.lenderName?.toLowerCase().includes(q)))
       .sort((a,b)=>{
-        if(sortMode==="profit")return d*((a.closingData?.profit||0)-(b.closingData?.profit||0));
+        if(sortMode==="profit")return d*(effectiveProfit(a)-effectiveProfit(b));
         if(sortMode==="address")return d*(a.address||"").localeCompare(b.address||"");
         if(sortMode==="dateAcquired"){
           const da=a.purchaseDate||(a.loans.map(l=>l.startDate).filter(Boolean).sort()[0])||"";
@@ -4697,13 +4715,13 @@ function ClosedDealsPage({ data, update }) {
   const n=withData.length||1;
   const avgC2C=Math.round(withData.reduce((s,p)=>s+(p.closingData.cashToClose||0),0)/n);
   const avgRehab=Math.round(withData.reduce((s,p)=>s+(p.closingData.rehab||0),0)/n);
-  const avgProfit=Math.round(withData.reduce((s,p)=>s+(p.closingData.profit||0),0)/n);
-  const totalProfit=withData.reduce((s,p)=>s+(p.closingData.profit||0),0);
+  const avgProfit=Math.round(withData.reduce((s,p)=>s+effectiveProfit(p),0)/n);
+  const totalProfit=withData.reduce((s,p)=>s+effectiveProfit(p),0);
 
   const PropCard=({prop})=>{
     const cd=prop.closingData;
     const isOpen=!!expanded[prop.id];
-    const profit=cd?.profit??null;
+    const profit=cd?effectiveProfit(prop):null;
     return(
       <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
         <div className="px-5 py-4">
@@ -4775,6 +4793,23 @@ function ClosedDealsPage({ data, update }) {
               </table>
               </div>
             }
+            {(prop.overageChecks||[]).length>0&&(
+              <div className="mt-4">
+                <div className="text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-widest mb-2">Overage Checks</div>
+                <div className="space-y-1.5">
+                  {prop.overageChecks.map(c=>(
+                    <div key={c.id} className="flex items-center justify-between gap-2 text-xs bg-amber-50/60 dark:bg-amber-950/10 rounded-lg px-3 py-2">
+                      <div className="min-w-0">
+                        <span className="font-semibold text-slate-700 dark:text-zinc-200">{overageSourceLabel(c.source)}</span>
+                        <span className="text-slate-400 dark:text-zinc-500"> · {c.date}</span>
+                        {c.notes&&<div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{c.notes}</div>}
+                      </div>
+                      <span className="tabular-nums font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">+{h$(c.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -4929,6 +4964,9 @@ function HistoryPage({ data }) {
     if(prop.dateSold&&prop.closingData){
       raw.push({date:prop.dateSold,sx:"c",etype:"saleSummary",property:prop.address,propId:prop.id,closingData:prop.closingData,loanId:`sale-${prop.id}`});
     }
+    (prop.overageChecks||[]).forEach(c=>{
+      raw.push({date:c.date,sx:"d",etype:"overageCheck",property:prop.address,propId:prop.id,amount:c.amount||0,source:c.source,notes:c.notes||"",loanId:`overage-${c.id}`});
+    });
   });
   // Same calendar date N months later, with the day clamped to that month's length
   // (Jan 31 + 1 month -> Feb 28/29, not an overflow into March).
@@ -5084,6 +5122,7 @@ function HistoryPage({ data }) {
     lp[ev.lender]=lp[ev.lender]??0;lc[ev.lender]=lc[ev.lender]??0;
     let nc,pp;
     if(ev.etype==="saleSummary"){nc=ev.closingData?.profit??0;}
+    else if(ev.etype==="overageCheck"){nc=ev.amount||0;} // post-close cash in, not tied to any lender
     else if(ev.etype==="hardPayment"){nc=0;} // interest paid, principal outstanding unchanged
     else if(ev.etype==="start"){lc[ev.lender]+=ev.amount;pp=lp[ev.lender];nc=pp>0?ev.amount-pp:ev.amount;lp[ev.lender]=0;}
     else{
@@ -5095,7 +5134,7 @@ function HistoryPage({ data }) {
         nc=-(ev.principal||0); // principal returned to lender (negative = cash out)
       }
     }
-    if(ev.etype!=="saleSummary"){
+    if(ev.etype!=="saleSummary"&&ev.etype!=="overageCheck"){
       outstanding[ev.lender]=(outstanding[ev.lender]||0)+nc;
       const propKey=`${ev.lender}||${ev.propId??"unassigned"}`;
       outstandingByProp[propKey]=(outstandingByProp[propKey]||0)+nc;
@@ -5110,7 +5149,7 @@ function HistoryPage({ data }) {
     if(tf!=="all"&&e.loanType!==tf)return false;
     if(!propSearch)return true;
     const q=propSearch.toLowerCase();
-    return[e.property,e.lender,e.date,e.etype,e.loanType,e.disposition,e.interestType].filter(Boolean).join(" ").toLowerCase().includes(q);
+    return[e.property,e.lender,e.date,e.etype,e.loanType,e.disposition,e.interestType,e.source,e.notes].filter(Boolean).join(" ").toLowerCase().includes(q);
   });
   // Combine same-day, same-lender, same-type events (e.g. one loan split across several
   // properties all starting/closing the same day) into a single row, listing every
@@ -5122,7 +5161,7 @@ function HistoryPage({ data }) {
       // per-house, not pooled), so it only groups with same-day/type events on the SAME
       // property. Private money can still combine across properties (e.g. one loan split
       // several ways the same day).
-      const key = ev.etype==="saleSummary" ? `solo-${ev.loanId}`
+      const key = (ev.etype==="saleSummary"||ev.etype==="overageCheck") ? `solo-${ev.loanId}`
         : ev.loanType==="hard" ? `${ev.lender}||${ev.date}||${ev.etype}||${ev.propId??"unassigned"}`
         : `${ev.lender}||${ev.date}||${ev.etype}`;
       if(!groups.has(key)) groups.set(key,[]);
@@ -5160,6 +5199,7 @@ function HistoryPage({ data }) {
     saleSummary: {label:"Sale Closed",   icon:"↙", cls:inCls},
     rolled:      {label:"Rolled",        icon:"↙", cls:inCls},
     hardPayment: {label:"Interest Payment",icon:"↗",cls:outCls},
+    overageCheck:{label:"Overage Check", icon:"💰", cls:inCls},
   };
   const rollLabel={rollFull:"Rolled Full",rollPrincipal:"Principal Rolled",payInterest:"Interest Paid — Rolled",waiveInterest:"Interest Waived — Rolled",custom:"Partial Roll"};
   const rollingTypes=["rollFull","rollPrincipal","payInterest","waiveInterest","custom"];
@@ -5363,6 +5403,29 @@ function HistoryPage({ data }) {
               </div>
             );
           }
+          if(ev.etype==="overageCheck"){
+            return(
+              <div key={ev.loanId} className="flex items-start gap-3 px-5 py-4 bg-amber-50/60 dark:bg-amber-950/10 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors">
+                <span className="w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">💰</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        <span className="font-mono text-[10px] text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 rounded-md px-1.5 py-0.5">{ev.date}</span>
+                        <span className="text-[10px] font-semibold uppercase bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full px-2 py-0.5">Overage Check — {overageSourceLabel(ev.source)}</span>
+                      </div>
+                      <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{ev.property}</button>
+                      {ev.notes&&<div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{ev.notes}</div>}
+                      <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Counts toward profit · For Bookkeepers</div>
+                    </div>
+                    <div className="text-right shrink-0 min-w-[90px]">
+                      <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">+{h$(ev.amount)}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
           return(
             <div key={`${ev.loanId}-${ev.etype}-${i}`} className="flex items-start gap-3 px-5 py-4 bg-white dark:bg-[#1C1C1E] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
               <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 ${c.cls}`}>{c.icon}</div>
@@ -5430,7 +5493,7 @@ function HistoryPage({ data }) {
         })}
       </div>
       {filtered.length>0&&(()=>{
-        const principalNet=filtered.reduce((s,e)=>e.etype==="saleSummary"?s:s+(e.nc||0),0);
+        const principalNet=filtered.reduce((s,e)=>(e.etype==="saleSummary"||e.etype==="overageCheck")?s:s+(e.nc||0),0);
         return(
           <div className="mt-3 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none px-5 py-4 flex items-center justify-between">
             <div>
@@ -5822,6 +5885,60 @@ function ClosePropertyPickerModal({ properties, order, onPick, onClose }) {
             <Btn onClick={onClose} color="ghost" full>Cancel</Btn>
           </>
       }
+    </Modal>
+  );
+}
+
+// ─── Overage Check ────────────────────────────────────────────────────────────
+// A check that shows up after a property has already closed — insurance, taxes, or a
+// closing overcharge caught later — recorded against that property so it counts toward
+// profit and stays visible to the bookkeepers.
+function OverageCheckPropertyPickerModal({ properties, onPick, onClose }) {
+  const closed=(properties||[]).filter(p=>p.dateSold).sort((a,b)=>(b.dateSold||"").localeCompare(a.dateSold||""));
+  return (
+    <Modal title="Overage Check — Pick a Property" onClose={onClose}>
+      {closed.length===0
+        ? <><p className="text-sm text-slate-400 dark:text-zinc-500 mb-3">No closed properties yet.</p><Btn onClick={onClose} color="ghost" full>Close</Btn></>
+        : <>
+            <p className="text-xs text-slate-400 dark:text-zinc-500 mb-3">Which property is this check for?</p>
+            <div className="space-y-1.5 mb-3 max-h-96 overflow-y-auto">
+              {closed.map(p=>(
+                <button key={p.id} onClick={()=>onPick(p)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex items-center justify-between gap-2">
+                  <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200 truncate">🏠 {p.address}</span>
+                  <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0">Sold {p.dateSold}</span>
+                </button>
+              ))}
+            </div>
+            <Btn onClick={onClose} color="ghost" full>Cancel</Btn>
+          </>
+      }
+    </Modal>
+  );
+}
+function OverageCheckModal({ prop, onSave, onClose }) {
+  const [date,setDate]=useState(TODAY);
+  const [amount,setAmount]=useState("");
+  const [source,setSource]=useState(OVERAGE_SOURCES[0][0]);
+  const [notes,setNotes]=useState("");
+  const [locked,setLocked]=useState({});
+  const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
+  const amt=parseFloat(amount)||0;
+  const canSave=amt>0&&!!date;
+  return (
+    <Modal title={`Overage Check — ${prop.address}`} onClose={onClose}>
+      <div className="space-y-1">
+        <Lockable locked={locked.date} onToggle={()=>toggleLock("date")}>
+          <DateInp label="Date Received" value={date} onChange={setDate}/>
+        </Lockable>
+        <Lockable locked={locked.amount} onToggle={()=>toggleLock("amount")}>
+          <Inp label="Amount ($)" money value={amount} onChange={setAmount} placeholder="500"/>
+        </Lockable>
+        <Sel label="Where's This From?" value={source} onChange={setSource} options={OVERAGE_SOURCES}/>
+        <Inp label="Notes" value={notes} onChange={setNotes} placeholder="What this was for, exactly — for the bookkeepers"/>
+        <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-2">Counts toward this property's profit and shows up in History for the bookkeepers.</p>
+        <Btn onClick={()=>canSave&&onSave({date,amount:amt,source,notes})} color={canSave?"blue":"ghost"} disabled={!canSave} full>Save Overage Check</Btn>
+      </div>
     </Modal>
   );
 }
@@ -6755,6 +6872,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const [editing, setEditing] = useState(false);
   const [moveLoan, setMoveLoan] = useState(null);
   const [addingLoan, setAddingLoan] = useState(false);
+  const [addingOverage, setAddingOverage] = useState(false);
 
   const prop = data.properties.find(p => p.id === propId);
   if (!prop) return (
@@ -6820,6 +6938,11 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
     }
     update(d=>upsertLender({...d,properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...p.loans,{id:uid(),...base}]})},f.newLender));
     setAddingLoan(false);
+  };
+
+  const saveOverageCheck = entry => {
+    update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,overageChecks:[...(p.overageChecks||[]),{id:uid(),...entry}]})}));
+    setAddingOverage(false);
   };
 
   const SectionHead = ({title, count}) => (
@@ -6907,7 +7030,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
             ["Cash to Close", h$(cd.cashToClose||0), ""],
             ["Rehab", h$(cd.rehab||0), ""],
             ["Money Costs", h$(cd.moneyCosts||0), ""],
-            ["Profit", hs(cd.profit||0), (cd.profit||0)>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"],
+            ["Profit", hs(effectiveProfit(prop)), effectiveProfit(prop)>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"],
           ].map(([label, val, color]) => (
             <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
               <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
@@ -6916,6 +7039,37 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
           ))}
         </div>
       ) : null}
+
+      {/* Overage checks — insurance/tax/overcharge refunds that show up after closing.
+          Only relevant once a property is closed, since that's the only time they arrive. */}
+      {prop.dateSold && (
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-3">
+            <SectionHead title="Overage Checks" count={(prop.overageChecks||[]).length}/>
+            <button onClick={()=>setAddingOverage(true)}
+              className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition-colors">+ Overage Check</button>
+          </div>
+          {(prop.overageChecks||[]).length===0 && (
+            <div className="px-5 py-6 text-center text-sm text-slate-400 dark:text-zinc-500">No overage checks recorded yet</div>
+          )}
+          <div className="divide-y divide-slate-50 dark:divide-zinc-800">
+            {(prop.overageChecks||[]).map(c=>(
+              <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100">{overageSourceLabel(c.source)} <span className="font-normal text-slate-400 dark:text-zinc-500">· {c.date}</span></div>
+                  {c.notes && <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 truncate">{c.notes}</div>}
+                </div>
+                <span className="shrink-0 font-bold tabular-nums text-emerald-600 dark:text-emerald-400">+{h$(c.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {addingOverage && (
+        <div className="mb-4">
+          <OverageCheckModal prop={prop} onSave={saveOverageCheck} onClose={()=>setAddingOverage(false)}/>
+        </div>
+      )}
 
       {/* Active loans — header (with Add Loan) always shows, even with none yet, so a loan
           can start on this property without leaving the page for a separate screen. */}
@@ -8713,6 +8867,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                     {label:"Close Lender Only",modal:"closeLender"},
                     "divider",
                     {label:"Record Draw",modal:{type:"quickDraw"}},
+                    {label:"Overage Check",modal:{type:"overageCheckPicker"}},
                   ].map((item,i)=>
                     item==="divider"
                       ?<div key={i} className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
