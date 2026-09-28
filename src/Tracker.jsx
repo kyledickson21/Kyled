@@ -553,7 +553,10 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const [drawAmt,setDrawAmt]=useState("");
   const [blockMsg,setBlockMsg]=useState("");
   const [destPickerOpen,setDestPickerOpen]=useState(false);
+  const [destSearch,setDestSearch]=useState("");
   const destBtnRef=useRef(null);
+  const matchesDestSearch=p=>!destSearch||p.address?.toLowerCase().includes(destSearch.toLowerCase());
+  const closeDestPicker=()=>{setDestPickerOpen(false);setDestSearch("");};
   const [editingPaymentType,setEditingPaymentType]=useState(false);
   const [editingEndDate,setEditingEndDate]=useState(false);
   const [editingDueDate,setEditingDueDate]=useState(false);
@@ -869,48 +872,56 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           </span>
           <span className="shrink-0 text-slate-400 dark:text-zinc-500">▾</span>
         </button>
-        <DropdownPortal anchorRef={destBtnRef} open={destPickerOpen} onClose={()=>setDestPickerOpen(false)}>
-            <button type="button" onClick={()=>{setBlockMsg("");s("destination")("unassigned");setDestPickerOpen(false);}}
-              className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 border-b border-slate-100 dark:border-zinc-700 transition-colors">
-              💼 Unassigned — not yet placed on a property
-            </button>
+        <DropdownPortal anchorRef={destBtnRef} open={destPickerOpen} onClose={()=>{setDestPickerOpen(false);setDestSearch("");}}>
+            {activeProps.length>0&&(
+              <div className="sticky top-0 bg-white dark:bg-zinc-800 border-b border-slate-100 dark:border-zinc-700 p-1.5">
+                <input type="text" value={destSearch} onChange={e=>setDestSearch(e.target.value)} placeholder="Search properties…" autoFocus
+                  className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+              </div>
+            )}
+            {!destSearch&&(
+              <button type="button" onClick={()=>{setBlockMsg("");s("destination")("unassigned");closeDestPicker();}}
+                className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 border-b border-slate-100 dark:border-zinc-700 transition-colors">
+                💼 Unassigned — not yet placed on a property
+              </button>
+            )}
             {canShowConflicts ? (
               <>
-                {available.map(p=>(
-                  <button key={p.id} type="button" onClick={()=>{handleDestClick(p.id);setDestPickerOpen(false);}}
+                {available.filter(matchesDestSearch).map(p=>(
+                  <button key={p.id} type="button" onClick={()=>{handleDestClick(p.id);closeDestPicker();}}
                     className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-between gap-2">
                     <span className="truncate">🏠 {p.address}</span>
                     <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                   </button>
                 ))}
-                {blockedSize.map(p=>(
+                {blockedSize.filter(matchesDestSearch).map(p=>(
                   <button key={p.id} type="button" disabled
                     className="w-full text-left px-3 py-2.5 text-xs font-medium opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500 flex items-center justify-between gap-2">
                     <span className="truncate">📐 {p.address} — no funding gap</span>
                     <span className="shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                   </button>
                 ))}
-                {blockedDate.map(p=>(
+                {blockedDate.filter(matchesDestSearch).map(p=>(
                   <button key={p.id} type="button" disabled
                     className="w-full text-left px-3 py-2.5 text-xs font-medium opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500 flex items-center justify-between gap-2">
                     <span className="truncate">🕐 {p.address} — timing conflict</span>
                     <span className="shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                   </button>
                 ))}
-                {available.length===0&&blockedSize.length===0&&blockedDate.length===0&&(
-                  <div className="px-3 py-2.5 text-xs text-slate-400 dark:text-zinc-500 italic">No active properties. Add one first.</div>
+                {[...available,...blockedSize,...blockedDate].filter(matchesDestSearch).length===0&&(
+                  <div className="px-3 py-2.5 text-xs text-slate-400 dark:text-zinc-500 italic">{destSearch?"No matches":"No active properties. Add one first."}</div>
                 )}
               </>
-            ) : activeProps.length>0 ? (
-              [...activeProps].sort((a,b)=>propGap(b)-propGap(a)).map(p=>(
-                <button key={p.id} type="button" onClick={()=>{handleDestClick(p.id);setDestPickerOpen(false);}}
+            ) : activeProps.filter(matchesDestSearch).length>0 ? (
+              [...activeProps].filter(matchesDestSearch).sort((a,b)=>propGap(b)-propGap(a)).map(p=>(
+                <button key={p.id} type="button" onClick={()=>{handleDestClick(p.id);closeDestPicker();}}
                   className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-between gap-2">
                   <span className="truncate">🏠 {p.address}</span>
                   <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                 </button>
               ))
             ) : (
-              <div className="px-3 py-2.5 text-xs text-slate-400 dark:text-zinc-500 italic">No active properties. Add one first.</div>
+              <div className="px-3 py-2.5 text-xs text-slate-400 dark:text-zinc-500 italic">{destSearch?"No matches":"No active properties. Add one first."}</div>
             )}
         </DropdownPortal>
         {!canShowConflicts&&activeProps.length>0&&(
@@ -1353,6 +1364,9 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
   const [mode, setMode] = useState("place");
   const [blockMsg, setBlockMsg] = useState("");
   const [openPicker, setOpenPicker] = useState(null);
+  const [placeSearch, setPlaceSearch] = useState("");
+  const [rowSearch, setRowSearch] = useState("");
+  const matchesSearch = (p,q) => !q||p.address?.toLowerCase().includes(q.toLowerCase());
   const pickerBtnRefs = useRef({});
 
   const available=[], blockedDate=[], blockedSize=[];
@@ -1428,6 +1442,10 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
       {mode==="place"&&(
         <div className="space-y-3">
           {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300">{blockMsg}</div>}
+          {(available.length+blockedSize.length+blockedDate.length)>1&&(
+            <input type="text" value={placeSearch} onChange={e=>setPlaceSearch(e.target.value)} placeholder="Search properties…"
+              className="w-full px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+          )}
           {showUnassigned&&(
             <div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Remove from Property</div>
@@ -1437,11 +1455,11 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               </button>
             </div>
           )}
-          {available.length>0&&(
+          {available.filter(p=>matchesSearch(p,placeSearch)).length>0&&(
             <div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Available Properties</div>
               <div className="space-y-1.5">
-                {available.map(p=>(
+                {available.filter(p=>matchesSearch(p,placeSearch)).map(p=>(
                   <button key={p.id} type="button" onClick={()=>{setBlockMsg("");handlePlace(p.id);}}
                     className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex items-center justify-between gap-2">
                     <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200 truncate">🏠 {p.address}</span>
@@ -1451,11 +1469,11 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               </div>
             </div>
           )}
-          {blockedSize.length>0&&(
+          {blockedSize.filter(p=>matchesSearch(p,placeSearch)).length>0&&(
             <div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400 mb-1.5">No Funding Gap — Consider Splitting</div>
               <div className="space-y-1.5">
-                {blockedSize.map(p=>(
+                {blockedSize.filter(p=>matchesSearch(p,placeSearch)).map(p=>(
                   <button key={p.id} type="button" disabled
                     className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed flex items-center justify-between gap-2">
                     <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500 truncate">📐 {p.address}</span>
@@ -1465,11 +1483,11 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               </div>
             </div>
           )}
-          {blockedDate.length>0&&(
+          {blockedDate.filter(p=>matchesSearch(p,placeSearch)).length>0&&(
             <div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1.5">Timing Conflict — Cannot Place</div>
               <div className="space-y-1.5">
-                {blockedDate.map(p=>(
+                {blockedDate.filter(p=>matchesSearch(p,placeSearch)).map(p=>(
                   <button key={p.id} type="button" disabled
                     className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 opacity-40 cursor-not-allowed flex items-center justify-between gap-2">
                     <span className="font-medium text-[13px] text-slate-500 dark:text-zinc-500 truncate">🕐 {p.address}</span>
@@ -1478,6 +1496,9 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                 ))}
               </div>
             </div>
+          )}
+          {placeSearch&&[...available,...blockedSize,...blockedDate].filter(p=>matchesSearch(p,placeSearch)).length===0&&(
+            <div className="text-xs text-slate-400 dark:text-zinc-500 text-center py-3">No matches</div>
           )}
           <div className="pt-1"><Btn onClick={onClose} color="ghost" full>Cancel</Btn></div>
         </div>
@@ -1526,24 +1547,35 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                         <span className="truncate">{pickerLabel}</span>
                         <span className="shrink-0 text-slate-400 dark:text-zinc-500">▾</span>
                       </button>
-                      <DropdownPortal anchorRef={{current:pickerBtnRefs.current[i]}} open={openPicker===i} onClose={()=>setOpenPicker(null)}>
-                          <button type="button" onClick={()=>{setRow(i,"propId","unassigned");setOpenPicker(null);}}
-                            className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 border-b border-slate-100 dark:border-zinc-700 transition-colors">
-                            💼 Leave unassigned
-                          </button>
-                          {propOptions.map(({prop,c})=>{
+                      <DropdownPortal anchorRef={{current:pickerBtnRefs.current[i]}} open={openPicker===i} onClose={()=>{setOpenPicker(null);setRowSearch("");}}>
+                          {candidateProps.length>1&&(
+                            <div className="sticky top-0 bg-white dark:bg-zinc-800 border-b border-slate-100 dark:border-zinc-700 p-1.5">
+                              <input type="text" value={rowSearch} onChange={e=>setRowSearch(e.target.value)} placeholder="Search properties…" autoFocus
+                                className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                            </div>
+                          )}
+                          {!rowSearch&&(
+                            <button type="button" onClick={()=>{setRow(i,"propId","unassigned");setOpenPicker(null);setRowSearch("");}}
+                              className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 border-b border-slate-100 dark:border-zinc-700 transition-colors">
+                              💼 Leave unassigned
+                            </button>
+                          )}
+                          {propOptions.filter(({prop})=>matchesSearch(prop,rowSearch)).map(({prop,c})=>{
                             const disabled=c!==null;
                             const emoji=c==="date"?"🕐":c==="size"?"📐":"🏠";
                             const suffix=c==="date"?" — timing conflict":"";
                             return(
                               <button key={prop.id} type="button" disabled={disabled}
-                                onClick={()=>{setRow(i,"propId",prop.id);setOpenPicker(null);}}
+                                onClick={()=>{setRow(i,"propId",prop.id);setOpenPicker(null);setRowSearch("");}}
                                 className={`w-full text-left px-3 py-2.5 text-xs font-medium transition-colors flex items-center justify-between gap-2 ${disabled?"opacity-40 cursor-not-allowed pointer-events-none text-slate-500 dark:text-zinc-500":"text-slate-800 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
                                 <span className="truncate">{emoji} {prop.address}{suffix}</span>
                                 <span className="text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$p(propGap(prop))} avail</span>
                               </button>
                             );
                           })}
+                          {rowSearch&&propOptions.filter(({prop})=>matchesSearch(prop,rowSearch)).length===0&&(
+                            <div className="px-3 py-2.5 text-xs text-slate-400 dark:text-zinc-500 italic">No matches</div>
+                          )}
                       </DropdownPortal>
                     </div>
                     {splits.length>1&&<button type="button" onClick={()=>removeRow(i)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-base transition-colors shrink-0">✕</button>}
@@ -4647,6 +4679,7 @@ function ClosedDealsPage({ data, update }) {
   const [editModal,setEditModal]=useState(null);
   const [closeModal,setCloseModal]=useState(null);
   const [showClosePicker,setShowClosePicker]=useState(false);
+  const [closeSearch,setCloseSearch]=useState("");
 
   const toggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
   const toggleRental=id=>update(d=>({...d,properties:d.properties.map(p=>p.id===id?{...p,isRental:!p.isRental}:p)}));
@@ -4825,7 +4858,7 @@ function ClosedDealsPage({ data, update }) {
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Closed Deals</h2>
         </div>
         <div className="relative">
-          <button onClick={()=>setShowClosePicker(v=>!v)}
+          <button onClick={()=>{setShowClosePicker(v=>!v);setCloseSearch("");}}
             className="text-[12px] font-semibold text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 rounded-xl px-3.5 py-2 transition-colors whitespace-nowrap shadow-sm">
             + Close a Property
           </button>
@@ -4836,12 +4869,23 @@ function ClosedDealsPage({ data, update }) {
               ):(
                 <>
                   <div className="px-4 pt-3 pb-1.5 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Pick a property to close</div>
-                  {activeProps.map(p=>(
-                    <button key={p.id} onClick={()=>{setCloseModal(p);setShowClosePicker(false);}}
-                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-800 dark:text-zinc-100 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors border-t border-black/[0.04] dark:border-white/[0.04] first:border-t-0">
-                      {p.address||"Unnamed Property"}
-                    </button>
-                  ))}
+                  {activeProps.length>1&&(
+                    <div className="px-3 pb-2">
+                      <input type="text" value={closeSearch} onChange={e=>setCloseSearch(e.target.value)} placeholder="Search properties…" autoFocus
+                        className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                    </div>
+                  )}
+                  <div className="max-h-72 overflow-y-auto">
+                    {activeProps.filter(p=>!closeSearch||p.address?.toLowerCase().includes(closeSearch.toLowerCase())).map(p=>(
+                      <button key={p.id} onClick={()=>{setCloseModal(p);setShowClosePicker(false);}}
+                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-800 dark:text-zinc-100 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors border-t border-black/[0.04] dark:border-white/[0.04] first:border-t-0">
+                        {p.address||"Unnamed Property"}
+                      </button>
+                    ))}
+                    {closeSearch&&activeProps.filter(p=>p.address?.toLowerCase().includes(closeSearch.toLowerCase())).length===0&&(
+                      <div className="px-4 py-3 text-xs text-slate-400 dark:text-zinc-500 text-center">No matches</div>
+                    )}
+                  </div>
                 </>
               )}
               <div className="border-t border-black/[0.06] dark:border-white/[0.06]">
@@ -5860,6 +5904,7 @@ function CloseLenderModal({ data, update, onClose }) {
 
 // ─── Close Property Picker Modal ─────────────────────────────────────────────
 function ClosePropertyPickerModal({ properties, order, onPick, onClose }) {
+  const [search,setSearch]=useState("");
   // Same manual order as the Properties tab's drag-sort — usually arranged soonest-to-close
   // first, which is exactly the order you want when picking which one to close out.
   const manualOrder=order||[];
@@ -5867,14 +5912,18 @@ function ClosePropertyPickerModal({ properties, order, onPick, onClose }) {
     const ia=manualOrder.indexOf(a.id), ib=manualOrder.indexOf(b.id);
     return (ia===-1?Infinity:ia)-(ib===-1?Infinity:ib)||(a.id||"").localeCompare(b.id||"");
   });
+  const filtered=active.filter(p=>!search||p.address?.toLowerCase().includes(search.toLowerCase()));
   return (
     <Modal title="Close a Property" onClose={onClose}>
       {active.length===0
         ? <><p className="text-sm text-slate-400 dark:text-zinc-500 mb-3">No active properties to close.</p><Btn onClick={onClose} color="ghost" full>Close</Btn></>
         : <>
-            <p className="text-xs text-slate-400 dark:text-zinc-500 mb-3">Select the property to mark as sold:</p>
-            <div className="space-y-1.5 mb-3">
-              {active.map(p=>(
+            <p className="text-xs text-slate-400 dark:text-zinc-500 mb-2">Select the property to mark as sold:</p>
+            <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search properties…" autoFocus
+              className="w-full mb-3 px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+            <div className="space-y-1.5 mb-3 max-h-96 overflow-y-auto">
+              {filtered.length===0&&<div className="text-xs text-slate-400 dark:text-zinc-500 text-center py-3">No matches</div>}
+              {filtered.map(p=>(
                 <button key={p.id} onClick={()=>onPick(p)}
                   className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
                   <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">🏠 {p.address}</span>
@@ -5893,19 +5942,28 @@ function ClosePropertyPickerModal({ properties, order, onPick, onClose }) {
 // closing overcharge caught later — recorded against that property so it counts toward
 // profit and stays visible to the bookkeepers.
 function OverageCheckPropertyPickerModal({ properties, onPick, onClose }) {
-  const closed=(properties||[]).filter(p=>p.dateSold).sort((a,b)=>(b.dateSold||"").localeCompare(a.dateSold||""));
+  const [search,setSearch]=useState("");
+  // Every property, sold or still owned — an overage check (insurance, taxes, a title
+  // correction) can show up either way, not just after closing.
+  const all=(properties||[]).slice().sort((a,b)=>(a.address||"").localeCompare(b.address||""));
+  const filtered=all.filter(p=>!search||p.address?.toLowerCase().includes(search.toLowerCase()));
   return (
     <Modal title="Overage Check — Pick a Property" onClose={onClose}>
-      {closed.length===0
-        ? <><p className="text-sm text-slate-400 dark:text-zinc-500 mb-3">No closed properties yet.</p><Btn onClick={onClose} color="ghost" full>Close</Btn></>
+      {all.length===0
+        ? <><p className="text-sm text-slate-400 dark:text-zinc-500 mb-3">No properties yet.</p><Btn onClick={onClose} color="ghost" full>Close</Btn></>
         : <>
-            <p className="text-xs text-slate-400 dark:text-zinc-500 mb-3">Which property is this check for?</p>
+            <p className="text-xs text-slate-400 dark:text-zinc-500 mb-2">Which property is this check for?</p>
+            <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search properties…" autoFocus
+              className="w-full mb-3 px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
             <div className="space-y-1.5 mb-3 max-h-96 overflow-y-auto">
-              {closed.map(p=>(
+              {filtered.length===0&&<div className="text-xs text-slate-400 dark:text-zinc-500 text-center py-3">No matches</div>}
+              {filtered.map(p=>(
                 <button key={p.id} onClick={()=>onPick(p)}
                   className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex items-center justify-between gap-2">
                   <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200 truncate">🏠 {p.address}</span>
-                  <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0">Sold {p.dateSold}</span>
+                  {p.dateSold
+                    ? <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0">Sold {p.dateSold}</span>
+                    : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 shrink-0">Active</span>}
                 </button>
               ))}
             </div>
