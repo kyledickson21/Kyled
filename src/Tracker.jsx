@@ -3342,7 +3342,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                                     <div className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Rehab Draw Facility</div>
                                     {!loan.endDate&&(inlineDraw?.loanId===loan.id
                                       ? <button type="button" onClick={()=>setInlineDraw(null)} className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-slate-300 dark:border-zinc-600 text-slate-500 dark:text-zinc-400 hover:border-red-400 hover:text-red-500 transition-colors">Cancel</button>
-                                      : <button type="button" onClick={()=>setInlineDraw({propId:prop.id,loanId:loan.id,date:TODAY,amt:""})} className="text-[10px] font-semibold px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors">+ Add Draw</button>
+                                      : <button type="button" onClick={()=>setInlineDraw({propId:prop.id,loanId:loan.id,date:TODAY,amt:"",dateLocked:false,amtLocked:false})} className="text-[10px] font-semibold px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors">+ Add Draw</button>
                                     )}
                                   </div>
                                   <div className="grid grid-cols-3 gap-2 text-center text-xs mb-2">
@@ -3359,14 +3359,18 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                                     <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800/60 space-y-2">
                                       <div>
                                         <div className="text-[9px] font-semibold text-blue-400 dark:text-blue-500 uppercase mb-1">Draw Date</div>
-                                        <input type="date" value={inlineDraw.date} onChange={e=>setInlineDraw(p=>({...p,date:e.target.value}))}
-                                          className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                        <LockableInline locked={inlineDraw.dateLocked} onToggle={()=>setInlineDraw(p=>({...p,dateLocked:!p.dateLocked}))}>
+                                          <input type="date" value={inlineDraw.date} onChange={e=>setInlineDraw(p=>({...p,date:e.target.value}))}
+                                            className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                        </LockableInline>
                                       </div>
                                       <div>
                                         <div className="text-[9px] font-semibold text-blue-400 dark:text-blue-500 uppercase mb-1">Amount ($)</div>
-                                        <MoneyField value={inlineDraw.amt} onChange={v=>setInlineDraw(p=>({...p,amt:v}))}
-                                          placeholder="25000"
-                                          className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                        <LockableInline locked={inlineDraw.amtLocked} onToggle={()=>setInlineDraw(p=>({...p,amtLocked:!p.amtLocked}))}>
+                                          <MoneyField value={inlineDraw.amt} onChange={v=>setInlineDraw(p=>({...p,amt:v}))}
+                                            placeholder="25000"
+                                            className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                        </LockableInline>
                                       </div>
                                       <button type="button" onClick={commitInlineDraw}
                                         className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg py-2 transition-colors">
@@ -6322,6 +6326,7 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
   const [amount,setAmount] = useState(init ? String(init.amount||"") : "");
   const [direction,setDirection] = useState(init?.direction || "out");
   const [propSearch,setPropSearch] = useState("");
+  const [amountLocked,setAmountLocked] = useState(()=>!!init?.amount);
 
   const activeProps = (properties||[]).filter(p=>!p.dateSold);
   const filtered = activeProps.filter(p=>!propSearch||p.address?.toLowerCase().includes(propSearch.toLowerCase()));
@@ -6391,8 +6396,10 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
           <Inp label="Address" value={address} onChange={setAddress} placeholder="123 Oak Ave, Nashville, TN"/>
         )}
 
-        <Inp label={`${mode==="property"?"Expected Amount":"Amount"}${mode==="bill"?"":" — optional"} ($)`} money value={amount} onChange={setAmount} placeholder="150000"
-          helpText={mode==="property"?"Add now if you know it, or leave blank and fill it in closer to closing":mode==="bill"?"You can leave this blank and fill it in once you know it":"Add now if you know it, or leave blank and fill it in once you do"}/>
+        <Lockable locked={amountLocked} onToggle={()=>setAmountLocked(l=>!l)}>
+          <Inp label={`${mode==="property"?"Expected Amount":"Amount"}${mode==="bill"?"":" — optional"} ($)`} money value={amount} onChange={setAmount} placeholder="150000"
+            helpText={mode==="property"?"Add now if you know it, or leave blank and fill it in closer to closing":mode==="bill"?"You can leave this blank and fill it in once you know it":"Add now if you know it, or leave blank and fill it in once you do"}/>
+        </Lockable>
         {mode==="bill"&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2">No due date needed — it goes straight into the Due Now queue, ranked by when it came in. Use the ▲▼ arrows there to reprioritize.</p>}
 
         <div className="flex gap-2 pt-1">
