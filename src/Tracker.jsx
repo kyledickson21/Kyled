@@ -5701,6 +5701,7 @@ function HistoryPage({ data }) {
 function RehabPriorityPage({ data, update }) {
   const prv=usePrivacy();
   const h$=v=>prv?maskMoney($$p(v)):$$p(v);
+  const hr=l=>{ if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [dir,setDir]=usePersistedState("nx-rehabDir","desc");
   const [rehabSearch,setRehabSearch]=useState("");
   const [projectFull,setProjectFull]=usePersistedState("nx-rehabProject",false);
@@ -5874,7 +5875,7 @@ function RehabPriorityPage({ data, update }) {
                           <div className="flex items-center gap-1.5 min-w-0">
                             <TypeLabel type={loan.loanType}/>
                             <span className={`font-medium truncate ${isRolling?"text-slate-400 dark:text-zinc-500":"text-slate-600 dark:text-zinc-300"}`}>{prv?"—":loan.lenderName}</span>
-                            <span className="text-slate-400 dark:text-zinc-500 shrink-0">{h$(loan.principal)} · {loan.interestRate}%</span>
+                            <span className="text-slate-400 dark:text-zinc-500 shrink-0">{h$(loan.principal)} · {hr(loan)}</span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0 ml-2">
                             {lb>0?(
