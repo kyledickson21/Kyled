@@ -587,7 +587,10 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const destBtnRef=useRef(null);
   const matchesDestSearch=p=>!destSearch||p.address?.toLowerCase().includes(destSearch.toLowerCase());
   const closeDestPicker=()=>{setDestPickerOpen(false);setDestSearch("");};
-  const [editingPaymentType,setEditingPaymentType]=useState(false);
+  // Shown expanded (not collapsed to a summary row) for a brand-new loan, so a first-time
+  // user actually sees there's a choice to make instead of it hiding behind a silent
+  // default — collapses back to a compact summary once a loan already has one set.
+  const [editingPaymentType,setEditingPaymentType]=useState(()=>!init?.paymentType);
   const [editingEndDate,setEditingEndDate]=useState(false);
   const [editingDueDate,setEditingDueDate]=useState(false);
   const paymentTypeLabel = {closing:"Pay at Closing", monthly_rate:"Monthly Interest-Only", monthly_fixed:"Monthly Fixed Amount", monthly_rate_split:"Split — Monthly + Rest at Closing"};
@@ -2021,6 +2024,16 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           <option value="waiveInterest">⚡ Waive interest, roll {$$p(r.principal)}</option>
                           <option value="custom">✏️ Custom split</option>
                         </select>
+                        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5">
+                          {({
+                            paidOut:"The lender is fully paid off and done — principal and interest leave Nexus for good.",
+                            rollFull:"Nothing is paid out now — this lender's whole balance (principal + interest) carries over and gets reinvested in the next deal.",
+                            rollPrincipal:"The lender's principal rolls into the next deal; Nexus keeps the interest earned on this one as profit.",
+                            payInterest:"Nexus pays out the interest earned so far; the principal rolls into the next deal.",
+                            waiveInterest:"The interest earned on this deal is forgiven — the lender gets nothing extra, and only the principal rolls into the next deal.",
+                            custom:"Split it yourself — decide how much pays out now from the wire and how much rolls into the next deal.",
+                          })[r.type]}
+                        </p>
                       </div>
 
                       {/* paidOut: full principal / interest / fees breakdown */}
