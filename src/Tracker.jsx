@@ -8699,6 +8699,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [navStack,setNavStack]=useState([]);
   const [panelStack,setPanelStack]=useState([]);
   const [rehabHover,setRehabHover]=useState(false);
+  const [rehabOpen,setRehabOpen]=useState(false);
+  const rehabMenuRef=useRef(null);
   const fabRef=useRef(null);
   const settingsRef=useRef(null);
   const globalSearchRef=useRef(null);
@@ -8712,6 +8714,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       if(fabRef.current&&!fabRef.current.contains(e.target))setFabOpen(false);
       if(settingsRef.current&&!settingsRef.current.contains(e.target))setSettingsOpen(false);
       if(globalSearchRef.current&&!globalSearchRef.current.contains(e.target))setGlobalSearch('');
+      if(rehabMenuRef.current&&!rehabMenuRef.current.contains(e.target))setRehabOpen(false);
     };
     document.addEventListener('mousedown',handler);
     return ()=>document.removeEventListener('mousedown',handler);
@@ -8914,6 +8917,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const IcoBar=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[14px] h-[14px] shrink-0"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>;
   const IcoList=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd"/></svg>;
   const IcoPin=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd"/></svg>;
+  const IcoPie=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M10 2a8 8 0 108 8h-8V2z"/><path d="M8 2.252A8.014 8.014 0 002.252 8H8V2.252z"/></svg>;
+  const IcoApps=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM13 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2h-2zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM13 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2z"/></svg>;
 
   // ── Sidebar nav button (icon-only, tooltip on hover) ──
   const SideBtn=({icon,label,active,onClick,tooltip})=>(
@@ -8937,7 +8942,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       {/* ── Left Sidebar (desktop only) ── */}
       <div className="hidden sm:flex fixed left-0 top-0 bottom-0 w-14 bg-[#F2F2F7] dark:bg-black border-r border-black/[0.05] dark:border-white/[0.04] flex-col z-40">
         {/* Logo / Dashboard */}
-        <button onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Dashboard");}} title="Command Center"
+        <button onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Dashboard");}} title="Dashboard"
           className={`mx-auto mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] flex items-center justify-center active:scale-95 transition-all shrink-0 ${tab==="Dashboard"&&navStack.length===0?"bg-gradient-to-br from-blue-600 to-blue-700 shadow-lg shadow-blue-500/30 ring-2 ring-blue-400/40":"bg-gradient-to-br from-blue-500 to-blue-700 shadow-md shadow-blue-500/30"}`}>
           <span className="text-white font-black text-lg leading-none tracking-tight">$</span>
         </button>
@@ -8949,16 +8954,19 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           <SideBtn icon={<IcoUsers/>} label="Lenders" tooltip={`Lenders (${activeLenders})`} active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("LenderDash");}}/>
           <SideBtn icon={<IcoList/>} label="Loans" tooltip={`Loans (${activeLoans})`} active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("AllLoans");}}/>
 
-          {/* Renovation group — clicking parent does nothing, hover reveals submenu */}
-          <div className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
-            <div className={`flex items-center justify-center w-full p-2.5 rounded-xl transition-all cursor-pointer ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+          {/* Renovation group — hover reveals the submenu on desktop; also toggles on
+              click so it works on touch/click-only devices (a laptop trackpad running
+              Windows, an iPad) where hover never fires. */}
+          <div ref={rehabMenuRef} className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
+            <button onClick={()=>setRehabOpen(o=>!o)}
+              className={`flex items-center justify-center w-full p-2.5 rounded-xl transition-all cursor-pointer ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
               <span className={`shrink-0 ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}><IcoWrench/></span>
-            </div>
-            {rehabHover&&(
+            </button>
+            {(rehabHover||rehabOpen)&&(
               <div className="absolute left-full top-0 ml-2 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
                 <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Renovation</div>
-                {[{id:"RehabPriority",ico:<IcoClipboard/>,l:"Rehab Priority"},{id:"Draws",ico:<IcoGrid/>,l:"Draw Tracker"},{id:"PropDash",ico:<IcoBar/>,l:"Dashboard"}].map(({id,ico,l})=>(
-                  <button key={id} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setRehabHover(false);}}
+                {[{id:"RehabPriority",ico:<IcoClipboard/>,l:"Rehab Priority"},{id:"Draws",ico:<IcoGrid/>,l:"Draw Tracker"},{id:"PropDash",ico:<IcoBar/>,l:"Prop Dashboard"}].map(({id,ico,l})=>(
+                  <button key={id} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setRehabHover(false);setRehabOpen(false);}}
                     className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id&&navStack.length===0?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
                     <span className="text-slate-400 dark:text-zinc-500 shrink-0">{ico}</span>{l}
                   </button>
@@ -8972,7 +8980,12 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           <SideBtn icon={<IcoPin/>} label="Whiteboard" tooltip="Whiteboard" active={tab==="Whiteboard"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Whiteboard");}}/>
         </nav>
 
-        {/* Bottom — Settings */}
+        {/* Bottom — Home Screen + Settings */}
+        {onHome&&(
+          <div className="px-1.5 mb-1">
+            <SideBtn icon={<IcoApps/>} label="Home Screen" tooltip="Home Screen" onClick={onHome}/>
+          </div>
+        )}
         <div className="px-1.5 pb-3 relative" ref={settingsRef}>
           <div className="relative group">
             <button onClick={()=>setSettingsOpen(o=>!o)}
@@ -9028,7 +9041,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             </div>
             <nav className="flex-1 py-2 px-2">
               {[
-                {id:"Dashboard",icon:<IcoHome/>,label:"Dashboard",match:t=>t==="Dashboard"},
+                {id:"Dashboard",icon:<IcoPie/>,label:"Dashboard",match:t=>t==="Dashboard"},
                 {id:"Properties",icon:<IcoHome/>,label:"Properties",match:t=>t==="Properties"},
                 {id:"LenderDash",icon:<IcoUsers/>,label:"Lenders",match:t=>t==="LenderDash"},
                 {id:"AllLoans",icon:<IcoList/>,label:"Loans",match:t=>t==="AllLoans"},
@@ -9060,6 +9073,12 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
                 Lender Accounts
               </button>
+              {onHome&&(
+                <button onClick={()=>{setMobileNavOpen(false);onHome();}}
+                  className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
+                  Home Screen
+                </button>
+              )}
               <button onClick={onSignOut}
                 className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
                 Sign Out
