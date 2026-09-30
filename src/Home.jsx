@@ -364,12 +364,15 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
     setModal(null);
   };
 
-  const deleteLink = id => mutate(fresh => ({
-    ...fresh,
-    quickLinks: (fresh.quickLinks || []).filter(l=>l.id!==id),
-    folders: (fresh.folders || []).map(f => ({ ...f, linkIds: f.linkIds.filter(lid=>lid!==id) })),
-    homeOrder: (fresh.homeOrder || []).filter(k => k !== `link:${id}`),
-  }));
+  const deleteLink = id => {
+    if (!window.confirm("Remove this shortcut?")) return;
+    mutate(fresh => ({
+      ...fresh,
+      quickLinks: (fresh.quickLinks || []).filter(l=>l.id!==id),
+      folders: (fresh.folders || []).map(f => ({ ...f, linkIds: f.linkIds.filter(lid=>lid!==id) })),
+      homeOrder: (fresh.homeOrder || []).filter(k => k !== `link:${id}`),
+    }));
+  };
 
   const saveFolder = folder => {
     mutate(fresh => {
@@ -379,11 +382,15 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
     setModal(null);
   };
 
-  const deleteFolder = id => mutate(fresh => ({
-    ...fresh,
-    folders: (fresh.folders || []).filter(f=>f.id!==id),
-    homeOrder: (fresh.homeOrder || []).filter(k => k !== `folder:${id}`),
-  }));
+  const deleteFolder = id => {
+    const count = (data?.folders || []).find(f=>f.id===id)?.linkIds?.length || 0;
+    if (!window.confirm(count > 0 ? `Delete this folder and remove it from the home screen? The ${count} item${count===1?"":"s"} inside ${count===1?"it won't":"them won't"} show up on the home screen anymore.` : "Delete this folder?")) return;
+    mutate(fresh => ({
+      ...fresh,
+      folders: (fresh.folders || []).filter(f=>f.id!==id),
+      homeOrder: (fresh.homeOrder || []).filter(k => k !== `folder:${id}`),
+    }));
+  };
 
   const renameFolder = (id, name) => mutate(fresh => ({ ...fresh, folders: (fresh.folders || []).map(f=>f.id===id?{...f,name}:f) }));
 

@@ -4804,7 +4804,15 @@ function ClosedDealsPage({ data, update }) {
   const [closeSearch,setCloseSearch]=useState("");
 
   const toggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
-  const toggleRental=id=>update(d=>({...d,properties:d.properties.map(p=>p.id===id?{...p,isRental:!p.isRental}:p)}));
+  const toggleRental=id=>{
+    const prop=data.properties.find(p=>p.id===id);
+    if(!prop) return;
+    const msg=prop.isRental
+      ? `Move "${prop.address||"this property"}" back to Flips? It'll disappear from the Rentals list and show up under Flips instead.`
+      : `Mark "${prop.address||"this property"}" as a Rental? It'll disappear from the Flips list and show up under Rentals instead.`;
+    if(!window.confirm(msg)) return;
+    update(d=>({...d,properties:d.properties.map(p=>p.id===id?{...p,isRental:!p.isRental}:p)}));
+  };
 
   const handleMarkSold=(prop,soldDate,dispositions,closingData,isRental)=>{
     const activeLoans=prop.loans.filter(l=>!l.endDate);
@@ -6957,7 +6965,10 @@ function WhiteboardPage({ data, update }) {
     const nextCards = already ? existing.map(x=>x.id===card.id?{...x,...card}:x) : [...existing,card];
     return {...d, whiteboard:{...d.whiteboard, cards:nextCards}};
   });
-  const removeCard = id => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).filter(c=>c.id!==id)}}));
+  const removeCard = id => {
+    if (!window.confirm("Remove this card from the whiteboard?")) return;
+    update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).filter(c=>c.id!==id)}}));
+  };
   const setCardDay = (id,day) => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).map(c=>c.id===id?{...c,day}:c)}}));
   const setStartingBalance = v => update(d=>({...d, whiteboard:{...d.whiteboard, startingBalance:v}}));
   const moveBill = (id,dir) => update(d=>{
