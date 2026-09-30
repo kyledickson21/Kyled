@@ -684,7 +684,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
       const c = propConflict(f.startDate, parseFloat(f.principal)||0, destProp);
       if (c) {
         setBlockMsg(c==='date'
-          ? "Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period."
+          ? "Cannot place here — this property was acquired after this loan started, so for that stretch of time the loan wouldn't have had this property backing it up."
           : "Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need.");
         if (!lockDestinationTo) sf(p=>({...p,destination:"unassigned"}));
         return;
@@ -755,7 +755,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
     const p = activeProps.find(x=>x.id===pid);
     if (!p) { s("destination")(pid); return; }
     const c = propConflict(f.startDate, loanAmt, p);
-    if (c==='date') { setBlockMsg("Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period."); return; }
+    if (c==='date') { setBlockMsg("Cannot place here — this property was acquired after this loan started, so for that stretch of time the loan wouldn't have had this property backing it up."); return; }
     if (c==='size') { setBlockMsg("Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need."); return; }
     setBlockMsg("");
     s("destination")(pid);
@@ -1131,7 +1131,7 @@ function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
 
   const handleClick = p => {
     const c=propConflict(fund.startDate,loanAmt,p);
-    if (c==='date') { setBlockMsg("Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period. Please pick a property that started before this loan."); return; }
+    if (c==='date') { setBlockMsg("Cannot place here — this property was acquired after this loan started, so for that stretch of time the loan wouldn't have had this property backing it up. Please pick a property that started before this loan."); return; }
     if (c==='size') { setBlockMsg("Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need."); return; }
     onPlace(p.id);
   };
@@ -2176,6 +2176,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                     <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">Break-even wire</span>
                     <span className="font-bold text-base tabular-nums text-slate-900 dark:text-zinc-100">{$$p(minWire)}</span>
                   </div>
+                  <div className="text-[10px] text-slate-400 dark:text-zinc-500">The wire amount that covers everything above with $0 profit — enter more for a profit, less for a loss.</div>
                 </div>
               );
             })()}
@@ -2328,7 +2329,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               <div className="rounded-xl p-3 text-center bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700">
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Deal Profit</div>
                 <div className="text-lg font-bold text-slate-400 dark:text-zinc-500">— Enter wire above —</div>
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">Break-even wire: {$$p(baseCosts-titleTotal)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">Break-even wire (the amount that covers costs with $0 profit): {$$p(baseCosts-titleTotal)}</div>
               </div>
             )}
 
@@ -2984,7 +2985,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       const conflict=destProp?propConflict(base.startDate,base.principal,destProp):null;
       if(conflict){
         alert(conflict==='date'
-          ? "Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period."
+          ? "Cannot place here — this property was acquired after this loan started, so for that stretch of time the loan wouldn't have had this property backing it up."
           : "Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need.");
         return;
       }
@@ -4587,6 +4588,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                     <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">Break-even wire</span>
                     <span className="font-bold text-base tabular-nums text-slate-900 dark:text-zinc-100">{$$p(minWire)}</span>
                   </div>
+                  <div className="text-[10px] text-slate-400 dark:text-zinc-500">The wire amount that covers everything above with $0 profit — enter more for a profit, less for a loss.</div>
                 </div>
               );
             })()}
@@ -4739,7 +4741,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
               <div className="rounded-xl p-3 text-center bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700">
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Deal Profit</div>
                 <div className="text-lg font-bold text-slate-400 dark:text-zinc-500">— Enter wire above —</div>
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">Break-even wire: {$$p(baseCosts-titleTotal)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">Break-even wire (the amount that covers costs with $0 profit): {$$p(baseCosts-titleTotal)}</div>
               </div>
             )}
 
@@ -5577,7 +5579,7 @@ function HistoryPage({ data }) {
                         <span className="tabular-nums shrink-0">{h$(lp.principalPayoff)}</span>
                       </div>
                     ))}
-                    {nexusFunded>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{h$(nexusFunded)}</span></div>}
+                    {nexusFunded>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Self-Funding</span><span className="tabular-nums">{h$(nexusFunded)}</span></div>}
                     <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{h$(cd.totalCosts)}</span></div>
                   </div>
                   <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
@@ -5588,7 +5590,7 @@ function HistoryPage({ data }) {
                         <span className="tabular-nums shrink-0">{h$(lp.wireAmount)}</span>
                       </div>
                     ))}
-                    {(cd.selfFunded||0)>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Capital</span><span className="tabular-nums">{h$(cd.selfFunded)}</span></div>}
+                    {(cd.selfFunded||0)>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Self-Funding</span><span className="tabular-nums">{h$(cd.selfFunded)}</span></div>}
                     <div className="flex justify-between font-semibold text-emerald-600 dark:text-emerald-400">
                       <span>Profit</span>
                       <span className="tabular-nums">{h$(profitAtClose)}</span>
@@ -7196,7 +7198,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
     const conflict = destProp ? propConflict(base.startDate,base.principal,destProp) : null;
     if (conflict) {
       alert(conflict==='date'
-        ? "Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period."
+        ? "Cannot place here — this property was acquired after this loan started, so for that stretch of time the loan wouldn't have had this property backing it up."
         : "Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need.");
       return;
     }
@@ -8069,7 +8071,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
     // allowed instead of one being stricter than the other.
     if(prop){
       const conflict = propConflict(newStartDate, newPrincipal, prop);
-      if(conflict==='date'){ setEfBlockMsg("Cannot save — this start date is before the property was acquired. The loan would have been uncollateralized during that period."); return; }
+      if(conflict==='date'){ setEfBlockMsg("Cannot save — this start date is before the property was acquired, so for that stretch of time the loan wouldn't have had this property backing it up."); return; }
       if(conflict==='size'){ setEfBlockMsg("Cannot save — not enough funding gap on this property for this amount (including the usual 10% cushion)."); return; }
     }
     const patch = {
