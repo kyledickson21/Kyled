@@ -8232,12 +8232,17 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             <Lockable locked={efLocked.interestRate} onToggle={()=>toggleEfLock("interestRate")}>
               <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} money={ef.interestType==="fixed"} percent={ef.interestType!=="fixed"}/>
             </Lockable>
-            <Sel label="Payment Type" value={ef.paymentType} onChange={v=>setEf(f=>{
+            <Sel label="How Is Interest Paid?" value={ef.paymentType} onChange={v=>setEf(f=>{
               // Split only makes sense as a % rate — drop back to percentage if Fixed $ was
               // selected, rather than leaving an impossible combination in place.
               const interestType=(v==="monthly_rate_split"&&f.interestType==="fixed")?"percentage":f.interestType;
               return {...f,paymentType:v,interestType};
-            })} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"],["monthly_rate_split","Split (monthly + rest at closing)"]]}/>
+            })} options={[
+              ["closing",       "Pay at Closing — all interest owed when deal closes"],
+              ["monthly_rate",  "Monthly Interest-Only — pay rate monthly, principal at closing"],
+              ["monthly_fixed", "Monthly Fixed Amount — set dollar amount each month"],
+              ["monthly_rate_split", "Split — Monthly + Rest at Closing"],
+            ]}/>
             {ef.paymentType==="monthly_fixed"&&(
               <Lockable locked={efLocked.monthlyPayment} onToggle={()=>toggleEfLock("monthlyPayment")}>
                 <Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={v=>setEf(f=>({...f,monthlyPayment:v}))} money/>
