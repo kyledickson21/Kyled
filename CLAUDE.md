@@ -67,8 +67,11 @@ update(d => ({...d, properties: [{newField: value}]}))
           endDate: null,             // null = active
           interestRate: 10,          // percent/year OR fixed dollar amount
           interestType: "percentage" | "fixed",
-          paymentType: "closing" | "monthly_rate" | "monthly_fixed",
+          paymentType: "closing" | "monthly_rate" | "monthly_fixed" | "monthly_rate_split",
           monthlyPayment: 0,         // for monthly_fixed
+          splitMonthlyRate: null,    // for monthly_rate_split — portion of interestRate paid
+                                     // monthly (e.g. lender's equity-line rate); the rest
+                                     // (interestRate - splitMonthlyRate) accrues to closing
           specialTerms: "",
           drawFacility: null | {committed: 0, drawn: 0, undrawn: 0}
         }
@@ -170,5 +173,5 @@ const update = fn => {
 - "○ Mark Rental" toggle on each card (retroactive)
 
 ## Known Pre-existing Warnings (ignore, don't fix)
-- esbuild duplicate key warnings at lines ~275-279 (`paymentType`, `monthlyPayment`)
+- esbuild duplicate key warnings at lines ~275-279 (`paymentType`, `monthlyPayment`, `splitMonthlyRate`)
 - These don't affect functionality or the build succeeding

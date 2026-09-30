@@ -69,7 +69,20 @@ const calcBalance = (l, asOf=TODAY) => {
   if (l.interestType === "fixed") return l.principal + (l.interestRate || 0);
   const end = l.endDate && l.endDate<=asOf ? l.endDate : asOf;
   if (l.startDate>end) return l.principal;
-  return l.principal + l.principal*(l.interestRate||0)/100*(daysBetween(l.startDate,end)/yearDays(l));
+  // A split loan (e.g. a lender funding out of their own equity line) only accrues the
+  // portion NOT already being paid out monthly — the other portion (matching, say, their
+  // equity line's own rate) is paid in cash each month and never added to the balance.
+  const rate = pt==="monthly_rate_split" ? Math.max(0,(l.interestRate||0)-(l.splitMonthlyRate||0)) : (l.interestRate||0);
+  return l.principal + l.principal*rate/100*(daysBetween(l.startDate,end)/yearDays(l));
+};
+
+// How much of a split-rate loan's interest has already been paid out monthly (the portion
+// matching the lender's own cost of funds) as of a given date — 0 for every other type.
+const calcMonthlyPaidPortion = (l, asOf=TODAY) => {
+  if (!l?.startDate||!l?.principal||l.paymentType!=="monthly_rate_split") return 0;
+  const end = l.endDate&&l.endDate<=asOf ? l.endDate : asOf;
+  if (l.startDate>end) return 0;
+  return Math.round(l.principal*(l.splitMonthlyRate||0)/100*(daysBetween(l.startDate,end)/yearDays(l))*100)/100;
 };
 
 const calcIntEarned = (l, asOf=TODAY) => {
@@ -79,6 +92,9 @@ const calcIntEarned = (l, asOf=TODAY) => {
   const days = daysBetween(l.startDate, end);
   if (pt==="monthly_rate") return Math.round((l.principal||0)*(l.interestRate||0)/100/yearDays(l)*days*100)/100;
   if (pt==="monthly_fixed") return Math.round((l.monthlyPayment||0)*days/30.44*100)/100;
+  // Total earned either way — the monthly-paid portion (real cash already received) plus
+  // whatever's still accruing onto the balance, due at closing.
+  if (pt==="monthly_rate_split") return Math.round((calcMonthlyPaidPortion(l,asOf)+(calcBalance(l,asOf)-(l.principal||0)))*100)/100;
   return Math.round((calcBalance(l,asOf)-(l.principal||0))*100)/100;
 };
 
@@ -94,6 +110,9 @@ const monthlyLoanPayment = loan => {
   const pt = loan.paymentType||"closing";
   if (pt==="monthly_rate") return Math.round((loan.principal||0)*(loan.interestRate||0)/100/12);
   if (pt==="monthly_fixed") return Math.round(loan.monthlyPayment||0);
+  // Only the monthly-paid portion is an actual recurring cash draw — the rest accrues to
+  // the balance and isn't owed until closing, so it doesn't belong in a monthly cash need.
+  if (pt==="monthly_rate_split") return Math.round((loan.principal||0)*(loan.splitMonthlyRate||0)/100/12);
   return 0;
 };
 
@@ -120,6 +139,10 @@ const fmtRate = (l) => {
   if (l.interestType === "fixed") return "$" + Math.round(l.interestRate||0).toLocaleString() + " fixed";
   if (pt==="monthly_rate") return (l.interestRate||0) + "%/yr · monthly";
   if (pt==="monthly_fixed") return "$" + Math.round(l.monthlyPayment||0).toLocaleString() + "/mo";
+  if (pt==="monthly_rate_split") {
+    const closingRate = Math.max(0,(l.interestRate||0)-(l.splitMonthlyRate||0));
+    return `${l.interestRate||0}%/yr · ${l.splitMonthlyRate||0}% mo + ${closingRate}% close`;
+  }
   return (l.interestRate||0) + "%/yr";
 };
 
@@ -543,10 +566,11 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
     principal:"",
     startDate:TODAY, interestType:"percentage", interestRate:"", specialTerms:"", endDate:"", dueDate:"",
     destination:"unassigned",
-    paymentType:"closing", monthlyPayment:"", drawFacility:null,
+    paymentType:"closing", monthlyPayment:"", drawFacility:null, splitMonthlyRate:"",
     ...(init??{}),
     paymentType: init?.paymentType || (init?.loanType==="hard" ? "monthly_rate" : "closing"),
     monthlyPayment: String(init?.monthlyPayment||""),
+    splitMonthlyRate: String(init?.splitMonthlyRate??""),
     drawFacility: init?.drawFacility||null,
   }));
   const [drawDate,setDrawDate]=useState(TODAY);
@@ -560,7 +584,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const [editingPaymentType,setEditingPaymentType]=useState(false);
   const [editingEndDate,setEditingEndDate]=useState(false);
   const [editingDueDate,setEditingDueDate]=useState(false);
-  const paymentTypeLabel = {closing:"Pay at Closing", monthly_rate:"Monthly Interest-Only", monthly_fixed:"Monthly Fixed Amount"};
+  const paymentTypeLabel = {closing:"Pay at Closing", monthly_rate:"Monthly Interest-Only", monthly_fixed:"Monthly Fixed Amount", monthly_rate_split:"Split — Monthly + Rest at Closing"};
   const s = k => v => sf(p=>({...p,[k]:v}));
   // Fields that already had a real value when this form opened start locked (protecting an
   // already-correct number that's often copied off a term sheet); a brand-new, empty entry
@@ -572,6 +596,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
     interestType:init?.interestRate!=null,
     interestRate:init?.interestRate!=null,
     monthlyPayment:!!init?.monthlyPayment,
+    splitMonthlyRate:init?.splitMonthlyRate!=null,
     drawCommitted:!!init?.drawFacility?.committed,
   }));
   const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
@@ -599,6 +624,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   // actually shown.
   const requiredLockKeys = ["lender","startDate","principal","interestType","interestRate",
     ...(f.paymentType==="monthly_fixed"?["monthlyPayment"]:[]),
+    ...(f.paymentType==="monthly_rate_split"?["splitMonthlyRate"]:[]),
     ...(f.drawFacility?["drawCommitted"]:[])];
   const allConfirmed = requiredLockKeys.every(k=>locked[k]);
   const handleSave = () => {
@@ -775,6 +801,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
             ["closing",       "Pay at Closing — all interest owed when deal closes"],
             ["monthly_rate",  "Monthly Interest-Only — pay rate monthly, principal at closing"],
             ["monthly_fixed", "Monthly Fixed Amount — set dollar amount each month"],
+            ["monthly_rate_split", "Split — Monthly + Rest at Closing"],
           ]}/>
         ) : (
           <button type="button" onClick={()=>setEditingPaymentType(true)}
@@ -788,6 +815,17 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
             <Inp label="Monthly Payment Amount ($) *" money value={f.monthlyPayment} onChange={s("monthlyPayment")} placeholder="500" helpText="Fixed dollar amount lender receives each month"/>
           </Lockable>
         )}
+        {f.paymentType==="monthly_rate_split"&&(()=>{
+          const total=parseFloat(f.interestRate)||0;
+          const monthly=parseFloat(f.splitMonthlyRate)||0;
+          const closingPortion=Math.max(0,total-monthly);
+          return (
+            <Lockable locked={locked.splitMonthlyRate} onToggle={()=>toggleLock("splitMonthlyRate")}>
+              <Inp label="Monthly-Paid Portion (%) *" percent value={f.splitMonthlyRate} onChange={s("splitMonthlyRate")} placeholder="7"
+                helpText={`e.g. their equity line's own rate — paid to them monthly; the rest of the ${total||"—"}% total (${closingPortion}%) accrues and is paid at closing`}/>
+            </Lockable>
+          );
+        })()}
       </div>
       {currentLoanType==="hard"&&(
         <div className="mt-2 mb-1 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
@@ -1605,7 +1643,13 @@ function CloseLoanModal({ loan, onConfirm, onClose }) {
   const [closeDate, setCloseDate] = useState(TODAY);
   const [dateLocked, setDateLocked] = useState(false);
   const payoff = Math.round(calcBalance(loan, closeDate) * 100) / 100;
-  const intEarned = Math.round(calcIntEarned(loan, closeDate) * 100) / 100;
+  // For a split loan, calcIntEarned is the TOTAL (monthly-paid + still-accruing) — showing
+  // that as "Accrued Interest" here would overstate what's actually reflected in the payoff
+  // below, which (correctly) only carries the still-accruing closing portion.
+  const intEarned = loan.paymentType==="monthly_rate_split"
+    ? Math.round((payoff-(loan.principal||0))*100)/100
+    : Math.round(calcIntEarned(loan, closeDate) * 100) / 100;
+  const monthlyPaidPortion = calcMonthlyPaidPortion(loan, closeDate);
   const inputCls = "flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500";
   return (
     <Modal title={`Close Loan — ${loan.lenderName}`} onClose={onClose}>
@@ -1631,6 +1675,11 @@ function CloseLoanModal({ loan, onConfirm, onClose }) {
             <span>Total Payoff</span>
             <span className="tabular-nums">{$$p(payoff)}</span>
           </div>
+          {monthlyPaidPortion > 0.01 && (
+            <p className="text-[11px] text-slate-400 dark:text-zinc-500">
+              Plus {$$p(monthlyPaidPortion)} already paid monthly — not part of this payoff
+            </p>
+          )}
           {intEarned > 0 && (
             <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1">
               Use <span className="font-semibold">{$$p(payoff)}</span> as the new loan principal when you re-add this lender's funds.
@@ -1663,20 +1712,28 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   // Per-lender rows — includes principal/interest/fees breakdown
   const [rows,setRows]=useState(()=>[
     ...activeLoans.map(l=>{
-      const monthly=(l.paymentType||"closing")!=="closing";
+      const pt=l.paymentType||"closing";
+      // isMonthly: fully paid monthly, nothing more owed from the wire at closing. A split
+      // loan is NOT this — its closing portion is still owed, same as a "closing" loan.
+      const isMonthly=pt==="monthly_rate"||pt==="monthly_fixed";
       const calcP=Math.round(calcBalance(l,soldDate)*100)/100; // cent precision
-      // calcInterest: interest owed AT CLOSING (0 for monthly since it was paid during hold)
-      const calcI=monthly?0:Math.round((calcP-(l.principal||0))*100)/100;
-      // intEarned: total interest earned on this loan (paid monthly OR accrued to closing)
+      // calcInterest: interest owed AT CLOSING (0 for monthly; for split, just the
+      // still-accruing closing portion — the monthly-paid portion never touches this)
+      const calcI=isMonthly?0:Math.round((calcP-(l.principal||0))*100)/100;
+      // intEarned: total interest earned on this loan (monthly-paid + accrued, whichever apply)
       const intEarned=calcIntEarned(l,soldDate); // already cent-precise
+      // monthlyPortionPaid: for a split loan, interest already received in cash each month —
+      // a real cost of this deal, but never pulled from THIS wire since it's already been paid.
+      const monthlyPortionPaid=calcMonthlyPaidPortion(l,soldDate);
       return {
         loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
-        principal:l.principal||0,calcPayoff:calcP,calcInterest:calcI,
-        isMonthly:monthly,isPreClosed:false,
+        principal:l.principal||0,calcPayoff:calcP,calcInterest:calcI,monthlyPortionPaid,
+        isMonthly,isPreClosed:false,
         interestRate:l.interestRate||0,interestType:l.interestType||"percentage",
-        paymentType:l.paymentType||"closing",specialTerms:l.specialTerms||"",
+        splitMonthlyRate:l.splitMonthlyRate||0,
+        paymentType:pt,specialTerms:l.specialTerms||"",
         principalPayoff:String(l.principal||0),
-        interestPayoff:String(intEarned),
+        interestPayoff:String(isMonthly?intEarned:calcI),
         // Hard money is settled through title as standard practice; private money is
         // settled from the wire by default. Still a per-lender toggle either way.
         lenderFees:"0",overageRefund:"0",titleMoneyCosts:"0",paidAtTitle:l.loanType==="hard",
@@ -1707,13 +1764,15 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     setRows(rs=>rs.map(r=>{
       const l=activeLoans.find(loan=>loan.id===r.loanId);
       if(!l) return r;
-      const monthly=(l.paymentType||"closing")!=="closing";
+      const pt=l.paymentType||"closing";
+      const isMonthly=pt==="monthly_rate"||pt==="monthly_fixed";
       const calcP=Math.round(calcBalance(l,soldDate)*100)/100;
-      const calcI=monthly?0:Math.round((calcP-(l.principal||0))*100)/100;
+      const calcI=isMonthly?0:Math.round((calcP-(l.principal||0))*100)/100;
       const intEarned=calcIntEarned(l,soldDate);
+      const monthlyPortionPaid=calcMonthlyPaidPortion(l,soldDate);
       // waiveInterest: interest not paid, so original start date carries forward (don't reset)
       const newSD=r.type==="waiveInterest"?r.origStartDate:startDate;
-      return {...r,calcPayoff:calcP,calcInterest:calcI,interestPayoff:String(intEarned),newStartDate:newSD};
+      return {...r,calcPayoff:calcP,calcInterest:calcI,interestPayoff:String(isMonthly?intEarned:calcI),monthlyPortionPaid,newStartDate:newSD};
     }));
   },[soldDate]);
 
@@ -1761,9 +1820,12 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const moneyCosts=Math.round(rows.reduce((s,r)=>{
     const fees=parseFloat(r.lenderFees)||0;
     const interest=parseFloat(r.interestPayoff)||0;
-    if(r.type==="rollPrincipal"||r.type==="waiveInterest") return s+fees;
-    if(r.isMonthly||r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull"||r.type==="alreadyPaid") return s+interest+fees;
-    return s+fees; // custom: fees still cost, interest not
+    // A split loan's monthly-paid portion is real cash already spent on this deal, over and
+    // above whatever happens to the closing-portion below (rolled, waived, or paid).
+    const monthlyPaid=r.monthlyPortionPaid||0;
+    if(r.type==="rollPrincipal"||r.type==="waiveInterest") return s+fees+monthlyPaid;
+    if(r.isMonthly||r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull"||r.type==="alreadyPaid") return s+interest+fees+monthlyPaid;
+    return s+fees+monthlyPaid; // custom: fees + monthly-paid portion still cost, closing accrual not
   },0)*100)/100;
   const baseCosts=cashToClose+rehab+moneyCosts;
   const wire=parseFloat(wireIn)||0;
@@ -1795,6 +1857,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
         newRate:String(r.interestRate),
         interestType:r.interestType,
         paymentType:r.paymentType,
+        splitMonthlyRate:r.splitMonthlyRate||0,
         specialTerms:r.specialTerms,
       };
     });
@@ -1885,6 +1948,12 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           <div className="font-semibold text-slate-600 dark:text-zinc-300">Payoff: {$$p(r.calcPayoff)}</div>
                         </div>
                       </div>
+
+                      {r.monthlyPortionPaid>0.01&&(
+                        <div className="mb-3 -mt-1 text-[11px] text-slate-500 dark:text-zinc-400">
+                          Plus {$$p(r.monthlyPortionPaid)} already paid monthly ({r.splitMonthlyRate}% portion) — separate from the payoff above, already a cost of this deal regardless of disposition
+                        </div>
+                      )}
 
                       {/* Disposition dropdown */}
                       <div className="mb-3">
@@ -2647,6 +2716,7 @@ const loanFields = f => ({
   interestType:f.interestType||"percentage",
   paymentType:f.paymentType||"closing",
   monthlyPayment:parseFloat(f.monthlyPayment)||0,
+  splitMonthlyRate:f.paymentType==="monthly_rate_split"?(parseFloat(f.splitMonthlyRate)||0):null,
   drawFacility:f.drawFacility?{committed:parseFloat(f.drawFacility.committed)||0,draws:f.drawFacility.draws||[]}:null,
   specialTerms:f.specialTerms||"", endDate:f.endDate||null,
   dueDate:f.dueDate||null,
@@ -2917,7 +2987,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   };
 
   const placeOnProperty = (fund,propId) => {
-    const loan={id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",paymentType:fund.paymentType||"closing",monthlyPayment:fund.monthlyPayment||0,drawFacility:fund.drawFacility||null,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null,dueDate:fund.dueDate||null};
+    const loan={id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",paymentType:fund.paymentType||"closing",monthlyPayment:fund.monthlyPayment||0,splitMonthlyRate:fund.splitMonthlyRate??null,drawFacility:fund.drawFacility||null,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null,dueDate:fund.dueDate||null};
     update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==fund.id),properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:[...p.loans,loan]})}));
     setExpanded(e=>({...e,[propId]:true}));
     setModal(null);
@@ -2993,6 +3063,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         interestRate:d.newRate!==""?parseFloat(d.newRate):(loan.interestRate||0),
         interestType:d.interestType||loan.interestType||"percentage",
         paymentType:d.paymentType||loan.paymentType||"closing",
+        splitMonthlyRate:(d.paymentType||loan.paymentType)==="monthly_rate_split"?(d.splitMonthlyRate??loan.splitMonthlyRate??0):null,
         specialTerms:d.specialTerms||loan.specialTerms||"",endDate:null,
       };
       if(d.destination==="unassigned"){newUnassigned.push(entry);}
@@ -4126,9 +4197,13 @@ function EditClosingModal({ prop, onSave, onClose }) {
       // never saved that flag on the payoff record, which was silently hiding the title/
       // monthly interest split below for any deal closed before that flag existed.
       const isMonthly=l.paymentType==="monthly_rate"||l.paymentType==="monthly_fixed";
+      // Recomputed fresh from the loan itself, same as isMonthly above — a split loan's
+      // monthly-paid portion (real cash already received) is a fixed cost of the deal
+      // regardless of what happens to the closing portion, edited or not.
+      const monthlyPortionPaid=calcMonthlyPaidPortion(l,l.endDate);
       return {
         loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
-        principal:l.principal||0,isMonthly,isPreClosed:false,
+        principal:l.principal||0,isMonthly,isPreClosed:false,monthlyPortionPaid,
         type:lp.type||"paidOut",
         principalPayoff:String(lp.principalPayoff??l.principal??0),
         interestPayoff:String(lp.interestPayoff??0),
@@ -4182,9 +4257,10 @@ function EditClosingModal({ prop, onSave, onClose }) {
   const moneyCosts=Math.round(rows.reduce((s,r)=>{
     const fees=parseFloat(r.lenderFees)||0;
     const interest=parseFloat(r.interestPayoff)||0;
-    if(r.type==="rollPrincipal"||r.type==="waiveInterest") return s+fees;
-    if(r.isMonthly||r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull"||r.type==="alreadyPaid") return s+interest+fees;
-    return s+fees;
+    const monthlyPaid=r.monthlyPortionPaid||0;
+    if(r.type==="rollPrincipal"||r.type==="waiveInterest") return s+fees+monthlyPaid;
+    if(r.isMonthly||r.type==="paidOut"||r.type==="payInterest"||r.type==="rollFull"||r.type==="alreadyPaid") return s+interest+fees+monthlyPaid;
+    return s+fees+monthlyPaid;
   },0)*100)/100;
 
   const [cashToCloseIn,setCashToCloseIn]=useState(String(cd.cashToClose||""));
@@ -4289,6 +4365,12 @@ function EditClosingModal({ prop, onSave, onClose }) {
                           <div className="font-semibold text-slate-600 dark:text-zinc-300">Payoff: {$$p(calcPayoff)}</div>
                         </div>
                       </div>
+
+                      {r.monthlyPortionPaid>0.01&&(
+                        <div className="mb-3 -mt-1 text-[11px] text-slate-500 dark:text-zinc-400">
+                          Plus {$$p(r.monthlyPortionPaid)} already paid monthly — separate from the payoff above, already a cost of this deal regardless of disposition
+                        </div>
+                      )}
 
                       {/* Disposition — set at closing, not editable here; see note at top of file */}
                       <div className="mb-3">
@@ -4696,7 +4778,7 @@ function ClosedDealsPage({ data, update }) {
       else if(d.type==="waiveInterest")np=loan.principal;
       else if(d.type==="custom")np=parseFloat(d.customRolling)||0;
       else np=loan.principal;
-      const entry={id:uid(),lenderName:loan.lenderName,loanType:loan.loanType,principal:np,startDate:d.newStartDate||soldDate,interestRate:d.newRate!==""?parseFloat(d.newRate):(loan.interestRate||0),interestType:d.interestType||loan.interestType||"percentage",paymentType:d.paymentType||loan.paymentType||"closing",specialTerms:d.specialTerms||loan.specialTerms||"",endDate:null};
+      const entry={id:uid(),lenderName:loan.lenderName,loanType:loan.loanType,principal:np,startDate:d.newStartDate||soldDate,interestRate:d.newRate!==""?parseFloat(d.newRate):(loan.interestRate||0),interestType:d.interestType||loan.interestType||"percentage",paymentType:d.paymentType||loan.paymentType||"closing",splitMonthlyRate:(d.paymentType||loan.paymentType)==="monthly_rate_split"?(d.splitMonthlyRate??loan.splitMonthlyRate??0):null,specialTerms:d.specialTerms||loan.specialTerms||"",endDate:null};
       if(d.destination==="unassigned"){newUnassigned.push(entry);}
       else{if(!newLoansForProps[d.destination])newLoansForProps[d.destination]=[];newLoansForProps[d.destination].push(entry);}
     });
@@ -5042,12 +5124,16 @@ function HistoryPage({ data }) {
   const addHardPayments = (loan, propAddress, propId) => {
     if (!loan.startDate) return;
     const pt = loan.paymentType||"closing";
-    if (pt!=="monthly_rate"&&pt!=="monthly_fixed") return;
+    if (pt!=="monthly_rate"&&pt!=="monthly_fixed"&&pt!=="monthly_rate_split") return;
     const endBound = loan.endDate || TODAY;
     const [sy,sm,sd] = loan.startDate.split('-').map(Number);
     const settings = resolveLenderSettings(data, loan.lenderName, loan.loanType);
-    const dailyRate = (loan.interestRate||0)/100/settings.dayCountBasis;
-    const flatMonthly = pt==="monthly_fixed" ? (loan.monthlyPayment||0) : (loan.principal||0)*(loan.interestRate||0)/1200;
+    // A split loan (e.g. an equity-line lender) only pays the matched portion of the rate
+    // monthly — the rest accrues onto the balance and is settled at closing instead, so
+    // these recurring cash payments should bill against that portion, not the full rate.
+    const billRate = pt==="monthly_rate_split" ? (loan.splitMonthlyRate||0) : (loan.interestRate||0);
+    const dailyRate = billRate/100/settings.dayCountBasis;
+    const flatMonthly = pt==="monthly_fixed" ? (loan.monthlyPayment||0) : (loan.principal||0)*billRate/1200;
     // One-time $ fee for each draw whose date falls in [periodStart, periodEnd) — half-open
     // so a draw dated exactly on a schedule boundary is counted in exactly one period.
     const feeFor = (periodStart, periodEndExclusive) =>
@@ -5055,7 +5141,7 @@ function HistoryPage({ data }) {
     const pushPayment = (dateStr, amount) => {
       amount = Math.round(amount*100)/100; // to the cent, not the whole dollar — needed to match a bank statement
       if (amount>0) {
-        raw.push({date:firstBusinessDay(dateStr), sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount, principal:loan.principal||0, property:propAddress, propId, rate:loan.interestRate||0, loanId:`${loan.id}-pay-${dateStr}`});
+        raw.push({date:firstBusinessDay(dateStr), sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount, principal:loan.principal||0, property:propAddress, propId, rate:billRate, loanId:`${loan.id}-pay-${dateStr}`});
       }
     };
 
@@ -5090,7 +5176,7 @@ function HistoryPage({ data }) {
         (loan.drawFacility?.draws||[]).forEach(d=>{
           if (!d.date||d.date>=periodStart) return;
           const drawStart = d.date>prevDate ? d.date : prevDate;
-          amount += settings.monthlyMethod==="flat" ? (d.amount||0)*(loan.interestRate||0)/1200 : (d.amount||0)*dailyRate*daysBetween(drawStart,periodStart);
+          amount += settings.monthlyMethod==="flat" ? (d.amount||0)*billRate/1200 : (d.amount||0)*dailyRate*daysBetween(drawStart,periodStart);
         });
         pushPayment(dateStr, amount+feeFor(prevDate,periodStart));
         prevDate = periodStart;
@@ -5120,7 +5206,7 @@ function HistoryPage({ data }) {
         amount = flatMonthly;
         (loan.drawFacility?.draws||[]).forEach(d=>{
           if (!d.date||d.date>=dateStr||d.date<prevDate) return;
-          amount += (d.amount||0)*(loan.interestRate||0)/1200;
+          amount += (d.amount||0)*billRate/1200;
         });
       } else if (pt==="monthly_fixed") {
         amount = (loan.monthlyPayment||0)*days/30.44;
@@ -7436,30 +7522,41 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
       bumpYear(l.endDate.slice(0,4), "loanCount", 1);
     }
     const pt = l.paymentType||"closing";
-    if (pt==="closing") {
+    const isSplit = pt==="monthly_rate_split";
+    // A split loan (e.g. an equity-line lender) is really TWO income streams: the
+    // monthly-paid portion, real cash prorated across every calendar year same as any other
+    // monthly-paid loan below, and the closing-portion, only realized (or waived) once the
+    // loan actually closes — same cash-basis treatment as a plain "closing" loan.
+    if (pt==="closing" || isSplit) {
+      const closingBasis = asOf => isSplit ? calcIntEarned(l,asOf)-calcMonthlyPaidPortion(l,asOf) : calcIntEarned(l,asOf);
       if (l.endDate) {
         // A property sale can roll a lender's payoff instead of cutting a check — check the
         // actual disposition: "rollFull"/"payInterest"/"paidOut"/"custom" still realize the
         // interest (constructive receipt, even if reinvested); "rollPrincipal"/"waiveInterest"
         // mean the lender never actually got that interest, so it isn't taxable income to them.
         if (isWaived(l)) {
-          waivedInterest += calcIntEarned(l, l.endDate);
+          waivedInterest += closingBasis(l.endDate);
           waivedCount += 1;
         } else {
-          bumpYear(l.endDate.slice(0,4), "interest", calcIntEarned(l, l.endDate));
+          bumpYear(l.endDate.slice(0,4), "interest", closingBasis(l.endDate));
         }
       } else {
-        pendingInterest += calcIntEarned(l);
+        pendingInterest += closingBasis(TODAY);
         pendingCount += 1;
       }
-    } else if (l.startDate) {
+    }
+    if (pt!=="closing" && l.startDate) {
+      // Prorate whatever's actually paid out monthly across every calendar year the loan
+      // was active in — the full amount for a plain monthly loan, or just the matched
+      // portion for a split one (the rest is handled as closing-basis above).
+      const monthlyBasis = asOf => isSplit ? calcMonthlyPaidPortion(l,asOf) : calcIntEarned(l,asOf);
       const lastDate = l.endDate || TODAY;
       const startY = parseInt(l.startDate.slice(0,4));
       const endY = parseInt(lastDate.slice(0,4));
       for (let y=startY; y<=endY; y++) {
         const upTo = y===endY ? lastDate : `${y}-12-31`;
-        const cum = calcIntEarned(l, upTo);
-        const cumBefore = y===startY ? 0 : calcIntEarned(l, `${y-1}-12-31`);
+        const cum = monthlyBasis(upTo);
+        const cumBefore = y===startY ? 0 : monthlyBasis(`${y-1}-12-31`);
         const portion = cum - cumBefore;
         if (portion) bumpYear(String(y), "interest", portion);
       }
@@ -7788,6 +7885,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       interestRate: String(loan.interestRate||""),
       paymentType: loan.paymentType||"closing",
       monthlyPayment: String(loan.monthlyPayment||""),
+      splitMonthlyRate: String(loan.splitMonthlyRate??""),
       specialTerms: loan.specialTerms||"",
       drawFacility: loan.drawFacility||null,
     });
@@ -7816,6 +7914,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       interestRate: ef.interestRate!==""?parseFloat(ef.interestRate)||loan.interestRate:loan.interestRate,
       paymentType: ef.paymentType,
       monthlyPayment: ef.monthlyPayment!==""?parseFloat(ef.monthlyPayment)||0:loan.monthlyPayment,
+      splitMonthlyRate: ef.paymentType==="monthly_rate_split"?(ef.splitMonthlyRate!==""?parseFloat(ef.splitMonthlyRate)||0:loan.splitMonthlyRate||0):null,
       specialTerms: ef.specialTerms,
       drawFacility: ef.drawFacility?{committed:parseFloat(ef.drawFacility.committed)||0,draws:ef.drawFacility.draws||[]}:null,
     };
@@ -7910,12 +8009,23 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             <Lockable locked={efLocked.interestRate} onToggle={()=>toggleEfLock("interestRate")}>
               <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} money={ef.interestType==="fixed"} percent={ef.interestType!=="fixed"}/>
             </Lockable>
-            <Sel label="Payment Type" value={ef.paymentType} onChange={v=>setEf(f=>({...f,paymentType:v}))} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"]]}/>
+            <Sel label="Payment Type" value={ef.paymentType} onChange={v=>setEf(f=>({...f,paymentType:v}))} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"],["monthly_rate_split","Split (monthly + rest at closing)"]]}/>
             {ef.paymentType==="monthly_fixed"&&(
               <Lockable locked={efLocked.monthlyPayment} onToggle={()=>toggleEfLock("monthlyPayment")}>
                 <Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={v=>setEf(f=>({...f,monthlyPayment:v}))} money/>
               </Lockable>
             )}
+            {ef.paymentType==="monthly_rate_split"&&(()=>{
+              const total=parseFloat(ef.interestRate)||0;
+              const monthly=parseFloat(ef.splitMonthlyRate)||0;
+              const closingPortion=Math.max(0,total-monthly);
+              return (
+                <Lockable locked={efLocked.splitMonthlyRate} onToggle={()=>toggleEfLock("splitMonthlyRate")}>
+                  <Inp label="Monthly-Paid Portion (%)" value={ef.splitMonthlyRate} onChange={v=>setEf(f=>({...f,splitMonthlyRate:v}))} percent
+                    helpText={`Rest of the ${total||"—"}% total (${closingPortion}%) accrues and is paid at closing`}/>
+                </Lockable>
+              );
+            })()}
             <div className="sm:col-span-2"><Inp label="Notes" value={ef.specialTerms} onChange={v=>setEf(f=>({...f,specialTerms:v}))}/></div>
           </div>
           {loan.loanType==="hard"&&(
@@ -8197,6 +8307,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
       principal: fund.principal || fund.amount || 0, startDate: fund.startDate || TODAY,
       interestRate: fund.interestRate || 0, interestType: fund.interestType || "percentage",
       paymentType: fund.paymentType || "closing", monthlyPayment: fund.monthlyPayment || 0,
+      splitMonthlyRate: fund.splitMonthlyRate ?? null,
       drawFacility: fund.drawFacility || null, specialTerms: fund.specialTerms || "", endDate: null,
       dueDate: fund.dueDate || null,
     };
