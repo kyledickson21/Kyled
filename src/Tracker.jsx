@@ -629,7 +629,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   const [editingPaymentType,setEditingPaymentType]=useState(()=>!init?.paymentType);
   const [editingEndDate,setEditingEndDate]=useState(false);
   const [editingDueDate,setEditingDueDate]=useState(false);
-  const paymentTypeLabel = {closing:"Pay at Closing", monthly_rate:"Monthly Interest-Only", monthly_fixed:"Monthly Fixed Amount", monthly_rate_split:"Split — Monthly + Rest at Closing"};
+  const paymentTypeLabel = {closing:"Pay at Closing", monthly_rate:"Monthly Interest-Only", monthly_fixed:"Monthly Fixed Amount", monthly_rate_split:"Partial Monthly + Rest at Closing"};
   const s = k => v => sf(p=>({...p,[k]:v}));
   // Fields that already had a real value when this form opened start locked (protecting an
   // already-correct number that's often copied off a term sheet); a brand-new, empty entry
@@ -855,7 +855,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
             ["closing",       "Pay at Closing — all interest owed when deal closes"],
             ["monthly_rate",  "Monthly Interest-Only — pay rate monthly, principal at closing"],
             ["monthly_fixed", "Monthly Fixed Amount — set dollar amount each month"],
-            ["monthly_rate_split", "Split — Monthly + Rest at Closing"],
+            ["monthly_rate_split", "Partial Monthly + Rest at Closing"],
           ]}/>
         ) : (
           <button type="button" onClick={()=>setEditingPaymentType(true)}
@@ -1386,97 +1386,6 @@ function QuickDrawModal({ data, onSave, onClose }) {
 
         <div className="flex gap-2 pt-1">
           <Btn onClick={()=>valid&&onSave({propId:sel.propId,loanId:sel.id,date,amount:amt})} color={valid?"green":"ghost"} full>Record Draw →</Btn>
-          <Btn onClick={onClose} color="ghost">Cancel</Btn>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// ─── Split Loan Modal ─────────────────────────────────────────────────────────
-function SplitLoanModal({ fund, properties, onConfirm, onClose }) {
-  const loan = fund;
-  const activeProps = properties.filter(p => !p.dateSold);
-  const [splits, setSplits] = useState([
-    { propId: activeProps[0]?.id ?? "", amount: "" },
-    { propId: activeProps[1]?.id ?? "", amount: "" },
-  ]);
-  const addRow = () => setSplits(s=>[...s,{propId:"",amount:""}]);
-  const removeRow = i => setSplits(s=>s.filter((_,j)=>j!==i));
-  const setRow = (i,field,val) => setSplits(s=>s.map((r,j)=>j===i?{...r,[field]:val}:r));
-
-  const totalSplit = splits.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
-  const remaining = (loan.principal||loan.amount||0) - totalSplit;
-  const valid = splits.every(r=>r.propId&&parseFloat(r.amount)>0) && Math.abs(remaining)<0.01;
-
-  const availableProps = activeProps.filter(p=>loanPropConflict(loan.startDate,p)===0);
-  const blockedProps = activeProps.filter(p=>loanPropConflict(loan.startDate,p)>0);
-  return (
-    <Modal title={`Split Funds — ${loan.lenderName}`} onClose={onClose}>
-      <div className="space-y-4">
-        <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm space-y-1">
-          <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total available</span><span className="tabular-nums font-semibold text-slate-900 dark:text-zinc-100">{$$p(loan.principal||loan.amount||0)}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Rate / Terms</span><span className="text-slate-700 dark:text-zinc-200">{loan.interestRate||0}{loan.interestType==="fixed"?" (fixed fee)":"%"} · {loan.paymentType||"closing"}</span></div>
-        </div>
-
-        <div className="space-y-3">
-          <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Split Into</div>
-          {splits.map((row,i)=>{
-            const rowAmt=parseFloat(row.amount)||0;
-            const destProp=row.propId&&row.propId!=="unassigned"?activeProps.find(p=>p.id===row.propId):null;
-            let gapInfo=null;
-            if(destProp){
-              const active=destProp.loans.filter(l=>!l.endDate);
-              const needed=propNeeded(destProp,active);
-              const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
-              const shortage=Math.max(0,needed-funded);
-              const afterSplit=Math.max(0,shortage-rowAmt);
-              if(needed>0) gapInfo={shortage,afterSplit};
-            }
-            return(
-              <div key={i} className="space-y-1.5">
-                <div className="flex gap-2 items-center">
-                  <div className="w-32 shrink-0">
-                    <MoneyField placeholder="Amount $" value={row.amount} onChange={v=>setRow(i,"amount",v)}
-                      className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
-                  </div>
-                  <div className="flex-1">
-                    <select value={row.propId} onChange={e=>setRow(i,"propId",e.target.value)}
-                      className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                      <option value="">— pick destination —</option>
-                      <option value="unassigned">💼 Leave unassigned</option>
-                      {availableProps.map(p=><option key={p.id} value={p.id}>🏠 {p.address}</option>)}
-                      {blockedProps.length>0&&<optgroup label="— Not Available (Loan predates property) —">
-                        {blockedProps.map(p=><option key={p.id} value={p.id} disabled>🕐 {p.address}</option>)}
-                      </optgroup>}
-                    </select>
-                  </div>
-                  {splits.length>1&&<button onClick={()=>removeRow(i)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-base transition-colors shrink-0">✕</button>}
-                </div>
-                {gapInfo&&(
-                  <div className="ml-[136px] flex items-center gap-2 text-[10px]">
-                    <span className="text-slate-400 dark:text-zinc-500">Equity gap: <span className="font-semibold text-amber-600 dark:text-amber-400">{$$p(gapInfo.shortage)}</span></span>
-                    {rowAmt>0&&<span className="text-slate-300 dark:text-zinc-600">→</span>}
-                    {rowAmt>0&&<span className={gapInfo.afterSplit<=0?"text-emerald-600 dark:text-emerald-400 font-semibold":"text-slate-500 dark:text-zinc-400"}>
-                      {gapInfo.afterSplit<=0?"Fully covered":""+$$p(gapInfo.afterSplit)+" remaining"}
-                    </span>}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <button onClick={addRow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold">+ Add destination</button>
-        </div>
-
-        <div className={`flex justify-between text-sm font-semibold border-t border-slate-200 dark:border-zinc-700 pt-3 ${Math.abs(remaining)<0.01?"text-emerald-600 dark:text-emerald-400":remaining<0?"text-red-500 dark:text-red-400":"text-amber-600 dark:text-amber-400"}`}>
-          <span>Unallocated</span>
-          <span className="tabular-nums">{$$p(remaining)} {Math.abs(remaining)<0.01?"✓":remaining<0?"(over!)":""}</span>
-        </div>
-
-        {!valid&&<p className="text-xs text-slate-400 dark:text-zinc-500">All rows need a property and amount, and amounts must sum to {$$p(loan.principal||0)}.</p>}
-
-        <div className="flex gap-2 pt-1">
-          <Btn onClick={()=>valid&&onConfirm(splits.map(r=>({propId:r.propId,amount:parseFloat(r.amount)})))} color={valid?"blue":"ghost"} full>Split Funds →</Btn>
           <Btn onClick={onClose} color="ghost">Cancel</Btn>
         </div>
       </div>
@@ -8241,7 +8150,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
               ["closing",       "Pay at Closing — all interest owed when deal closes"],
               ["monthly_rate",  "Monthly Interest-Only — pay rate monthly, principal at closing"],
               ["monthly_fixed", "Monthly Fixed Amount — set dollar amount each month"],
-              ["monthly_rate_split", "Split — Monthly + Rest at Closing"],
+              ["monthly_rate_split", "Partial Monthly + Rest at Closing"],
             ]}/>
             {ef.paymentType==="monthly_fixed"&&(
               <Lockable locked={efLocked.monthlyPayment} onToggle={()=>toggleEfLock("monthlyPayment")}>
