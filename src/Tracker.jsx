@@ -6297,10 +6297,10 @@ function ManageLendersPage({ data }) {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between mb-1">
-        <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Accounts</h2>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Portal Access</h2>
       </div>
       <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4">
-        <div className="font-bold text-[14px] text-slate-800 dark:text-zinc-100 mb-1">Create Lender Account</div>
+        <div className="font-bold text-[14px] text-slate-800 dark:text-zinc-100 mb-1">Grant Portal Access</div>
         <div className="text-[12px] text-slate-400 dark:text-zinc-500 mb-4">Give a lender their own login to see only their loans.</div>
         <form onSubmit={handleCreate} className="space-y-3">
           <div>
@@ -6331,19 +6331,19 @@ function ManageLendersPage({ data }) {
           {ok  && <p className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">{ok}</p>}
           <button type="submit" disabled={saving}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-2.5 text-sm font-semibold transition-all disabled:opacity-50">
-            {saving ? 'Creating…' : 'Create Account'}
+            {saving ? 'Creating…' : 'Create Login'}
           </button>
         </form>
       </div>
 
       <div>
         <div className="text-[13px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-3">
-          Lender Accounts {lenders ? `(${lenders.length})` : ''}
+          Portal Logins {lenders ? `(${lenders.length})` : ''}
         </div>
         {fetching ? (
           <div className="text-slate-400 dark:text-zinc-500 text-sm text-center py-8">Loading…</div>
         ) : !lenders?.length ? (
-          <div className="text-slate-300 dark:text-zinc-600 text-sm text-center py-8">No lender accounts yet</div>
+          <div className="text-slate-300 dark:text-zinc-600 text-sm text-center py-8">No portal logins yet</div>
         ) : (
           <div className="space-y-2">
             {lenders.map(l => (
@@ -9209,7 +9209,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               <div className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
               <button onClick={()=>{setSettingsOpen(false);setTab("LenderAccts");}}
                 className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
-                Lender Accounts
+                Portal Access
               </button>
               <div className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
               <button onClick={onSignOut}
@@ -9268,7 +9268,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               </button>
               <button onClick={()=>{setMobileNavOpen(false);setNavStack([]);setPanelStack([]);setTab("LenderAccts");}}
                 className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
-                Lender Accounts
+                Portal Access
               </button>
               {onHome&&(
                 <button onClick={()=>{setMobileNavOpen(false);onHome();}}
