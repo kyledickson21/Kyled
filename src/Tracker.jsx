@@ -575,6 +575,12 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   }));
   const [drawDate,setDrawDate]=useState(TODAY);
   const [drawAmt,setDrawAmt]=useState("");
+  // Split payment type: the monthly-paid portion can be entered either as a rate (%) or as
+  // a flat dollar amount — whichever's easier, since a lender usually quotes one or the
+  // other. Either way, splitMonthlyRate (%) is the one canonical value that actually gets
+  // saved; a dollar entry is just converted to its rate equivalent as it's typed.
+  const [splitEntryMode,setSplitEntryMode]=useState("rate");
+  const [splitMonthlyAmt,setSplitMonthlyAmt]=useState("");
   const [blockMsg,setBlockMsg]=useState("");
   const [destPickerOpen,setDestPickerOpen]=useState(false);
   const [destSearch,setDestSearch]=useState("");
@@ -817,12 +823,46 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         )}
         {f.paymentType==="monthly_rate_split"&&(()=>{
           const total=parseFloat(f.interestRate)||0;
-          const monthly=parseFloat(f.splitMonthlyRate)||0;
-          const closingPortion=Math.max(0,total-monthly);
+          const principal=parseFloat(f.principal)||0;
+          const monthlyRate=parseFloat(f.splitMonthlyRate)||0;
+          const monthlyDollar=principal>0?Math.round(principal*monthlyRate/100/12*100)/100:0;
+          const closingRate=Math.max(0,total-monthlyRate);
+          const closingDollar=principal>0?Math.round(principal*closingRate/100/12*100)/100:0;
+          const switchTo=mode=>{
+            if(mode==="dollar"&&splitEntryMode!=="dollar") setSplitMonthlyAmt(principal>0?String(monthlyDollar):"");
+            setSplitEntryMode(mode);
+          };
           return (
             <Lockable locked={locked.splitMonthlyRate} onToggle={()=>toggleLock("splitMonthlyRate")}>
-              <Inp label="Monthly-Paid Portion (%) *" percent value={f.splitMonthlyRate} onChange={s("splitMonthlyRate")} placeholder="7"
-                helpText={`e.g. their equity line's own rate — paid to them monthly; the rest of the ${total||"—"}% total (${closingPortion}%) accrues and is paid at closing`}/>
+              <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Monthly-Paid Portion *</label>
+              <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-lg p-0.5 mb-2 w-fit">
+                <button type="button" onClick={()=>switchTo("rate")}
+                  className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${splitEntryMode==="rate"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400"}`}>By Rate (%)</button>
+                <button type="button" onClick={()=>switchTo("dollar")}
+                  className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${splitEntryMode==="dollar"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400"}`}>By Dollar Amount ($)</button>
+              </div>
+              {splitEntryMode==="rate" ? (
+                <>
+                  <Inp percent value={f.splitMonthlyRate} onChange={s("splitMonthlyRate")} placeholder="7"/>
+                  <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-3">
+                    {principal>0?`= ${$$p(monthlyDollar)}/mo`:"Enter the principal above to see the dollar equivalent"}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Inp money value={splitMonthlyAmt} onChange={v=>{
+                    setSplitMonthlyAmt(v);
+                    const amt=parseFloat(v)||0;
+                    s("splitMonthlyRate")(principal>0?String(Math.round(amt*12/principal*100*10000)/10000):"0");
+                  }} placeholder="583"/>
+                  <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-3">
+                    {principal>0?`= ${monthlyRate.toFixed(3).replace(/\.?0+$/,"")}% of the ${total||"—"}% total`:"Enter the principal above first"}
+                  </p>
+                </>
+              )}
+              <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-1">
+                Rest of the {total||"—"}% total — {closingRate.toFixed(3).replace(/\.?0+$/,"")}%{principal>0?` (≈ ${$$p(closingDollar)}/mo if it were paid monthly)`:""} — accrues instead and is paid at closing
+              </p>
             </Lockable>
           );
         })()}
@@ -7850,6 +7890,8 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
   const [ef, setEf] = useState(null);
   const [efLocked, setEfLocked] = useState({});
   const toggleEfLock = k => setEfLocked(l=>({...l,[k]:!l[k]}));
+  const [splitEntryMode,setSplitEntryMode]=useState("rate");
+  const [splitMonthlyAmt,setSplitMonthlyAmt]=useState("");
   const [closeModal, setCloseModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [drawDate, setDrawDate] = useState(TODAY);
@@ -8017,12 +8059,46 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             )}
             {ef.paymentType==="monthly_rate_split"&&(()=>{
               const total=parseFloat(ef.interestRate)||0;
-              const monthly=parseFloat(ef.splitMonthlyRate)||0;
-              const closingPortion=Math.max(0,total-monthly);
+              const principal=parseFloat(ef.principal)||0;
+              const monthlyRate=parseFloat(ef.splitMonthlyRate)||0;
+              const monthlyDollar=principal>0?Math.round(principal*monthlyRate/100/12*100)/100:0;
+              const closingRate=Math.max(0,total-monthlyRate);
+              const closingDollar=principal>0?Math.round(principal*closingRate/100/12*100)/100:0;
+              const switchTo=mode=>{
+                if(mode==="dollar"&&splitEntryMode!=="dollar") setSplitMonthlyAmt(principal>0?String(monthlyDollar):"");
+                setSplitEntryMode(mode);
+              };
               return (
                 <Lockable locked={efLocked.splitMonthlyRate} onToggle={()=>toggleEfLock("splitMonthlyRate")}>
-                  <Inp label="Monthly-Paid Portion (%)" value={ef.splitMonthlyRate} onChange={v=>setEf(f=>({...f,splitMonthlyRate:v}))} percent
-                    helpText={`Rest of the ${total||"—"}% total (${closingPortion}%) accrues and is paid at closing`}/>
+                  <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Monthly-Paid Portion</label>
+                  <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-lg p-0.5 mb-2 w-fit">
+                    <button type="button" onClick={()=>switchTo("rate")}
+                      className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${splitEntryMode==="rate"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400"}`}>By Rate (%)</button>
+                    <button type="button" onClick={()=>switchTo("dollar")}
+                      className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${splitEntryMode==="dollar"?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400"}`}>By Dollar Amount ($)</button>
+                  </div>
+                  {splitEntryMode==="rate" ? (
+                    <>
+                      <Inp value={ef.splitMonthlyRate} onChange={v=>setEf(f=>({...f,splitMonthlyRate:v}))} percent/>
+                      <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-3">
+                        {principal>0?`= ${$$p(monthlyDollar)}/mo`:"Enter the principal above to see the dollar equivalent"}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Inp money value={splitMonthlyAmt} onChange={v=>{
+                        setSplitMonthlyAmt(v);
+                        const amt=parseFloat(v)||0;
+                        setEf(f=>({...f,splitMonthlyRate:principal>0?String(Math.round(amt*12/principal*100*10000)/10000):"0"}));
+                      }}/>
+                      <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-3">
+                        {principal>0?`= ${monthlyRate.toFixed(3).replace(/\.?0+$/,"")}% of the ${total||"—"}% total`:"Enter the principal above first"}
+                      </p>
+                    </>
+                  )}
+                  <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-1">
+                    Rest of the {total||"—"}% total — {closingRate.toFixed(3).replace(/\.?0+$/,"")}%{principal>0?` (≈ ${$$p(closingDollar)}/mo if it were paid monthly)`:""} — accrues instead and is paid at closing
+                  </p>
                 </Lockable>
               );
             })()}
