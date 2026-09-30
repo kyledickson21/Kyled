@@ -7901,6 +7901,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
   const [ef, setEf] = useState(null);
   const [efLocked, setEfLocked] = useState({});
   const toggleEfLock = k => setEfLocked(l=>({...l,[k]:!l[k]}));
+  const [efBlockMsg, setEfBlockMsg] = useState("");
   const [splitEntryMode,setSplitEntryMode]=useState("rate");
   const [splitMonthlyAmt,setSplitMonthlyAmt]=useState("");
   const [closeModal, setCloseModal] = useState(false);
@@ -7942,7 +7943,20 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       specialTerms: loan.specialTerms||"",
       drawFacility: loan.drawFacility||null,
     });
-    setEfLocked({});
+    // This is always an existing loan, so every field already holds a real, presumably
+    // correct value — start it locked (the same "already-correct data starts protected"
+    // rule every other form in the app follows), rather than forcing a re-confirm of
+    // everything just to change one unrelated field like Notes.
+    setEfLocked({
+      principal: !!loan.principal,
+      startDate: !!loan.startDate,
+      interestType: loan.interestRate!=null,
+      interestRate: loan.interestRate!=null,
+      monthlyPayment: !!loan.monthlyPayment,
+      splitMonthlyRate: loan.splitMonthlyRate!=null,
+      drawCommitted: !!loan.drawFacility?.committed,
+    });
+    setEfBlockMsg("");
     setEditing(true);
   };
 
@@ -7956,11 +7970,36 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
     setDrawLocked({});
   };
 
+  // Every lockable field has to actually be confirmed (✓) before this can save — same
+  // mandatory-confirm rule the shared Add Lender Money form already applies when editing
+  // this exact loan from a property's own page; this inline editor was skipping it.
+  const requiredEfLockKeys = ["principal","startDate","interestType","interestRate",
+    ...(ef?.paymentType==="monthly_fixed"?["monthlyPayment"]:[]),
+    ...(ef?.paymentType==="monthly_rate_split"?["splitMonthlyRate"]:[]),
+    ...(ef?.drawFacility?["drawCommitted"]:[])];
+  const efAllConfirmed = ef ? requiredEfLockKeys.every(k=>efLocked[k]) : false;
+
   const saveEdit = () => {
     if(!ef) return;
+    setEfBlockMsg("");
+    if(!efAllConfirmed){ alert("Tap ✓ Confirm on every field above before this can be saved."); return; }
+    if(ef.principal!==""&&isNaN(parseFloat(ef.principal))){ alert("Principal isn't a valid number."); return; }
+    if(ef.interestRate!==""&&isNaN(parseFloat(ef.interestRate))){ alert((ef.interestType==="fixed"?"Fixed interest":"Interest rate")+" isn't a valid number."); return; }
+    if(ef.paymentType==="monthly_fixed"&&ef.monthlyPayment!==""&&isNaN(parseFloat(ef.monthlyPayment))){ alert("Monthly payment isn't a valid number."); return; }
+    if(ef.paymentType==="monthly_rate_split"&&ef.splitMonthlyRate!==""&&isNaN(parseFloat(ef.splitMonthlyRate))){ alert("Monthly-paid portion isn't a valid number."); return; }
+    const newPrincipal = ef.principal!==""?parseFloat(ef.principal)||loan.principal:loan.principal;
+    const newStartDate = ef.startDate||loan.startDate;
+    // Same timing/funding-gap check the shared Add Lender Money form runs whenever this
+    // loan is saved from there — re-run here too so the two editors agree on what's
+    // allowed instead of one being stricter than the other.
+    if(prop){
+      const conflict = propConflict(newStartDate, newPrincipal, prop);
+      if(conflict==='date'){ setEfBlockMsg("Cannot save — this start date is before the property was acquired. The loan would have been uncollateralized during that period."); return; }
+      if(conflict==='size'){ setEfBlockMsg("Cannot save — not enough funding gap on this property for this amount (including the usual 10% cushion)."); return; }
+    }
     const patch = {
-      principal: ef.principal!==""?parseFloat(ef.principal)||loan.principal:loan.principal,
-      startDate: ef.startDate||loan.startDate,
+      principal: newPrincipal,
+      startDate: newStartDate,
       endDate: ef.endDate||null,
       dueDate: ef.dueDate||null,
       interestType: ef.interestType,
@@ -8058,7 +8097,9 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             <Lockable locked={efLocked.dueDate} onToggle={()=>toggleEfLock("dueDate")}>
               <DateInp label="Due Date (optional)" value={ef.dueDate} onChange={v=>setEf(f=>({...f,dueDate:v}))} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
             </Lockable>
-            <Sel label="Interest Type" value={ef.interestType} onChange={v=>setEf(f=>({...f,interestType:v}))} options={[["percentage","% Per Year"],["fixed","Fixed $ Amount"]]}/>
+            <Lockable locked={efLocked.interestType} onToggle={()=>toggleEfLock("interestType")}>
+              <Sel label="Interest Type" value={ef.interestType} onChange={v=>setEf(f=>({...f,interestType:v}))} options={[["percentage","% Per Year"],["fixed","Fixed $ Amount"]]}/>
+            </Lockable>
             <Lockable locked={efLocked.interestRate} onToggle={()=>toggleEfLock("interestRate")}>
               <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} money={ef.interestType==="fixed"} percent={ef.interestType!=="fixed"}/>
             </Lockable>
@@ -8158,8 +8199,10 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
               )}
             </div>
           )}
+          {efBlockMsg&&<p className="text-[11px] text-red-500 dark:text-red-400 mb-2">{efBlockMsg}</p>}
+          {!efAllConfirmed&&<p className="text-[11px] text-red-500 dark:text-red-400 mb-2">Tap ✓ Confirm on every field above before this can be saved.</p>}
           <div className="flex gap-2 mt-4">
-            <Btn color="blue" onClick={saveEdit}>Save Changes</Btn>
+            <Btn color={efAllConfirmed?"blue":"ghost"} disabled={!efAllConfirmed} onClick={saveEdit}>Save Changes</Btn>
             <Btn color="ghost" onClick={()=>{setEditing(false);setDeleteConfirm(false);}}>Cancel</Btn>
           </div>
           {update&&(
