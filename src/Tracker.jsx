@@ -8800,6 +8800,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
   const [globalSearch,setGlobalSearch]=useState('');
+  const [globalSelIdx,setGlobalSelIdx]=useState(-1);
   const [navStack,setNavStack]=useState([]);
   const [panelStack,setPanelStack]=useState([]);
   const [rehabHover,setRehabHover]=useState(false);
@@ -8973,6 +8974,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const globalResults=(()=>{
     if(globalSearch.length<2)return[];
     const q=globalSearch.toLowerCase();
+    const qDigits=globalSearch.replace(/[^0-9]/g,"");
     const results=[];
     // Active properties
     data.properties.filter(p=>!p.dateSold).forEach(p=>{
@@ -8984,30 +8986,70 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       if(p.address?.toLowerCase().includes(q))
         results.push({kind:'property',label:p.address||"",sub:`Sold ${p.dateSold}`,entity:{type:'property',id:p.id}});
     });
-    // Lenders — group by name, attach their individual loans as sub-items
-    const allActiveLoans=[
-      ...data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>({...l,propAddress:p.address,propId:p.id}))),
-      ...(data.unassigned||[]).filter(l=>!l.endDate).map(l=>({...l,propAddress:null,propId:null})),
+    // Every loan, active or closed — the base pool for lender/note/amount matches below,
+    // so a lender who's fully paid off (or a closed loan's note) is still findable.
+    const allLoans=[
+      ...data.properties.flatMap(p=>p.loans.map(l=>({...l,propAddress:p.address,propId:p.id}))),
+      ...(data.unassigned||[]).map(l=>({...l,propAddress:null,propId:null})),
     ];
+    // Lenders — group by name, attach their individual loans (active + closed) as sub-items
     const seenLenders=new Set();
-    allActiveLoans.forEach(l=>{
+    allLoans.forEach(l=>{
       if(l.lenderName?.toLowerCase().includes(q)&&!seenLenders.has(l.lenderName)){
         seenLenders.add(l.lenderName);
-        const loans=allActiveLoans.filter(x=>x.lenderName===l.lenderName);
-        const totPrin=loans.reduce((s,x)=>s+(x.principal||0),0);
+        const loans=allLoans.filter(x=>x.lenderName===l.lenderName);
+        const active=loans.filter(x=>!x.endDate);
+        const totPrin=active.reduce((s,x)=>s+(x.principal||0),0);
         results.push({
           kind:'lender',
           label:l.lenderName,
-          sub:`${loans.length} loan${loans.length!==1?'s':''} · ${$$p(totPrin)} active`,
+          sub:active.length>0?`${active.length} active loan${active.length!==1?'s':''} · ${$$p(totPrin)}`:`${loans.length} closed loan${loans.length!==1?'s':''}`,
           entity:{type:'lender',name:l.lenderName},
-          loans:loans.map(x=>({
-            label:`${$$p(x.principal)} · ${x.propAddress||'Unassigned'}`,
+          loans:loans.slice(0,5).map(x=>({
+            label:`${$$p(x.principal)} · ${x.propAddress||'Unassigned'}${x.endDate?' (closed)':''}`,
             entity:{type:'loan',loanId:x.id,propId:x.propId||null},
           })),
         });
       }
     });
-    return results.slice(0,6);
+    // Loan notes ("special terms") — only when the lender-name match above didn't already
+    // surface this loan's lender.
+    allLoans.forEach(l=>{
+      if(l.specialTerms&&l.specialTerms.toLowerCase().includes(q)&&!seenLenders.has(l.lenderName)){
+        results.push({kind:'note',label:l.lenderName||'Loan',sub:l.specialTerms,entity:{type:'loan',loanId:l.id,propId:l.propId||null}});
+      }
+    });
+    // Loans by amount — require at least 3 digits so "10" doesn't match half the ledger.
+    if(qDigits.length>=3){
+      allLoans.forEach(l=>{
+        if(String(Math.round(l.principal||0)).includes(qDigits)){
+          results.push({kind:'amount',label:$$p(l.principal),sub:`${l.lenderName||'Unknown'} · ${l.propAddress||'Unassigned'}${l.endDate?' (closed)':''}`,entity:{type:'loan',loanId:l.id,propId:l.propId||null}});
+        }
+      });
+    }
+    // Overage checks — surfaces the parent property.
+    data.properties.forEach(p=>{
+      (p.overageChecks||[]).forEach(oc=>{
+        const src=overageSourceLabel(oc.source);
+        if((oc.notes||'').toLowerCase().includes(q)||src.toLowerCase().includes(q)){
+          results.push({kind:'overage',label:p.address||"",sub:`Overage Check · ${src}${oc.notes?' — '+oc.notes:''}`,entity:{type:'property',id:p.id}});
+        }
+      });
+    });
+    // Whiteboard cards — no dedicated detail route, so this just jumps to the Whiteboard tab.
+    (data.whiteboard?.cards||[]).forEach(c=>{
+      if(c.address&&c.address.toLowerCase().includes(q)){
+        results.push({kind:'whiteboard',label:c.address,sub:`Whiteboard · ${c.direction==='in'?'money in':'money out'}${c.amount?' · '+$$p(c.amount):''}`,action:()=>setTab('Whiteboard')});
+      }
+    });
+    // Home screen shortcuts (folders + quick links) — jumps to the Home screen.
+    (data.folders||[]).forEach(f=>{
+      if(f.name&&f.name.toLowerCase().includes(q)) results.push({kind:'home',label:f.name,sub:'Home Screen Folder',action:()=>onHome?.()});
+    });
+    (data.quickLinks||[]).forEach(l=>{
+      if(l.label&&l.label.toLowerCase().includes(q)) results.push({kind:'home',label:l.label,sub:'Home Screen Shortcut',action:()=>onHome?.()});
+    });
+    return results.slice(0,12);
   })();
 
   // ── Sidebar monochrome SVG icons ──
@@ -9208,39 +9250,57 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             <div ref={globalSearchRef} className="relative flex-1 min-w-0 sm:flex-none sm:w-72">
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-zinc-500 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"/></svg>
-                <input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)}
-                  placeholder="Search properties, lenders…"
+                <input type="text" value={globalSearch}
+                  onChange={e=>{setGlobalSearch(e.target.value);setGlobalSelIdx(-1);}}
+                  onKeyDown={e=>{
+                    if(!globalResults.length) return;
+                    if(e.key==='ArrowDown'){e.preventDefault();setGlobalSelIdx(i=>(i+1)%globalResults.length);}
+                    else if(e.key==='ArrowUp'){e.preventDefault();setGlobalSelIdx(i=>(i-1+globalResults.length)%globalResults.length);}
+                    else if(e.key==='Enter'&&globalSelIdx>=0){
+                      const r=globalResults[globalSelIdx];
+                      if(r.action) r.action(); else navigate(r.entity);
+                      setGlobalSearch('');setGlobalSelIdx(-1);
+                    } else if(e.key==='Escape'){setGlobalSearch('');setGlobalSelIdx(-1);}
+                  }}
+                  placeholder="Search properties, lenders, notes, amounts…"
                   className="w-full pl-8 pr-3 py-1.5 rounded-full text-sm bg-black/[0.06] dark:bg-white/[0.08] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 border-0"/>
               </div>
               {globalSearch.length>1&&(
-                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
+                <div className="absolute top-full left-0 right-0 mt-1.5 max-h-[70vh] overflow-y-auto bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
                   {globalResults.length===0
                     ?<div className="px-4 py-3 text-sm text-slate-400 dark:text-zinc-500">No results</div>
-                    :globalResults.map((r,i)=>(
+                    :globalResults.map((r,i)=>{
+                      const badge={
+                        lender:['Lender','bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'],
+                        note:['Note','bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'],
+                        amount:['Amount','bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'],
+                        overage:['Overage','bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'],
+                        whiteboard:['Whiteboard','bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400'],
+                        home:['Home Screen','bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400'],
+                      }[r.kind]||['Property','bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400'];
+                      return (
                       <div key={i} className="border-b border-slate-50 dark:border-zinc-700/40 last:border-0">
-                        {/* Property or lender header row */}
-                        <button onClick={()=>{navigate(r.entity);setGlobalSearch('');}}
-                          className="w-full text-left flex items-start gap-2.5 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 mt-0.5 ${
-                            r.kind==='lender'
-                              ?'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                              :'bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400'
-                          }`}>{r.kind==='lender'?'Lender':'Property'}</span>
+                        {/* Result header row */}
+                        <button onClick={()=>{if(r.action) r.action(); else navigate(r.entity);setGlobalSearch('');setGlobalSelIdx(-1);}}
+                          onMouseEnter={()=>setGlobalSelIdx(i)}
+                          className={`w-full text-left flex items-start gap-2.5 px-4 py-2.5 transition-colors ${globalSelIdx===i?'bg-slate-50 dark:bg-zinc-700':'hover:bg-slate-50 dark:hover:bg-zinc-700'}`}>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 mt-0.5 ${badge[1]}`}>{badge[0]}</span>
                           <div className="min-w-0">
                             <div className="text-sm text-slate-800 dark:text-zinc-200 font-semibold truncate">{r.label}</div>
-                            {r.sub&&<div className="text-xs text-slate-400 dark:text-zinc-500">{r.sub}</div>}
+                            {r.sub&&<div className="text-xs text-slate-400 dark:text-zinc-500 truncate">{r.sub}</div>}
                           </div>
                         </button>
                         {/* Loan sub-rows for lender results */}
                         {r.loans&&r.loans.map((loan,j)=>(
-                          <button key={j} onClick={()=>{navigate(loan.entity);setGlobalSearch('');}}
+                          <button key={j} onClick={()=>{navigate(loan.entity);setGlobalSearch('');setGlobalSelIdx(-1);}}
                             className="w-full text-left flex items-center gap-2 pl-10 pr-4 py-2 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
                             <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-slate-300 dark:text-zinc-600 shrink-0"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/></svg>
                             <span className="text-xs text-slate-600 dark:text-zinc-300 truncate">{loan.label}</span>
                           </button>
                         ))}
                       </div>
-                    ))
+                      );
+                    })
                   }
                 </div>
               )}
