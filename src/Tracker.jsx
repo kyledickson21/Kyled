@@ -2352,6 +2352,11 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 </div>
               </div>
             )}
+            {!balanced&&(
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                {wire<=0?"Enter the wire amount above before closing — Confirm is disabled until then.":"Nexus Self-Funding went negative — lenders + title took more than the total costs cover. Double-check the wire, title, and lender payoff amounts above before closing."}
+              </p>
+            )}
 
             {/* Rental toggle */}
             <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3 bg-white dark:bg-zinc-900">
@@ -2366,7 +2371,10 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
             </div>
 
             <div className="flex gap-2 pt-1">
-              <Btn onClick={handleConfirm} color="navy" full>✓ Confirm &amp; Close Property</Btn>
+              {balanced
+                ? <Btn onClick={handleConfirm} color="navy" full>✓ Confirm &amp; Close Property</Btn>
+                : <Btn onClick={()=>{if(window.confirm("The numbers here don't balance — close anyway? Double-check this is really what you want before continuing."))handleConfirm();}} color="ghost" full>⚠ Confirm Anyway — Unbalanced</Btn>
+              }
               <Btn onClick={()=>setStep(1)} color="ghost">← Back</Btn>
               <Btn onClick={onClose} color="ghost">Cancel</Btn>
             </div>
@@ -4755,6 +4763,11 @@ function EditClosingModal({ prop, onSave, onClose }) {
                 </div>
               </div>
             )}
+            {!balanced&&(
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                {wire<=0?"Enter the wire amount above before saving — Save is disabled until then.":"Nexus Self-Funding went negative — lenders + title took more than the total costs cover. Double-check the wire, title, and lender payoff amounts above before saving."}
+              </p>
+            )}
 
             {/* Rental toggle */}
             <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3 bg-white dark:bg-zinc-900">
@@ -4769,7 +4782,10 @@ function EditClosingModal({ prop, onSave, onClose }) {
             </div>
 
             <div className="flex gap-2 pt-1">
-              <Btn onClick={handleConfirm} color="navy" full>✓ Save Changes</Btn>
+              {balanced
+                ? <Btn onClick={handleConfirm} color="navy" full>✓ Save Changes</Btn>
+                : <Btn onClick={()=>{if(window.confirm("The numbers here don't balance — save anyway? Double-check this is really what you want before continuing."))handleConfirm();}} color="ghost" full>⚠ Save Anyway — Unbalanced</Btn>
+              }
               <Btn onClick={()=>setStep(1)} color="ghost">← Back</Btn>
               <Btn onClick={onClose} color="ghost">Cancel</Btn>
             </div>
