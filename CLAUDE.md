@@ -13,11 +13,13 @@ A private iOS-style dashboard for Kyle Dickson / Nexus Homes to track private mo
 ## Repo Structure
 ```
 src/
-  Tracker.jsx   ← entire money tracker (2600+ lines, single file)
-  Home.jsx      ← iOS-style home screen with app icons and folders
-  supabase.js   ← loadData() / saveData() / subscribeToChanges()
-  main.jsx      ← entry point
-  index.css     ← Tailwind base
+  Tracker.jsx    ← entire money tracker (9400+ lines, single file)
+  Home.jsx       ← iOS-style home screen with app icons and folders
+  App.jsx        ← auth + dark mode + Tracker/Home/LenderPortal view switch
+  LenderPortal.jsx ← read-only portal for lenders with a login (their own loans only)
+  supabase.js    ← loadData() / saveData() / subscribeToChanges() + lender-account edge functions
+  main.jsx       ← entry point
+  index.css      ← Tailwind base
 ```
 
 ## Branch & Deploy
@@ -48,14 +50,25 @@ update(d => ({...d, properties: [{newField: value}]}))
       purchaseDate: "2024-01-15",   // optional
       purchasePrice: 150000,         // optional
       rehabBudget: 30000,            // optional
+      projectMonths: null,           // optional — overrides the estimated hold length
       monthlyHolding: 500,           // optional
-      dateSold: "2024-06-01",        // set when closed
-      isRental: false,               // set when closed (bool)
-      closingData: {                 // set when closed
+      closingBuy: {                  // itemized Cost-to-Buy, straight off the purchase HUD
+        cashFromBorrower: 0, depositEarnest: 0, loanToTitle: 0,
+        rehabHoldback: 0, loanPointsFees: 0, prepaidInterest: 0,
+        // each HUD_KEYS field can also carry a matching `<key>Items` array of itemized
+        // entries ({id, note, value}) when a line was split into multiple entries
+      },
+      dateSold: "2024-06-01",        // set when closed; cleared by "Reopen Property"
+      isRental: false,               // set when closed (bool); cleared on reopen
+      overageChecks: [               // post-closing insurance/tax/overcharge refunds
+        {id, date, source: "insurance"|"taxes"|"overcharge"|"other", amount, notes}
+      ],
+      closingData: {                 // set when closed; cleared on reopen
         wire: 0, cashToClose: 0, rehab: 0, misc: 0,
         moneyCosts: 0, totalCosts: 0, overageRefund: 0,
-        profit: 0, titleTotal: 0,
-        lenderPayoffs: [{loanId, lenderName, principalPayoff, wireAmount, type}]
+        profit: 0, titleTotal: 0, selfFunded: 0,
+        lenderPayoffs: [{loanId, lenderName, type, principalPayoff, interestPayoff,
+          titleInterestPayoff, lenderFees, wireAmount, totalPayoff, paidAtTitle, isMonthly}]
       },
       loans: [
         {
@@ -65,6 +78,7 @@ update(d => ({...d, properties: [{newField: value}]}))
           principal: 100000,
           startDate: "2024-01-15",
           endDate: null,             // null = active
+          dueDate: null,             // optional fixed maturity date
           interestRate: 10,          // percent/year OR fixed dollar amount
           interestType: "percentage" | "fixed",
           paymentType: "closing" | "monthly_rate" | "monthly_fixed" | "monthly_rate_split",
@@ -73,15 +87,28 @@ update(d => ({...d, properties: [{newField: value}]}))
                                      // monthly (e.g. lender's equity-line rate); the rest
                                      // (interestRate - splitMonthlyRate) accrues to closing
           specialTerms: "",
-          drawFacility: null | {committed: 0, drawn: 0, undrawn: 0}
+          drawFacility: null | {committed: 0, draws: [{id, date, amount}]}
         }
       ]
     }
   ],
   unassigned: [/* same shape as loans but not on a property */],
+  lenders: [                // per-lender billing settings, keyed by name (not the loan records)
+    {id, name, loanType, paymentSettings: {
+      graceMonth, prorateStubAtClosing, firstFullMonthAtClosing,
+      dayCountBasis, monthlyMethod: "perDiem"|"flat", drawFee
+    }}
+  ],
+  rollingLoans: [],         // loan ids flagged in Rehab Priority as "will roll", synced across devices
+  propertyOrder: [],        // Active Properties manual drag-sort order (property ids)
+  whiteboard: {             // cash-flow calendar (Whiteboard tab)
+    startingBalance: 0,
+    cards: [{id, kind: "property"|"manual"|"misc"|"bill", propId, address, amount,
+      direction: "in"|"out", day: "YYYY-MM-DD"|null, order}]
+  },
   homeOrder: [],     // Home screen icon order
-  folders: [],       // Home screen folders
-  quickLinks: []     // Home screen quick links
+  folders: [],       // Home screen folders ({id, name, linkIds})
+  quickLinks: []     // Home screen quick links ({id, label, url, icon, useLogo})
 }
 ```
 
@@ -91,52 +118,72 @@ const $$p = n => penny-precise ($150,000.00)                 // used everywhere 
 const $$ps = n => signed penny-precise (+$150,000.00)
 const $$c = n => compact ($150K, $1.5M)                       // glance-only dashboard KPI tiles ONLY
 
-const calcBalance(loan, asOf=TODAY)   // current balance including interest
-const calcIntEarned(loan, asOf=TODAY) // interest earned so far
-const uid()                           // random 7-char ID
-const propNeeded(prop, loans)         // total funding needed
-const effectiveMonths(prop)           // estimated hold months
-const monthlyLoanPayment(loan)        // monthly interest cost
+const calcBalance(loan, asOf=TODAY)        // current balance including interest
+const calcIntEarned(loan, asOf=TODAY)      // interest earned so far
+const calcMonthlyPaidPortion(loan, asOf)   // monthly_rate_split: portion paid monthly so far
+const fmtRate(loan)                        // human-readable rate/terms string, respects paymentType
+const uid()                                // random 7-char ID
+const propNeeded(prop, loans)              // total funding needed
+const propConflict(startDate, amount, prop) // null | "date" | "size" — loan-placement validity
+const effectiveMonths(prop)                // estimated hold months
+const monthlyLoanPayment(loan)             // monthly interest cost
+const effectiveProfit(prop)                // closing profit + any overage checks
+const useDirty / confirmDiscard / useDirtyGuard  // warn-before-discard for modals with unsaved edits
 ```
 
 ## Tracker.jsx Component Map
 | Component | Around line | Purpose |
 |---|---|---|
-| `LenderMoneyForm` | ~290 | Add/edit a loan or unassigned fund |
-| `MarkSoldModal` | ~487 | 2-step close-out flow for a property |
-| `EditClosingModal` | ~2015 | Edit existing closing data after the fact |
-| `CloseLoanModal` | ~470 | Close an individual loan early |
-| `PropertiesPage` | ~1190 | "Active Properties" tab |
-| `LenderDashboard` | ~1677 | "Lenders" tab |
-| `PropertyDashboard` | ~1850 | "Prop Dash" tab |
-| `ClosedDealsPage` | ~2088 | "Closed Deals" tab (flip/rental tabs) |
-| `HistoryPage` | ~2303 | "History" tab (money trail) |
-| `Tracker` (default export) | ~2545 | Main shell with nav tabs |
+| `LenderMoneyForm` | ~569 | Add/edit a loan or unassigned fund |
+| `PlaceSplitModal` | ~1397 | Place/split an unassigned fund or move a loan across properties |
+| `CloseLoanModal` | ~1641 | Close an individual loan early |
+| `MarkSoldModal` | ~1701 | 2-step close-out flow for a property |
+| `PropertyForm` | ~2391 | Add/edit a property, incl. itemized Cost-to-Buy |
+| `PropertiesPage` | ~2920 | "Properties" tab |
+| `LenderDashboard` | ~3674 | "Lenders" tab |
+| `AllLoansPage` | ~3826 | "Loans" tab |
+| `PropertyDashboard` | ~4047 | "Prop Dashboard" tab |
+| `EditClosingModal` | ~4222 | Edit existing closing data after the fact |
+| `ClosedDealsPage` | ~4904 | "Records" tab, Closed sub-view (flip/rental tabs) |
+| `HistoryPage` | ~5140 | "Records" tab, History sub-view (money trail) |
+| `RehabPriorityPage` | ~5739 | "Rehab Priority" tab |
+| `OverageCheckModal` | ~6160 | Add/edit a post-closing overage refund |
+| `ManageLendersPage` | ~6206 | "Portal Access" — lender portal login management |
+| `DrawsPage` | ~6317 | "Draw Tracker" tab |
+| `WhiteboardPage` | ~6957 | "Whiteboard" tab — cash-flow calendar |
+| `PropertyDetailPage` | ~7143 | Property detail panel/page |
+| `LenderDetailPage` | ~7546 | Lender detail panel/page |
+| `LoanDetailPage` | ~7969 | Loan detail panel/page |
+| `DashboardPage` | ~8396 | "Dashboard" tab (home/overview) |
+| `Tracker` (default export) | ~8864 | Main shell with nav tabs |
 
 ## Tracker Tabs
-```js
-const TABS = [
-  {id:"Properties",  label:"🏠", full:"Active Properties"},
-  {id:"LenderDash",  label:"👥", full:"Lenders"},
-  {id:"PropDash",    label:"📊", full:"Prop Dash"},
-  {id:"Closed",      label:"🏁", full:"Closed Deals"},
-  {id:"History",     label:"📋", full:"History"},
-]
+Tab ids switched on in `Tracker`'s render (`setTab(id)`), matching the sidebar/mobile nav:
 ```
+Dashboard | Properties | LenderDash ("Lenders") | AllLoans ("Loans") | RehabPriority
+Draws ("Draw Tracker") | PropDash ("Prop Dashboard") | Closed + History (grouped as "Records")
+Whiteboard
+```
+"Portal Access" (lender login management) is reached from the settings menu, not the main nav.
 
 ## State & Update Pattern
 ```js
 // In the main Tracker component:
 const [data, setData] = useState(null);
+const undoStackRef = useRef([]);   // capped stack of { inverse: currentData => revertedData }
 
 const update = fn => {
   setData(prev => {
     const next = fn(prev);
-    save(next);   // saves to Supabase
+    const inverse = computeInverse(prev, next);   // diff-based, for Undo
+    if (inverse) undoStackRef.current = [...undoStackRef.current, {inverse}].slice(-10);
+    saveQueueRef.current = saveQueueRef.current.then(() => persistWithRetry(next, fn));
     return next;
   });
 };
-// `update` is passed as a prop to every page component
+// `update` is passed as a prop to every page component. Saves are serialized through
+// saveQueueRef and use optimistic concurrency (updatedAtRef) — a conflict retries by
+// re-running `fn` against the freshly-loaded data instead of overwriting it.
 ```
 
 ## UI Design Language
@@ -150,13 +197,21 @@ const update = fn => {
 ## Inline Component Library (inside Tracker.jsx)
 ```jsx
 <Modal title="..." onClose={fn}>...</Modal>
-<Btn color="blue|green|purple|red|ghost|navy" onClick={fn} full?>label</Btn>
+<Btn color="blue|green|purple|red|ghost|navy" onClick={fn} full? sm? disabled?>label</Btn>
 <DateInp label="..." value={str} onChange={fn} helpText?="..."/>
 <Chip color="green|red|blue|gray|purple">label</Chip>
 <TypeBadge type="private|hard" sm?/>
-<Inp label="..." value={str} onChange={fn} .../>
-<Sel label="..." value={str} onChange={fn} options={[{value,label}]}/>
+<Inp label="..." value={str} onChange={fn} money? percent? .../>
+<Sel label="..." value={str} onChange={fn} options={[[value,label], ...]}/>   {/* array of tuples, not {value,label} objects */}
+<MoneyField value={str} onChange={fn} placeholder? .../>   {/* bare $ input, no label — used inside custom layouts */}
+<Lockable locked={bool} onToggle={fn}>...</Lockable>              {/* full-width confirm-before-save wrapper */}
+<LockableInline locked={bool} onToggle={fn}>...</LockableInline>  {/* inline variant, same pattern */}
+<DropdownPortal anchorRef={ref} open={bool} onClose={fn}>...</DropdownPortal>  {/* portal-rendered dropdown */}
 ```
+Forms with unsaved-edit protection use the `useDirty`/`confirmDiscard`/`useDirtyGuard` trio
+(declared near `usePersistedState`, top of file): a form that owns its own `<Modal>` calls
+`useDirtyGuard` directly; a form whose `<Modal>` is rendered by its caller instead exposes an
+`onDirtyChange` prop and the caller tracks its own `formDirty` state + guarded close handler.
 
 ## History Tab — Money Trail Logic
 - **Start events**: `nc = +principal` (money in from lender, green `+$X`)
@@ -171,7 +226,12 @@ const update = fn => {
 - "+ Close a Property" button opens a property picker → MarkSoldModal
 - ✏️ Edit button on each card opens EditClosingModal to fix mistakes
 - "○ Mark Rental" toggle on each card (retroactive)
+- ↺ Reopen button clears `dateSold`/`isRental`/`closingData`, moving the property back to
+  Active Properties — deliberately does NOT reopen any loans that were closed/rolled as
+  part of that sale (see `PropCard`/`PropertyDetailPage`'s reopen handler)
 
 ## Known Pre-existing Warnings (ignore, don't fix)
-- esbuild duplicate key warnings at lines ~275-279 (`paymentType`, `monthlyPayment`, `splitMonthlyRate`)
+- esbuild duplicate key warnings around lines ~591-597 in `LenderMoneyForm`'s default state
+  (`paymentType`, `monthlyPayment`, `splitMonthlyRate`, `drawFacility` each set once as a
+  literal default, then again from `init` via spread — intentional, not a bug)
 - These don't affect functionality or the build succeeding
