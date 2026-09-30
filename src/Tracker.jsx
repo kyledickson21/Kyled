@@ -3040,8 +3040,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     setModal(null);
   };
 
-  const delProp = id => { if(!confirm("Delete this property and all its loans?"))return; update(d=>({...d,properties:d.properties.filter(p=>p.id!==id)})); };
-  const delUnassigned = id => { if(!confirm("Remove this unassigned fund?"))return; update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==id)})); };
+  const delProp = id => { if(!window.confirm("Delete this property and all its loans?"))return; update(d=>({...d,properties:d.properties.filter(p=>p.id!==id)})); };
+  const delUnassigned = id => { if(!window.confirm("Remove this unassigned fund?"))return; update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==id)})); };
 
   const handleQuickDraw = ({propId,loanId,date,amount}) => {
     update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,
@@ -7943,7 +7943,6 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
     setEf(f=>({...f,splitMonthlyRate:principal>0?String(Math.round(amt*12/principal*100*10000)/10000):"0"}));
   },[splitEntryMode,splitMonthlyAmt,ef?.principal]);
   const [closeModal, setCloseModal] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [drawDate, setDrawDate] = useState(TODAY);
   const [drawAmt, setDrawAmt] = useState("");
   const [drawLocked, setDrawLocked] = useState({});
@@ -8068,6 +8067,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
   };
 
   const deleteLoan = () => {
+    if(!window.confirm("Delete this loan? This can't be undone.")) return;
     update(d=>({
       ...d,
       properties: d.properties.map(p=>({...p,loans:p.loans.filter(l=>l.id!==loanId)})),
@@ -8254,15 +8254,12 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
           {!efAllConfirmed&&<p className="text-[11px] text-red-500 dark:text-red-400 mb-2">Tap ✓ Confirm on every field above before this can be saved.</p>}
           <div className="flex gap-2 mt-4">
             <Btn color={efAllConfirmed?"blue":"ghost"} disabled={!efAllConfirmed} onClick={saveEdit}>Save Changes</Btn>
-            <Btn color="ghost" onClick={()=>{setEditing(false);setDeleteConfirm(false);}}>Cancel</Btn>
+            <Btn color="ghost" onClick={()=>setEditing(false)}>Cancel</Btn>
           </div>
           {update&&(
             <div className="mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-2">
               {!loan.endDate&&<Btn color="ghost" onClick={()=>setCloseModal(true)}>Close Loan</Btn>}
-              {!deleteConfirm
-                ?<Btn color="ghost" onClick={()=>setDeleteConfirm(true)}>🗑 Delete</Btn>
-                :<><Btn color="red" onClick={deleteLoan}>Confirm Delete</Btn><Btn color="ghost" onClick={()=>setDeleteConfirm(false)}>No</Btn></>
-              }
+              <Btn color="red" onClick={deleteLoan}>🗑 Delete</Btn>
             </div>
           )}
         </div>
@@ -8518,7 +8515,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
   };
 
   const delUnassigned = id => {
-    if (!confirm("Remove this unassigned fund?")) return;
+    if (!window.confirm("Remove this unassigned fund?")) return;
     update(d => ({ ...d, unassigned: d.unassigned.filter(u => u.id !== id) }));
   };
 
