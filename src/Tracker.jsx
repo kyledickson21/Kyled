@@ -79,7 +79,10 @@ const calcBalance = (l, asOf=TODAY) => {
 // How much of a split-rate loan's interest has already been paid out monthly (the portion
 // matching the lender's own cost of funds) as of a given date — 0 for every other type.
 const calcMonthlyPaidPortion = (l, asOf=TODAY) => {
-  if (!l?.startDate||!l?.principal||l.paymentType!=="monthly_rate_split") return 0;
+  // A split only means anything against a % rate — a Fixed $ loan has no "portion of the
+  // rate" to divide, so treat it as unsplit (this combination shouldn't be creatable from
+  // either edit screen anymore, but this keeps old/imported data from double-counting).
+  if (!l?.startDate||!l?.principal||l.paymentType!=="monthly_rate_split"||l.interestType==="fixed") return 0;
   const end = l.endDate&&l.endDate<=asOf ? l.endDate : asOf;
   if (l.startDate>end) return 0;
   return Math.round(l.principal*(l.splitMonthlyRate||0)/100*(daysBetween(l.startDate,end)/yearDays(l))*100)/100;
@@ -581,6 +584,15 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   // saved; a dollar entry is just converted to its rate equivalent as it's typed.
   const [splitEntryMode,setSplitEntryMode]=useState("rate");
   const [splitMonthlyAmt,setSplitMonthlyAmt]=useState("");
+  // Keep the rate in sync with the typed dollar amount whenever EITHER changes — not just
+  // at the moment the dollar box is typed into — so going back and editing the principal
+  // afterward doesn't leave a stale rate behind.
+  useEffect(()=>{
+    if(splitEntryMode!=="dollar") return;
+    const principal=parseFloat(f.principal)||0;
+    const amt=parseFloat(splitMonthlyAmt)||0;
+    sf(p=>({...p,splitMonthlyRate:principal>0?String(Math.round(amt*12/principal*100*10000)/10000):"0"}));
+  },[splitEntryMode,splitMonthlyAmt,f.principal]);
   const [blockMsg,setBlockMsg]=useState("");
   const [destPickerOpen,setDestPickerOpen]=useState(false);
   const [destSearch,setDestSearch]=useState("");
@@ -774,10 +786,13 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Lockable locked={locked.interestType} onToggle={()=>toggleLock("interestType")}>
-            <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={[
-              ["percentage","% Rate"],
-              ["fixed","Fixed Amount"],
-            ]}/>
+            <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={
+              // Split only makes sense as a % rate (it's dividing a rate into a monthly
+              // portion and a closing portion) — Fixed $ isn't offered while it's selected.
+              f.paymentType==="monthly_rate_split" ? [["percentage","% Rate"]] : [
+                ["percentage","% Rate"],
+                ["fixed","Fixed Amount"],
+              ]}/>
           </Lockable>
           <Lockable locked={locked.interestRate} onToggle={()=>toggleLock("interestRate")}>
             {isFixed
@@ -805,7 +820,13 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
             actually tap in and change it. */}
         {editingPaymentType ? (
           <Sel label="How Is Interest Paid? *" value={f.paymentType||"closing"} autoFocus
-            onChange={v=>{setPaymentTypeTouched(true);s("paymentType")(v);}}
+            onChange={v=>{
+              setPaymentTypeTouched(true);
+              // Split only makes sense as a % rate — drop back to percentage if Fixed $
+              // was selected, rather than leaving an impossible combination in place.
+              if(v==="monthly_rate_split"&&f.interestType==="fixed") sf(p=>({...p,paymentType:v,interestType:"percentage"}));
+              else s("paymentType")(v);
+            }}
             onBlur={()=>setEditingPaymentType(false)} options={[
             ["closing",       "Pay at Closing — all interest owed when deal closes"],
             ["monthly_rate",  "Monthly Interest-Only — pay rate monthly, principal at closing"],
@@ -853,19 +874,21 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
                 </>
               ) : (
                 <>
-                  <Inp money value={splitMonthlyAmt} onChange={v=>{
-                    setSplitMonthlyAmt(v);
-                    const amt=parseFloat(v)||0;
-                    s("splitMonthlyRate")(principal>0?String(Math.round(amt*12/principal*100*10000)/10000):"0");
-                  }} placeholder="583"/>
+                  <Inp money value={splitMonthlyAmt} onChange={setSplitMonthlyAmt} placeholder="583"/>
                   <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-3">
                     {principal>0?`= ${monthlyRate.toFixed(3).replace(/\.?0+$/,"")}% of the ${total||"—"}% total`:"Enter the principal above first"}
                   </p>
                 </>
               )}
-              <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-1">
-                Rest of the {total||"—"}% total — {closingRate.toFixed(3).replace(/\.?0+$/,"")}%{principal>0?` (≈ ${$$p(closingDollar)}/mo if it were paid monthly)`:""} — accrues instead and is paid at closing
-              </p>
+              {monthlyRate>total&&total>0?(
+                <p className="text-[11px] text-red-500 dark:text-red-400 -mt-1">
+                  That's more than the {total}% total — double-check the total rate above, or this loan will show nothing accruing to closing.
+                </p>
+              ):(
+                <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-1">
+                  Rest of the {total||"—"}% total — {closingRate.toFixed(3).replace(/\.?0+$/,"")}%{principal>0?` (≈ ${$$p(closingDollar)}/mo if it were paid monthly)`:""} — accrues instead and is paid at closing
+                </p>
+              )}
             </Lockable>
           );
         })()}
@@ -2547,7 +2570,7 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
                 <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
                 {entries.map((entry,idx)=>{
                   const t=(entry.value||"").trim();
-                  const invalid=t!==""&&t!=="N/A"&&isNaN(parseFloat(t));
+                  const invalid=t!==""&&!isValidHudValue(t);
                   return (
                     <div key={entry.id} className="flex gap-1.5 mb-1.5">
                       {multi&&(
@@ -2829,14 +2852,22 @@ const routeLoanDrafts = (data, loanDrafts, defaultPropId) => {
 // Every line is required: a blank field is incomplete, not "zero" — N/A (typed exactly) is
 // the only way to say a line doesn't apply to this deal.
 const HUD_KEYS = ["cashFromBorrower","depositEarnest","loanToTitle","rehabHoldback","loanPointsFees","prepaidInterest"];
-const isValidHudValue = v => { const t=(v||"").trim(); return t==="N/A" || (t!==""&&!isNaN(parseFloat(t))); };
+// A plain parseFloat silently reads "1,500" as 1 (stops at the comma) and "150000abc" as
+// 150000 (ignores the trailing garbage) — strip thousands-commas first, then insist the
+// WHOLE string is a clean non-negative number, so typos surface as invalid instead of
+// silently turning into the wrong dollar amount.
+const parseHudNumber = v => {
+  const cleaned = (v||"").trim().replace(/,/g,"");
+  if (!/^\d+(\.\d+)?$/.test(cleaned)) return null;
+  return parseFloat(cleaned);
+};
+const isHudNA = v => /^n\/?a$/i.test((v||"").trim()); // N/A, n/a, NA, na — any case, with or without the slash
+const isValidHudValue = v => isHudNA(v) || parseHudNumber(v)!=null;
 // Each HUD line can hold several entries (e.g. one rehab holdback per lender) that sum
 // automatically instead of forcing the user to add them up by hand before typing one number.
 const sumHudEntries = entries => (entries||[]).reduce((sum,e)=>{
-  const t=(e.value||"").trim();
-  if (t===""||t==="N/A") return sum;
-  const n=parseFloat(t);
-  return isNaN(n) ? sum : sum+n;
+  const n = parseHudNumber(e.value);
+  return n==null ? sum : sum+n;
 },0);
 const hudFieldValid = entries => (entries||[]).length>0 && entries.every(e=>isValidHudValue(e.value));
 const closingBuyFromForm = f => {
@@ -7917,6 +7948,15 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
   const [efBlockMsg, setEfBlockMsg] = useState("");
   const [splitEntryMode,setSplitEntryMode]=useState("rate");
   const [splitMonthlyAmt,setSplitMonthlyAmt]=useState("");
+  // Keep the rate in sync with the typed dollar amount whenever EITHER changes — not just
+  // at the moment the dollar box is typed into — so going back and editing the principal
+  // afterward doesn't leave a stale rate behind.
+  useEffect(()=>{
+    if(!ef||splitEntryMode!=="dollar") return;
+    const principal=parseFloat(ef.principal)||0;
+    const amt=parseFloat(splitMonthlyAmt)||0;
+    setEf(f=>({...f,splitMonthlyRate:principal>0?String(Math.round(amt*12/principal*100*10000)/10000):"0"}));
+  },[splitEntryMode,splitMonthlyAmt,ef?.principal]);
   const [closeModal, setCloseModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [drawDate, setDrawDate] = useState(TODAY);
@@ -8111,12 +8151,18 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
               <DateInp label="Due Date (optional)" value={ef.dueDate} onChange={v=>setEf(f=>({...f,dueDate:v}))} helpText="Only if this loan has a fixed maturity — leave blank if it's just paid off whenever the property sells."/>
             </Lockable>
             <Lockable locked={efLocked.interestType} onToggle={()=>toggleEfLock("interestType")}>
-              <Sel label="Interest Type" value={ef.interestType} onChange={v=>setEf(f=>({...f,interestType:v}))} options={[["percentage","% Per Year"],["fixed","Fixed $ Amount"]]}/>
+              <Sel label="Interest Type" value={ef.interestType} onChange={v=>setEf(f=>({...f,interestType:v}))} options={
+                ef.paymentType==="monthly_rate_split" ? [["percentage","% Per Year"]] : [["percentage","% Per Year"],["fixed","Fixed $ Amount"]]}/>
             </Lockable>
             <Lockable locked={efLocked.interestRate} onToggle={()=>toggleEfLock("interestRate")}>
               <Inp label={ef.interestType==="fixed"?"Fixed Interest ($)":"Interest Rate (%)"} value={ef.interestRate} onChange={v=>setEf(f=>({...f,interestRate:v}))} money={ef.interestType==="fixed"} percent={ef.interestType!=="fixed"}/>
             </Lockable>
-            <Sel label="Payment Type" value={ef.paymentType} onChange={v=>setEf(f=>({...f,paymentType:v}))} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"],["monthly_rate_split","Split (monthly + rest at closing)"]]}/>
+            <Sel label="Payment Type" value={ef.paymentType} onChange={v=>setEf(f=>{
+              // Split only makes sense as a % rate — drop back to percentage if Fixed $ was
+              // selected, rather than leaving an impossible combination in place.
+              const interestType=(v==="monthly_rate_split"&&f.interestType==="fixed")?"percentage":f.interestType;
+              return {...f,paymentType:v,interestType};
+            })} options={[["closing","Due at Closing"],["monthly_rate","Monthly (rate-based)"],["monthly_fixed","Monthly (fixed $)"],["monthly_rate_split","Split (monthly + rest at closing)"]]}/>
             {ef.paymentType==="monthly_fixed"&&(
               <Lockable locked={efLocked.monthlyPayment} onToggle={()=>toggleEfLock("monthlyPayment")}>
                 <Inp label="Monthly Payment ($)" value={ef.monthlyPayment} onChange={v=>setEf(f=>({...f,monthlyPayment:v}))} money/>
@@ -8151,19 +8197,21 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
                     </>
                   ) : (
                     <>
-                      <Inp money value={splitMonthlyAmt} onChange={v=>{
-                        setSplitMonthlyAmt(v);
-                        const amt=parseFloat(v)||0;
-                        setEf(f=>({...f,splitMonthlyRate:principal>0?String(Math.round(amt*12/principal*100*10000)/10000):"0"}));
-                      }}/>
+                      <Inp money value={splitMonthlyAmt} onChange={setSplitMonthlyAmt}/>
                       <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-3">
                         {principal>0?`= ${monthlyRate.toFixed(3).replace(/\.?0+$/,"")}% of the ${total||"—"}% total`:"Enter the principal above first"}
                       </p>
                     </>
                   )}
-                  <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-1">
-                    Rest of the {total||"—"}% total — {closingRate.toFixed(3).replace(/\.?0+$/,"")}%{principal>0?` (≈ ${$$p(closingDollar)}/mo if it were paid monthly)`:""} — accrues instead and is paid at closing
-                  </p>
+                  {monthlyRate>total&&total>0?(
+                    <p className="text-[11px] text-red-500 dark:text-red-400 -mt-1">
+                      That's more than the {total}% total — double-check the total rate above, or this loan will show nothing accruing to closing.
+                    </p>
+                  ):(
+                    <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-1">
+                      Rest of the {total||"—"}% total — {closingRate.toFixed(3).replace(/\.?0+$/,"")}%{principal>0?` (≈ ${$$p(closingDollar)}/mo if it were paid monthly)`:""} — accrues instead and is paid at closing
+                    </p>
+                  )}
                 </Lockable>
               );
             })()}
