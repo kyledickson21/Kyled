@@ -2161,9 +2161,12 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                       )}
 
                       {/* Overage refund (post-close) */}
-                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-3">
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight">Overage Refund<br/><span className="text-[9px]">(post-close, from this lender)</span></div>
-                        <MoneyField value={r.overageRefund} onChange={v=>upd(r.loanId,{overageRefund:v})} placeholder="0" className={numIn}/>
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
+                        <div className="flex items-center gap-3">
+                          <div className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight">Overage Refund<br/><span className="text-[9px]">(post-close, from this lender)</span></div>
+                          <MoneyField value={r.overageRefund} onChange={v=>upd(r.loanId,{overageRefund:v})} placeholder="0" className={numIn}/>
+                        </div>
+                        <p className="text-[9px] text-slate-400 dark:text-zinc-500 mt-1">Only if THIS lender is refunding an overage as part of closing. A later insurance/tax/overcharge check unrelated to a specific lender belongs in "Overage Check" on the property page instead — don't enter the same refund in both places.</p>
                       </div>
 
                       {/* Roll destination */}
@@ -2889,7 +2892,7 @@ const purchasePriceFromClosingBuy = cb =>
 // they'll be for or how much. They're recorded against the closed property as they come
 // in and count straight toward that property's profit, on top of the profit figure that
 // was locked in at closing.
-const OVERAGE_SOURCES = [["insurance","Insurance"],["taxes","Taxes"],["overcharge","Closing Overcharge"]];
+const OVERAGE_SOURCES = [["insurance","Insurance"],["taxes","Taxes"],["overcharge","Closing Overcharge"],["other","Other"]];
 const overageSourceLabel = src => (OVERAGE_SOURCES.find(([v])=>v===src)||[])[1] || "Overage";
 const overageCheckTotal = prop => (prop.overageChecks||[]).reduce((s,c)=>s+(c.amount||0),0);
 const effectiveProfit = prop => (prop.closingData?.profit||0) + overageCheckTotal(prop);
@@ -3091,7 +3094,6 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   };
 
   const delProp = id => { if(!confirm("Delete this property and all its loans?"))return; update(d=>({...d,properties:d.properties.filter(p=>p.id!==id)})); };
-  const delLoan = (propId,loanId) => { if(!confirm("Delete this loan?"))return; update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:p.loans.filter(l=>l.id!==loanId)})})); };
   const delUnassigned = id => { if(!confirm("Remove this unassigned fund?"))return; update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==id)})); };
 
   const handleQuickDraw = ({propId,loanId,date,amount}) => {
@@ -4566,9 +4568,12 @@ function EditClosingModal({ prop, onSave, onClose }) {
                       )}
 
                       {/* Overage refund (post-close) */}
-                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-3">
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight">Overage Refund<br/><span className="text-[9px]">(post-close, from this lender)</span></div>
-                        <MoneyField value={r.overageRefund} onChange={v=>upd(r.loanId,{overageRefund:v})} placeholder="0" className={numIn}/>
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
+                        <div className="flex items-center gap-3">
+                          <div className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight">Overage Refund<br/><span className="text-[9px]">(post-close, from this lender)</span></div>
+                          <MoneyField value={r.overageRefund} onChange={v=>upd(r.loanId,{overageRefund:v})} placeholder="0" className={numIn}/>
+                        </div>
+                        <p className="text-[9px] text-slate-400 dark:text-zinc-500 mt-1">Only if THIS lender is refunding an overage as part of closing. A later insurance/tax/overcharge check unrelated to a specific lender belongs in "Overage Check" on the property page instead — don't enter the same refund in both places.</p>
                       </div>
                     </div>
                   );
@@ -6174,19 +6179,31 @@ function OverageCheckModal({ prop, init, onSave, onDelete, onClose }) {
   const [locked,setLocked]=useState(()=>({date:!!init,amount:!!init}));
   const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
   const amt=parseFloat(amount)||0;
-  const canSave=amt>0&&!!date;
+  const needsNote=source==="other";
+  // Same mandatory-confirm rule every other form follows — this one was the one place in
+  // the app where a field could be left un-confirmed and still saved.
+  const allConfirmed=locked.date&&locked.amount;
+  const dateOk=!date||(date<=TODAY&&(!prop.purchaseDate||date>=prop.purchaseDate));
+  const canSave=amt>0&&!!date&&allConfirmed&&dateOk&&(!needsNote||notes.trim()!=="");
   return (
     <Modal title={`${init?"Edit":"Overage Check —"} ${prop.address}`} onClose={onClose}>
       <div className="space-y-1">
         <Lockable locked={locked.date} onToggle={()=>toggleLock("date")}>
           <DateInp label="Date Received" value={date} onChange={setDate}/>
         </Lockable>
+        {!dateOk&&(
+          <p className="text-[11px] text-red-500 dark:text-red-400 -mt-2 mb-3">
+            {date>TODAY?"Date can't be in the future.":`Date can't be before this property's purchase date (${prop.purchaseDate}).`}
+          </p>
+        )}
         <Lockable locked={locked.amount} onToggle={()=>toggleLock("amount")}>
           <Inp label="Amount ($)" money value={amount} onChange={setAmount} placeholder="500"/>
         </Lockable>
         <Sel label="Where's This From?" value={source} onChange={setSource} options={OVERAGE_SOURCES}/>
-        <Inp label="Notes" value={notes} onChange={setNotes} placeholder="What this was for, exactly — for the bookkeepers"/>
+        <Inp label={`Notes${needsNote?" *":""}`} value={notes} onChange={setNotes} placeholder="What this was for, exactly — for the bookkeepers"/>
+        {needsNote&&notes.trim()===""&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-2 mb-2">Say what this was for when the source is "Other".</p>}
         <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-2">Counts toward this property's profit and shows up in History for the bookkeepers.</p>
+        {!allConfirmed&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Tap ✓ Confirm on the date and amount before this can be saved.</p>}
         <div className="flex gap-2">
           <Btn onClick={()=>canSave&&onSave({date,amount:amt,source,notes})} color={canSave?"blue":"ghost"} disabled={!canSave} full>{init?"Save Changes":"Save Overage Check"}</Btn>
           {onDelete&&<Btn onClick={()=>{if(window.confirm("Delete this overage check? This can't be undone."))onDelete();}} color="red">Delete</Btn>}
@@ -6204,6 +6221,7 @@ function ManageLendersPage({ data }) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [ok, setOk] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   const allNames = [...new Set([
     ...(data.properties || []).flatMap(p => (p.loans || []).map(l => l.lenderName)),
@@ -6259,8 +6277,14 @@ function ManageLendersPage({ data }) {
           </div>
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Password</label>
-            <input type="text" value={form.password} onChange={e => setForm(f => ({...f, password: e.target.value}))} required placeholder="temporary password"
-              className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+            <div className="relative">
+              <input type={showPassword?"text":"password"} value={form.password} onChange={e => setForm(f => ({...f, password: e.target.value}))} required placeholder="temporary password"
+                className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 pr-16 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+              <button type="button" onClick={()=>setShowPassword(s=>!s)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 px-2 py-1">
+                {showPassword?"Hide":"Show"}
+              </button>
+            </div>
           </div>
           {err && <p className="text-red-500 text-xs font-medium">{err}</p>}
           {ok  && <p className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">{ok}</p>}
@@ -7308,6 +7332,11 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
       {/* Overage checks — insurance/tax/overcharge refunds that can show up any time, on a
           property still owned or one already closed. */}
       <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+        {(prop.closingData?.overageRefund||0)>0&&(prop.overageChecks||[]).length>0&&(
+          <div className="px-5 py-2.5 bg-amber-50 dark:bg-amber-900/10 border-b border-amber-100 dark:border-amber-900/30 text-[11px] text-amber-700 dark:text-amber-400">
+            ⚠ This property also has a {h$(prop.closingData.overageRefund)} lender overage refund recorded at closing — double-check none of the checks below are the same money counted twice.
+          </div>
+        )}
         <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-3">
           <SectionHead title="Overage Checks" count={(prop.overageChecks||[]).length}/>
           <button onClick={()=>setAddingOverage(true)}
