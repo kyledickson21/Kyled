@@ -8811,8 +8811,9 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const globalSearchRef=useRef(null);
   const updatedAtRef=useRef(null);
   const saveQueueRef=useRef(Promise.resolve());
-  const undoRef=useRef(null); // { inverse: currentData => revertedData }
-  const [canUndo,setCanUndo]=useState(false);
+  const undoStackRef=useRef([]); // [{ inverse: currentData => revertedData }, ...] oldest→newest, capped
+  const UNDO_STACK_LIMIT=10;
+  const [undoCount,setUndoCount]=useState(0);
 
   useEffect(()=>{
     const handler=e=>{
@@ -8936,17 +8937,20 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     setData(prev=>{
       const next=typeof fn==="function"?fn(prev):fn
       const inverse = computeInverse(prev, next);
-      undoRef.current = inverse ? { inverse } : null;
-      setCanUndo(!!inverse);
+      if(inverse){
+        undoStackRef.current=[...undoStackRef.current,{inverse}].slice(-UNDO_STACK_LIMIT);
+        setUndoCount(undoStackRef.current.length);
+      }
       saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(next, fn));
       return next
     })
   }
   const handleUndo = () => {
-    const entry = undoRef.current;
-    if (!entry) return;
-    undoRef.current = null;
-    setCanUndo(false);
+    const stack = undoStackRef.current;
+    if (!stack.length) return;
+    const entry = stack[stack.length-1];
+    undoStackRef.current = stack.slice(0,-1);
+    setUndoCount(undoStackRef.current.length);
     setData(prev=>{
       const reverted = entry.inverse(prev);
       saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(reverted, entry.inverse));
@@ -9308,11 +9312,12 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
             {/* Right side — Actions button, adjacent to search */}
             <div className="flex-1 flex justify-end sm:justify-start items-center gap-2 pl-0 sm:pl-3">
-            {canUndo && (
-              <button onClick={handleUndo} title="Undo last change"
+            {undoCount>0 && (
+              <button onClick={handleUndo} title={`Undo last change${undoCount>1?` (${undoCount} steps available)`:''}`}
                 className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border border-slate-300 dark:border-zinc-600 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 shrink-0">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0"><path fillRule="evenodd" d="M9.707 3.293a1 1 0 010 1.414L7.414 7H12a5 5 0 110 10H8a1 1 0 110-2h4a3 3 0 100-6H7.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
                 <span className="hidden sm:inline">Undo</span>
+                {undoCount>1&&<span className="text-[10px] font-bold bg-slate-200 dark:bg-zinc-700 rounded-full px-1.5 py-0.5 leading-none">{undoCount}</span>}
               </button>
             )}
             <div ref={fabRef} className="relative shrink-0">
