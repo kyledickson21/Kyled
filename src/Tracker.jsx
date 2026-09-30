@@ -764,7 +764,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
 
       {/* Loan details */}
       <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 mt-1">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Lockable locked={locked.startDate} onToggle={()=>toggleLock("startDate")}>
             <DateInp label="Start Date *" value={f.startDate} onChange={v=>{setAndRevalidate("startDate")(v);setBlockMsg("");}}/>
           </Lockable>
@@ -772,7 +772,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
             <Inp label="Amount ($) *" money value={f.principal} onChange={v=>{setAndRevalidate("principal")(v);setBlockMsg("");}} placeholder="100000"/>
           </Lockable>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Lockable locked={locked.interestType} onToggle={()=>toggleLock("interestType")}>
             <Sel label="Interest Type *" value={f.interestType||"percentage"} onChange={s("interestType")} options={[
               ["percentage","% Rate"],
