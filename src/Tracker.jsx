@@ -3057,16 +3057,19 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     onClearPendingAction?.();
   },[pendingAction]);
 
-  const saveMoneyForm = (f, force=false) => {
+  const saveMoneyForm = f => {
     const base=loanFields(f);
     if(f.destination==="unassigned"){
       update(d=>upsertLender({...d,unassigned:[...d.unassigned,{id:uid(),...base}]},f.newLender));
       setModal(null);
     } else {
       const destProp=data.properties.find(p=>p.id===f.destination);
-      const conflict=destProp?loanPropConflict(base.startDate,destProp):0;
-      if(conflict>0&&!force){
-        if(!window.confirm(`⚠️ This loan started ${conflict} days before the property was acquired — the money would be uncollateralized for that period.\n\nPlace it anyway?`))return;
+      const conflict=destProp?propConflict(base.startDate,base.principal,destProp):null;
+      if(conflict){
+        alert(conflict==='date'
+          ? "Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period."
+          : "Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need.");
+        return;
       }
       update(d=>upsertLender({...d,properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...p.loans,{id:uid(),...base}]})},f.newLender));
       setModal(null);
@@ -7245,7 +7248,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   // saveMoneyForm) — kept in sync with it rather than a simplified reimplementation, since
   // this is the exact same LenderMoneyForm screen, just opened from a property's own page
   // and pre-targeted at it.
-  const saveNewLoan = (f, force=false) => {
+  const saveNewLoan = f => {
     const base = loanFields(f);
     if (f.destination==="unassigned") {
       update(d=>upsertLender({...d,unassigned:[...(d.unassigned||[]),{id:uid(),...base}]},f.newLender));
@@ -7253,9 +7256,12 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
       return;
     }
     const destProp = data.properties.find(p=>p.id===f.destination);
-    const conflict = destProp ? loanPropConflict(base.startDate,destProp) : 0;
-    if (conflict>0 && !force) {
-      if (!window.confirm(`⚠️ This loan started ${conflict} days before the property was acquired — the money would be uncollateralized for that period.\n\nPlace it anyway?`)) return;
+    const conflict = destProp ? propConflict(base.startDate,base.principal,destProp) : null;
+    if (conflict) {
+      alert(conflict==='date'
+        ? "Cannot place here — this property was acquired after this loan started. The loan would have been uncollateralized during that period."
+        : "Cannot place here — not enough funding gap on this property (including 10% contingency). Consider splitting this loan or choosing a property with a larger funding need.");
+      return;
     }
     update(d=>upsertLender({...d,properties:d.properties.map(p=>p.id!==f.destination?p:{...p,loans:[...p.loans,{id:uid(),...base}]})},f.newLender));
     setAddingLoan(false);
