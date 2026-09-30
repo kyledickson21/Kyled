@@ -4812,6 +4812,15 @@ function ClosedDealsPage({ data, update }) {
     update(d=>({...d,properties:d.properties.map(p=>p.id===id?{...p,isRental:!p.isRental}:p)}));
   };
 
+  // Reopening only clears the property's own sale/closing record — loans that were closed
+  // out as part of this sale (endDate set, principal rolled elsewhere, etc.) are left alone,
+  // since reconstructing exactly how each one should unwind isn't something that can be done
+  // safely/automatically. If those need to move too, that's a manual follow-up on each loan.
+  const reopenProperty=prop=>{
+    if(!window.confirm(`Reopen "${prop.address||"this property"}"? It'll move back to Active Properties and its closing record will be cleared — you'll re-enter closing details if you close it again. Loans that were paid off or rolled as part of this sale are NOT reopened; adjust those individually if needed.`)) return;
+    update(d=>({...d,properties:d.properties.map(p=>p.id===prop.id?{...p,dateSold:null,isRental:false,closingData:null}:p)}));
+  };
+
   const handleMarkSold=(prop,soldDate,dispositions,closingData,isRental)=>{
     const activeLoans=prop.loans.filter(l=>!l.endDate);
     const newUnassigned=[];const newLoansForProps={};
@@ -4920,6 +4929,8 @@ function ClosedDealsPage({ data, update }) {
               )}
               <button onClick={()=>setEditModal(prop)}
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit closing">✏️</button>
+              <button onClick={()=>reopenProperty(prop)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all text-sm" title="Reopen property">↺</button>
               <button onClick={()=>toggle(prop.id)}
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all text-[10px] font-bold">
                 {isOpen?"▲":"▼"}
@@ -7215,10 +7226,21 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
             <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{prop.address || "Unnamed Property"}</h1>
             {prop.purchaseDate && <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Acquired {prop.purchaseDate}</p>}
           </div>
-          <button onClick={()=>setEditing(e=>!e)}
-            className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
-            {editing?"✕ Cancel":"✏️ Edit"}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {prop.dateSold && (
+              <button onClick={()=>{
+                if(!window.confirm(`Reopen "${prop.address||"this property"}"? It'll move back to Active Properties and its closing record will be cleared — you'll re-enter closing details if you close it again. Loans that were paid off or rolled as part of this sale are NOT reopened; adjust those individually if needed.`)) return;
+                update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,dateSold:null,isRental:false,closingData:null})}));
+              }}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-300 dark:hover:border-amber-700 shadow-sm transition-all">
+                ↺ Reopen
+              </button>
+            )}
+            <button onClick={()=>setEditing(e=>!e)}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
+              {editing?"✕ Cancel":"✏️ Edit"}
+            </button>
+          </div>
         </div>
       </div>
       {editing && prop.dateSold && (
