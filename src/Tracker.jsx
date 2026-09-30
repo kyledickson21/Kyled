@@ -172,6 +172,25 @@ const usePersistedState = (key, def) => {
   return [val, set];
 };
 
+// Every popup form used to close instantly on a backdrop click or the header's ✕ — no
+// warning, no matter how much had already been typed in. useDirty reports whether a form's
+// state has actually changed since it first opened; confirmDiscard is the one place that
+// decides whether to interrupt a close with a confirm; useDirtyGuard combines both for a
+// form that renders its own <Modal> (most of them — everything reads through onClose so a
+// stray outside tap or the ✕ gets the same guard as the form's own Cancel button).
+const useDirty = getSnapshot => {
+  const initial = useRef(JSON.stringify(getSnapshot()));
+  return JSON.stringify(getSnapshot()) !== initial.current;
+};
+const confirmDiscard = (dirty, doClose) => {
+  if (dirty && !window.confirm("Discard what you've entered?")) return;
+  doClose();
+};
+const useDirtyGuard = (getSnapshot, onClose) => {
+  const dirty = useDirty(getSnapshot);
+  return () => confirmDiscard(dirty, onClose);
+};
+
 // ─── Address autocomplete ─────────────────────────────────────────────────────
 const STATE_ABBR={"Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA","Colorado":"CO","Connecticut":"CT","Delaware":"DE","Florida":"FL","Georgia":"GA","Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS","Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA","Michigan":"MI","Minnesota":"MN","Mississippi":"MS","Missouri":"MO","Montana":"MT","Nebraska":"NE","Nevada":"NV","New Hampshire":"NH","New Jersey":"NJ","New Mexico":"NM","New York":"NY","North Carolina":"NC","North Dakota":"ND","Ohio":"OH","Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI","South Carolina":"SC","South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT","Virginia":"VA","Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY"};
 const fmtAddr = item => {
@@ -547,7 +566,7 @@ function LenderAutocomplete({ value, onChange, properties }) {
 }
 
 // ─── Lender Money Form ────────────────────────────────────────────────────────
-function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSave, onMerge, onClose, lockDestinationTo }) {
+function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSave, onMerge, onClose, lockDestinationTo, onDirtyChange }) {
   const activeProps = properties.filter(p=>!p.dateSold);
 
   const initName = init?.lenderName || "";
@@ -578,6 +597,11 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
   }));
   const [drawDate,setDrawDate]=useState(TODAY);
   const [drawAmt,setDrawAmt]=useState("");
+  // This form doesn't own its <Modal> everywhere it's used — most callers wrap it — so it
+  // can't guard its own backdrop/✕ click. Report dirtiness up when a caller wants it; a
+  // no-op (e.g. embedded inline inside PropertyForm, where there's no Modal to guard) if not.
+  const isDirty=useDirty(()=>({lenderSel,newName,newType,f}));
+  useEffect(()=>{onDirtyChange?.(isDirty);},[isDirty]);
   // Split payment type: the monthly-paid portion can be entered either as a rate (%) or as
   // a flat dollar amount — whichever's easier, since a lender usually quotes one or the
   // other. Either way, splitMonthlyRate (%) is the one canonical value that actually gets
@@ -1877,6 +1901,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const [rehabIn,setRehabIn]=useState(String(prop.rehabBudget||""));
   const [miscIn,setMiscIn]=useState(String(Math.round((prop.monthlyHolding??500)*effectiveMonths(prop))));
   const [wireIn,setWireIn]=useState("");
+  const guardedClose=useDirtyGuard(()=>({step,soldDate,isRental,rows,cashToCloseIn,rehabIn,miscIn,wireIn}),onClose);
 
   const cashToClose=parseFloat(cashToCloseIn)||0;
   const rehab=parseFloat(rehabIn)||0;
@@ -1958,7 +1983,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
   const autoNum="w-full border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-right text-slate-400 dark:text-zinc-500 tabular-nums select-none";
 
   return (
-    <Modal title={`Close: ${prop.address}`} onClose={onClose}>
+    <Modal title={`Close: ${prop.address}`} onClose={guardedClose}>
       <div>
 
         {/* Step tabs */}
@@ -2248,7 +2273,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 
             <div className="flex gap-2 pt-1">
               <Btn onClick={()=>setStep(2)} color="navy" full>Next: Wire &amp; Costs →</Btn>
-              <Btn onClick={onClose} color="ghost">Cancel</Btn>
+              <Btn onClick={guardedClose} color="ghost">Cancel</Btn>
             </div>
           </div>
         )}
@@ -2445,7 +2470,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
 }
 
 // ─── Property Form ────────────────────────────────────────────────────────────
-function PropertyForm({ init, lenders, onSave, onClose }) {
+function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
   // A stable id for this property before it's ever saved, so the real Add Lender Money
   // screen (LenderMoneyForm, unmodified) can show it as a normal pickable destination —
   // same picker as everywhere else, just fed a live draft of this property alongside the
@@ -2528,6 +2553,11 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
   // math and all — no special-casing inside LenderMoneyForm itself.
   const [loanDrafts,setLoanDrafts]=useState([]);
   const [addingLoan,setAddingLoan]=useState(false);
+  // This form doesn't render its own <Modal> — whatever wraps it owns the backdrop/✕, so
+  // it can't check dirtiness on its own. Report it up instead, so the caller can guard its
+  // close the same way every self-contained form guards itself.
+  const isDirty=useDirty(()=>({f,loanDrafts}));
+  useEffect(()=>{onDirtyChange?.(isDirty);},[isDirty]);
   const draftProp={id:draftPropId,address:f.address||"(this property)",purchasePrice:purchase,rehabBudget:rehab,purchaseDate:f.purchaseDate||null,dateSold:null,
     // Existing (already-saved) loans plus anything queued locally for this property, so the
     // funding-gap math accounts for what's already funded, not just what's mid-edit.
@@ -2697,7 +2727,7 @@ function PropertyForm({ init, lenders, onSave, onClose }) {
       {hudComplete&&!allConfirmed&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Tap ✓ Confirm on every field above before this can be saved.</p>}
       <div className="flex gap-2 pt-2">
         <Btn onClick={()=>canSaveProperty&&onSave({...f,purchasePrice:String(purchase),closingBuy,loanDrafts,id:draftPropId})} color={canSaveProperty?"blue":"ghost"} disabled={!canSaveProperty} full>Save Property</Btn>
-        <Btn onClick={onClose} color="ghost">Cancel</Btn>
+        <Btn onClick={()=>confirmDiscard(isDirty,onClose)} color="ghost">Cancel</Btn>
       </div>
     </div>
   );
@@ -2977,6 +3007,11 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const hn=n=>n??"";
   const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
   const [modal,setModal]=useState(null);
+  // PropertyForm/LenderMoneyForm don't own their <Modal> — this page does — so they report
+  // whether they've actually been typed into (via onDirtyChange, reset naturally to false
+  // the moment a fresh instance mounts), and this page decides whether closing needs a confirm.
+  const [formDirty,setFormDirty]=useState(false);
+  const closeModal=()=>confirmDiscard(formDirty,()=>setModal(null));
   const [expanded,setExpanded]=useState({});
   const [viewMode,setViewMode]=usePersistedState("nx-propViewMode","expanded");
   const [propSort,setPropSort]=usePersistedState("nx-propSort",{col:null,dir:"asc"});
@@ -3660,16 +3695,17 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       </DndContext>
       )}
 
-      {(modal==="addMoney"||modal?.type==="addMoney")&&<Modal title="Add Lender Money" onClose={()=>setModal(null)}><LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={modal?.propId?{destination:modal.propId}:undefined} onSave={saveMoneyForm} onClose={()=>setModal(null)}/></Modal>}
-      {modal==="addProp"&&<Modal title="Add Property" onClose={()=>setModal(null)}><PropertyForm lenders={data.lenders||[]} onSave={f=>saveProp(f,null)} onClose={()=>setModal(null)}/></Modal>}
-      {modal?.type==="editProp"&&<Modal title="Edit Property" onClose={()=>setModal(null)}><PropertyForm init={modal.prop} lenders={data.lenders||[]} onSave={f=>saveProp(f,modal.prop)} onClose={()=>setModal(null)}/></Modal>}
-      {modal?.type==="editLoan"&&<Modal title="Edit Loan" onClose={()=>setModal(null)}>
+      {(modal==="addMoney"||modal?.type==="addMoney")&&<Modal title="Add Lender Money" onClose={closeModal}><LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={modal?.propId?{destination:modal.propId}:undefined} onSave={saveMoneyForm} onClose={closeModal} onDirtyChange={setFormDirty}/></Modal>}
+      {modal==="addProp"&&<Modal title="Add Property" onClose={closeModal}><PropertyForm lenders={data.lenders||[]} onSave={f=>saveProp(f,null)} onClose={closeModal} onDirtyChange={setFormDirty}/></Modal>}
+      {modal?.type==="editProp"&&<Modal title="Edit Property" onClose={closeModal}><PropertyForm init={modal.prop} lenders={data.lenders||[]} onSave={f=>saveProp(f,modal.prop)} onClose={closeModal} onDirtyChange={setFormDirty}/></Modal>}
+      {modal?.type==="editLoan"&&<Modal title="Edit Loan" onClose={closeModal}>
         <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={{...modal.loan,destination:modal.propId,principal:String(modal.loan.principal),interestRate:String(modal.loan.interestRate||""),interestType:modal.loan.interestType||"percentage",paymentType:modal.loan.paymentType||"closing",monthlyPayment:String(modal.loan.monthlyPayment||""),drawFacility:modal.loan.drawFacility||null}}
-          onSave={f=>saveEditedLoan(modal.propId,f,modal.loan)} onClose={()=>setModal(null)}/>
+          onSave={f=>saveEditedLoan(modal.propId,f,modal.loan)} onClose={closeModal} onDirtyChange={setFormDirty}/>
       </Modal>}
-      {modal?.type==="editUnassigned"&&<Modal title="Edit Unassigned Fund" onClose={()=>setModal(null)}>
+      {modal?.type==="editUnassigned"&&<Modal title="Edit Unassigned Fund" onClose={closeModal}>
         <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} unassigned={data.unassigned}
           init={{...modal.fund,destination:"unassigned",principal:String(modal.fund.principal||modal.fund.amount||""),interestRate:String(modal.fund.interestRate||""),interestType:modal.fund.interestType||"percentage"}}
+          onDirtyChange={setFormDirty}
           onSave={f=>{
             const updated={...modal.fund,lenderName:f.lenderName,loanType:f.loanType,principal:parseFloat(f.principal)||0,startDate:f.startDate,interestRate:parseFloat(f.interestRate)||0,interestType:f.interestType||"percentage",specialTerms:f.specialTerms||"",endDate:f.endDate||null,dueDate:f.dueDate||null};
             const doUpdate = d => f.newLender
@@ -4353,6 +4389,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
   const [rehabIn,setRehabIn]=useState(String(cd.rehab||""));
   const [miscIn,setMiscIn]=useState(String(cd.misc||""));
   const [wireIn,setWireIn]=useState(String(cd.wire||""));
+  const guardedClose=useDirtyGuard(()=>({step,dateSold,isRental,rows,cashToCloseIn,rehabIn,miscIn,wireIn}),onClose);
 
   const cashToClose=parseFloat(cashToCloseIn)||0;
   const rehab=parseFloat(rehabIn)||0;
@@ -4394,7 +4431,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
   const autoNum="w-full border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-right text-slate-400 dark:text-zinc-500 tabular-nums select-none";
 
   return (
-    <Modal title={`Edit Closing: ${prop.address}`} onClose={onClose}>
+    <Modal title={`Edit Closing: ${prop.address}`} onClose={guardedClose}>
       <div>
 
         {/* Step tabs */}
@@ -4636,7 +4673,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
 
             <div className="flex gap-2 pt-1">
               <Btn onClick={()=>setStep(2)} color="navy" full>Next: Wire &amp; Costs →</Btn>
-              <Btn onClick={onClose} color="ghost">Cancel</Btn>
+              <Btn onClick={guardedClose} color="ghost">Cancel</Btn>
             </div>
           </div>
         )}
@@ -6174,6 +6211,7 @@ function OverageCheckModal({ prop, init, onSave, onDelete, onClose }) {
   const [amount,setAmount]=useState(init?String(init.amount||""):"");
   const [source,setSource]=useState(init?.source||OVERAGE_SOURCES[0][0]);
   const [notes,setNotes]=useState(init?.notes||"");
+  const guardedClose=useDirtyGuard(()=>({date,amount,source,notes}),onClose);
   // Editing an existing entry: it's already a real, checked number — start locked so it
   // can't be bumped by accident while fixing a typo elsewhere on the form.
   const [locked,setLocked]=useState(()=>({date:!!init,amount:!!init}));
@@ -6186,7 +6224,7 @@ function OverageCheckModal({ prop, init, onSave, onDelete, onClose }) {
   const dateOk=!date||(date<=TODAY&&(!prop.purchaseDate||date>=prop.purchaseDate));
   const canSave=amt>0&&!!date&&allConfirmed&&dateOk&&(!needsNote||notes.trim()!=="");
   return (
-    <Modal title={`${init?"Edit":"Overage Check —"} ${prop.address}`} onClose={onClose}>
+    <Modal title={`${init?"Edit":"Overage Check —"} ${prop.address}`} onClose={guardedClose}>
       <div className="space-y-1">
         <Lockable locked={locked.date} onToggle={()=>toggleLock("date")}>
           <DateInp label="Date Received" value={date} onChange={setDate}/>
@@ -7154,6 +7192,8 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const [addingLoan, setAddingLoan] = useState(false);
   const [addingOverage, setAddingOverage] = useState(false);
   const [editingOverage, setEditingOverage] = useState(null);
+  const [loanFormDirty, setLoanFormDirty] = useState(false);
+  const closeAddingLoan = () => confirmDiscard(loanFormDirty, () => setAddingLoan(false));
 
   const prop = data.properties.find(p => p.id === propId);
   if (!prop) return (
@@ -7527,10 +7567,10 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
       )}
 
       {addingLoan&&(
-        <Modal title="Add Lender Money" onClose={()=>setAddingLoan(false)}>
+        <Modal title="Add Lender Money" onClose={closeAddingLoan}>
           <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} unassigned={data.unassigned}
             init={{destination:propId}} lockDestinationTo={{id:propId,label:prop.address}}
-            onSave={saveNewLoan} onClose={()=>setAddingLoan(false)}/>
+            onSave={saveNewLoan} onClose={closeAddingLoan} onDirtyChange={setLoanFormDirty}/>
         </Modal>
       )}
     </div>
@@ -8400,6 +8440,8 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const [modal, setModal] = useState(null);
   const [fundsOpen, setFundsOpen] = usePersistedState("nx-dashFundsOpen", true);
   const [menuOpen, setMenuOpen] = useState(null);
+  const [formDirty, setFormDirty] = useState(false);
+  const closeModal = () => confirmDiscard(formDirty, () => setModal(null));
 
   const activePropsData = data.properties.filter(p => !p.dateSold);
   const unassignedFunds = (data.unassigned || []).filter(l => !l.endDate);
@@ -8785,7 +8827,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
 
       {/* ── Modals ── */}
       {modal?.type === "editUnassigned" && (
-        <Modal title="Edit Fund" onClose={() => setModal(null)}>
+        <Modal title="Edit Fund" onClose={closeModal}>
           <LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} unassigned={data.unassigned} init={modal.fund}
             onSave={f => {
               update(d => ({
@@ -8802,7 +8844,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
               });
               setModal(null);
             }}
-            onClose={() => setModal(null)}/>
+            onClose={closeModal} onDirtyChange={setFormDirty}/>
         </Modal>
       )}
       {modal?.type === "place" && (
