@@ -9032,25 +9032,22 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const navigate = entity => setPanelStack(s=>[...s,entity]);
   const navStackNavigate = entity => setNavStack(s=>[...s,entity]);
 
-  if(loading) return (
-    <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 rounded-full border-2 border-slate-200 dark:border-zinc-700 border-t-blue-500 animate-spin"/>
-        <div className="text-slate-400 dark:text-zinc-500 text-sm font-medium">Loading…</div>
-      </div>
-    </div>
-  );
-
   // ── Derived values for sidebar counts and global search ──
-  const {activeProps,activeLenders,activeLoans,closedCount}=useMemo(()=>({
-    activeProps:data.properties.filter(p=>!p.dateSold).length,
-    activeLenders:[...new Set([...data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>l.lenderName)),...data.unassigned.filter(l=>!l.endDate).map(l=>l.lenderName)].filter(Boolean))].length,
-    activeLoans:data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate)).length+(data.unassigned||[]).filter(l=>!l.endDate).length,
-    closedCount:data.properties.filter(p=>p.dateSold).length,
-  }),[data]);
+  // `data` is still null while the initial load is in flight — these run unconditionally
+  // (before the `if(loading) return` below) so hook order never changes between renders,
+  // and just no-op until data actually lands.
+  const {activeProps,activeLenders,activeLoans,closedCount}=useMemo(()=>{
+    if(!data) return {activeProps:0,activeLenders:0,activeLoans:0,closedCount:0};
+    return {
+      activeProps:data.properties.filter(p=>!p.dateSold).length,
+      activeLenders:[...new Set([...data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>l.lenderName)),...data.unassigned.filter(l=>!l.endDate).map(l=>l.lenderName)].filter(Boolean))].length,
+      activeLoans:data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate)).length+(data.unassigned||[]).filter(l=>!l.endDate).length,
+      closedCount:data.properties.filter(p=>p.dateSold).length,
+    };
+  },[data]);
 
   const globalResults=useMemo(()=>{
-    if(globalSearch.length<2)return[];
+    if(!data||globalSearch.length<2)return[];
     const q=globalSearch.toLowerCase();
     const qDigits=globalSearch.replace(/[^0-9]/g,"");
     const results=[];
@@ -9130,8 +9127,15 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     return results.slice(0,12);
   },[globalSearch,data]);
 
+  if(loading) return (
+    <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 rounded-full border-2 border-slate-200 dark:border-zinc-700 border-t-blue-500 animate-spin"/>
+        <div className="text-slate-400 dark:text-zinc-500 text-sm font-medium">Loading…</div>
+      </div>
+    </div>
+  );
 
-  // ── Sidebar nav button (icon-only, tooltip on hover) ──
   return (
     <PrivacyContext.Provider value={privacyMode}>
     <PanelContext.Provider value={navigate}>
