@@ -2844,6 +2844,24 @@ const OVERAGE_SOURCES = [["insurance","Insurance"],["taxes","Taxes"],["overcharg
 const overageSourceLabel = src => (OVERAGE_SOURCES.find(([v])=>v===src)||[])[1] || "Overage";
 const overageCheckTotal = prop => (prop.overageChecks||[]).reduce((s,c)=>s+(c.amount||0),0);
 const effectiveProfit = prop => (prop.closingData?.profit||0) + overageCheckTotal(prop);
+// One glance-able traffic light per active property instead of combining funding %,
+// an overdue/upcoming due date, and whether it's running past its estimated hold time in
+// your head. null for a sold property (that status no longer applies).
+const propertyHealthStatus = prop => {
+  if (prop.dateSold) return null;
+  const active = (prop.loans||[]).filter(l => !l.endDate);
+  const funded = active.reduce((s,l) => s + (l.principal||0) + (l.drawFacility?.committed||0), 0);
+  const gap = propNeeded(prop, active) - funded;
+  const overdue = active.some(l => l.dueDate && l.dueDate < TODAY);
+  if (gap > 0 || overdue) return 'red';
+  const dueSoon = active.some(l => l.dueDate && l.dueDate >= TODAY && daysBetween(TODAY, l.dueDate) <= 30);
+  const daysOwned = prop.purchaseDate ? daysBetween(prop.purchaseDate, TODAY) : 0;
+  const overTime = daysOwned > effectiveMonths(prop) * 30;
+  if (dueSoon || overTime) return 'yellow';
+  return 'green';
+};
+const HEALTH_DOT = { red:"bg-red-500", yellow:"bg-amber-400", green:"bg-emerald-500" };
+const HEALTH_LABEL = { red:"Needs attention", yellow:"Worth watching", green:"On track" };
 // Human-readable label for a navigate() entity — used for the "Recently Viewed" search list,
 // resolved at the moment it's visited since loans/properties can get renamed/closed later.
 const labelForEntity = (entity, data) => {
@@ -3370,7 +3388,10 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                     return(
                     <tr key={prop.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
                       <td className="py-2.5 px-4 tabular-nums text-[11px] text-slate-300 dark:text-zinc-600">{rankMap[prop.id]}</td>
-                      <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">{prop.address||"Unnamed"}</td>
+                      <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">
+                        {propertyHealthStatus(prop)&&<span title={HEALTH_LABEL[propertyHealthStatus(prop)]} className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${HEALTH_DOT[propertyHealthStatus(prop)]}`}/>}
+                        {prop.address||"Unnamed"}
+                      </td>
                       <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">{active.length}</td>
                       <td className="py-2.5 px-4 text-right tabular-nums text-slate-700 dark:text-zinc-200 font-medium">{funded>0?$$p(funded):"—"}</td>
                       <td className="py-2.5 px-4 text-right tabular-nums text-slate-400 dark:text-zinc-500">{needed>0?$$p(needed):"—"}</td>
@@ -3420,6 +3441,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   <div className="flex justify-between items-start gap-2 mb-2">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="text-[11px] text-slate-300 dark:text-zinc-600 tabular-nums font-medium shrink-0">{rankMap[prop.id]}</span>
+                      {propertyHealthStatus(prop)&&<span title={HEALTH_LABEL[propertyHealthStatus(prop)]} className={`shrink-0 inline-block w-1.5 h-1.5 rounded-full ${HEALTH_DOT[propertyHealthStatus(prop)]}`}/>}
                       <span className="font-semibold text-slate-900 dark:text-zinc-100 truncate text-sm">{prop.address?.split(',')[0]||"Unnamed Property"}</span>
                     </div>
                     <div className="shrink-0 text-[11px] whitespace-nowrap">
@@ -3494,6 +3516,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 min-w-0 mr-3">
                     <span className="text-[11px] text-slate-300 dark:text-zinc-600 tabular-nums font-medium shrink-0">{rankMap[prop.id]}</span>
+                    {propertyHealthStatus(prop)&&<span title={HEALTH_LABEL[propertyHealthStatus(prop)]} className={`shrink-0 inline-block w-1.5 h-1.5 rounded-full ${HEALTH_DOT[propertyHealthStatus(prop)]}`}/>}
                     <button onClick={e=>{e.stopPropagation();openPanel?.({type:'property',id:prop.id});}} className="font-semibold text-slate-900 dark:text-zinc-100 truncate hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</button>
                   </div>
                   <div className="shrink-0 flex items-center gap-1.5">
@@ -7271,6 +7294,16 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                 {prop.dateSold ? `Sold ${prop.dateSold}` : "Active"}
               </span>
               {prop.isRental && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400">Rental</span>}
+              {propertyHealthStatus(prop) && (
+                <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  propertyHealthStatus(prop)==='red' ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                  : propertyHealthStatus(prop)==='yellow' ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                  : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${HEALTH_DOT[propertyHealthStatus(prop)]}`}/>
+                  {HEALTH_LABEL[propertyHealthStatus(prop)]}
+                </span>
+              )}
             </div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{prop.address || "Unnamed Property"}</h1>
             {prop.purchaseDate && <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Acquired {prop.purchaseDate}</p>}
