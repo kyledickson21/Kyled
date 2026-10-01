@@ -8459,6 +8459,37 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const [formDirty, setFormDirty] = useState(false);
   const closeModal = () => confirmDiscard(formDirty, () => setModal(null));
 
+  // "Since you were last here" digest — compares event dates (loan start/close, draws,
+  // overage checks) against the date this device last opened the Dashboard. Snapshot the
+  // OLD value once at mount before overwriting it, so the banner doesn't vanish mid-render
+  // the instant we record this visit. Note this compares against the EVENT's own date, not
+  // when it was entered — a loan backdated to 3 weeks ago won't show up here even though
+  // it's new to the tracker, since there's no separate "entered at" timestamp to compare.
+  const [lastVisitAt, setLastVisitAt] = usePersistedState("nx-lastVisitAt", null);
+  const [sinceDate] = useState(() => lastVisitAt);
+  const [digestOpen, setDigestOpen] = useState(true);
+  useEffect(() => { setLastVisitAt(TODAY); }, []);
+  const digestItems = (() => {
+    if (!sinceDate || sinceDate >= TODAY) return [];
+    const items = [];
+    data.properties.forEach(p => {
+      p.loans.forEach(l => {
+        if (l.startDate > sinceDate) items.push(`${l.lenderName || "A lender"} started a ${h$(l.principal)} loan on ${p.address || "a property"}`);
+        if (l.endDate && l.endDate > sinceDate) items.push(`${l.lenderName || "A loan"}'s loan on ${p.address || "a property"} closed`);
+        (l.drawFacility?.draws || []).forEach(d => {
+          if (d.date > sinceDate) items.push(`${h$(d.amount)} drawn on ${p.address || "a property"} (${l.lenderName || "a loan"})`);
+        });
+      });
+      (p.overageChecks || []).forEach(c => {
+        if (c.date > sinceDate) items.push(`${h$(c.amount)} overage check added for ${p.address || "a property"}`);
+      });
+    });
+    (data.unassigned || []).forEach(l => {
+      if (l.startDate > sinceDate) items.push(`${l.lenderName || "A lender"} sent ${h$(l.principal)} — not yet placed`);
+    });
+    return items;
+  })();
+
   const activePropsData = data.properties.filter(p => !p.dateSold);
   const unassignedFunds = (data.unassigned || []).filter(l => !l.endDate);
   const allActiveLoans = activePropsData.flatMap(p => p.loans.filter(l => !l.endDate));
@@ -8664,6 +8695,25 @@ function DashboardPage({ data, update, onNavigateTab }) {
         <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-1">Nexus Homes</div>
         <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">Funding Center</h1>
       </div>
+
+      {/* ── Since You Were Last Here ── */}
+      {digestOpen && digestItems.length > 0 && (
+        <div className="mb-4 rounded-2xl overflow-hidden bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40">
+          <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">👋</span>
+              <div className="text-[11px] font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400">Since You Were Last Here</div>
+            </div>
+            <button onClick={() => setDigestOpen(false)} className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 text-xs font-bold px-1">✕</button>
+          </div>
+          <div className="px-4 pb-3 space-y-1">
+            {digestItems.slice(0, 5).map((text, i) => (
+              <div key={i} className="text-sm text-slate-700 dark:text-zinc-200">• {text}</div>
+            ))}
+            {digestItems.length > 5 && <div className="text-xs text-slate-500 dark:text-zinc-400">+{digestItems.length - 5} more</div>}
+          </div>
+        </div>
+      )}
 
       {/* ── Needs a Look: data-quality issues that are easy to miss otherwise ── */}
       {(lenderNameDupes.length > 0 || unbalancedClosings.length > 0) && (
