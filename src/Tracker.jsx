@@ -8421,6 +8421,32 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const activeLendersCount = [...new Set(allActivePlusUnassigned.map(l => l.lenderName).filter(Boolean))].length;
   const totalLoansCount = allActivePlusUnassigned.length;
 
+  // Possible duplicate lender names — same person entered slightly differently (extra
+  // space, different case, a stray period) ends up tracked as two separate lenders with
+  // their principal split between them, which is easy to miss just scrolling the list.
+  const lenderNameDupes = (() => {
+    const allNames = new Set([
+      ...data.properties.flatMap(p => p.loans.map(l => l.lenderName)),
+      ...(data.unassigned || []).map(l => l.lenderName),
+    ].filter(Boolean));
+    const normalize = n => n.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const groups = {};
+    allNames.forEach(n => {
+      const key = normalize(n);
+      if (!key) return;
+      (groups[key] = groups[key] || new Set()).add(n);
+    });
+    return Object.values(groups).filter(set => set.size > 1).map(set => [...set]);
+  })();
+
+  // Closed properties whose own closing numbers never balanced — going forward this is
+  // blocked at close-out time (MarkSoldModal/EditClosingModal both require Confirm/Save
+  // Anyway for an unbalanced closing), but older data from before that gate existed can
+  // still have one sitting unnoticed.
+  const unbalancedClosings = data.properties.filter(p =>
+    p.dateSold && p.closingData && ((p.closingData.wire || 0) <= 0 || (p.closingData.selfFunded || 0) < -0.01)
+  );
+
   // Draws: eligible if 14+ days since the LATER of (last draw date) or (property purchase date)
   const drawsAvailable = activePropsData.flatMap(prop =>
     prop.loans.filter(l => !l.endDate && l.drawFacility && drawRemaining(l) > 0).map(l => ({l, prop}))
@@ -8584,6 +8610,32 @@ function DashboardPage({ data, update, onNavigateTab }) {
         <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-1">Nexus Homes</div>
         <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">Funding Center</h1>
       </div>
+
+      {/* ── Needs a Look: data-quality issues that are easy to miss otherwise ── */}
+      {(lenderNameDupes.length > 0 || unbalancedClosings.length > 0) && (
+        <div className="mb-4 rounded-2xl overflow-hidden bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40">
+          <div className="px-4 py-2.5 flex items-center gap-2">
+            <span className="text-sm">🔎</span>
+            <div className="text-[11px] font-bold uppercase tracking-widest text-red-600 dark:text-red-400">Needs a Look</div>
+          </div>
+          <div className="divide-y divide-red-100 dark:divide-red-900/30">
+            {lenderNameDupes.map((names, i) => (
+              <button key={`dupe-${i}`} onClick={() => onNavigateTab("LenderDash")}
+                className="w-full text-left px-4 py-2.5 hover:bg-red-100/50 dark:hover:bg-red-900/20 transition-colors">
+                <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100">Possible duplicate lender: {names.join(" / ")}</div>
+                <div className="text-[11px] text-slate-500 dark:text-zinc-400">These might be the same person entered differently — worth a look.</div>
+              </button>
+            ))}
+            {unbalancedClosings.map(p => (
+              <button key={p.id} onClick={() => openPanel({ type: 'property', id: p.id })}
+                className="w-full text-left px-4 py-2.5 hover:bg-red-100/50 dark:hover:bg-red-900/20 transition-colors">
+                <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100">{p.address || "Unnamed property"} — closing numbers don't balance</div>
+                <div className="text-[11px] text-slate-500 dark:text-zinc-400">Sold {p.dateSold} · worth double-checking the wire/lender payoff amounts.</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── HERO: Unassigned Money ── */}
       {unassignedFunds.length > 0 ? (
@@ -8863,7 +8915,7 @@ const SideBtn=({icon,label,active,onClick,tooltip})=>(
 
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
   const [data,setData]=useState(null);
-  const [tab,setTab]=usePersistedState("nx-activeTab","Properties");
+  const [tab,setTab]=usePersistedState("nx-activeTab","Dashboard");
   const [loading,setLoading]=useState(true);
   const [privacyMode,setPrivacyMode]=useState(false);
   const [fabOpen,setFabOpen]=useState(false);
