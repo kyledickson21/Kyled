@@ -3721,8 +3721,11 @@ function LenderDashboard({ data }) {
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const [search, setSearch] = useState("");
   const [lenderFilter, setLenderFilter] = usePersistedState("nx-lenderFilter", "active");
-  const [sortBy, setSortBy] = usePersistedState("nx-lenderSortBy2", "name");
-  const [sortDir, setSortDir] = usePersistedState("nx-lenderSortDir", "asc");
+  // Default to biggest-balance-first instead of alphabetical, so the lenders with the most
+  // money outstanding surface without picking a sort mode (only affects a fresh/first-ever
+  // load — anyone who's already picked a sort keeps it).
+  const [sortBy, setSortBy] = usePersistedState("nx-lenderSortBy2", "balance");
+  const [sortDir, setSortDir] = usePersistedState("nx-lenderSortDir", "desc");
 
   const allActive = [
     ...data.properties.flatMap(prop =>
