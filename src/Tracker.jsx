@@ -8900,11 +8900,15 @@ const IcoPie=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px
 const IcoApps=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM13 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2h-2zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM13 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2z"/></svg>;
 
 // Sidebar nav button — pure/props-only, hoisted so its identity is stable across renders.
-const SideBtn=({icon,label,active,onClick,tooltip})=>(
+// `badge`: an alert count shown as a small red dot (count<=0 or omitted hides it entirely).
+// Kept to a dot rather than a number for 1-2 digit counts so it doesn't crowd a 9px icon —
+// the tooltip still spells out exactly what it means.
+const SideBtn=({icon,label,active,onClick,tooltip,badge})=>(
   <div className="relative group">
     <button onClick={onClick}
-      className={`flex items-center justify-center w-full p-2.5 rounded-xl transition-all ${active?"bg-blue-600 shadow-sm":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+      className={`relative flex items-center justify-center w-full p-2.5 rounded-xl transition-all ${active?"bg-blue-600 shadow-sm":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
       <span className={`shrink-0 ${active?"text-white":"text-slate-400 dark:text-zinc-500"}`}>{icon}</span>
+      {badge>0&&<span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[#F2F2F7] dark:ring-black"/>}
     </button>
     <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-zinc-900 dark:bg-zinc-700 text-white text-xs font-semibold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-100 z-50 shadow-lg">
       {tooltip||label}
@@ -8923,6 +8927,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [loanFilterPending,setLoanFilterPending]=useState(null);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
+  const [mobileRenovOpen,setMobileRenovOpen]=useState(false);
   const [globalSearch,setGlobalSearch]=useState('');
   const [globalSelIdx,setGlobalSelIdx]=useState(-1);
   const [navStack,setNavStack]=useState([]);
@@ -9088,13 +9093,43 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   // `data` is still null while the initial load is in flight — these run unconditionally
   // (before the `if(loading) return` below) so hook order never changes between renders,
   // and just no-op until data actually lands.
-  const {activeProps,activeLenders,activeLoans,closedCount}=useMemo(()=>{
-    if(!data) return {activeProps:0,activeLenders:0,activeLoans:0,closedCount:0};
+  const {activeProps,activeLenders,activeLoans,closedCount,
+    fundingGapPropsCount,dupeLenderCount,overdueLoansCount,drawsAvailableCount,unbalancedClosingsCount}=useMemo(()=>{
+    const empty={activeProps:0,activeLenders:0,activeLoans:0,closedCount:0,
+      fundingGapPropsCount:0,dupeLenderCount:0,overdueLoansCount:0,drawsAvailableCount:0,unbalancedClosingsCount:0};
+    if(!data) return empty;
+    const activePropsData=data.properties.filter(p=>!p.dateSold);
+    // Same normalize-collision check as Dashboard's "Needs a Look" card — kept in sync so
+    // the nav badge count and the Dashboard list never disagree.
+    const allNames=new Set([...data.properties.flatMap(p=>p.loans.map(l=>l.lenderName)),...(data.unassigned||[]).map(l=>l.lenderName)].filter(Boolean));
+    const normalize=n=>n.toLowerCase().replace(/[^a-z0-9]/g,"");
+    const nameGroups={};
+    allNames.forEach(n=>{const key=normalize(n);if(!key)return;(nameGroups[key]=nameGroups[key]||new Set()).add(n);});
+    const dupeLenderCount=Object.values(nameGroups).filter(set=>set.size>1).length;
+    const unbalancedClosingsCount=data.properties.filter(p=>p.dateSold&&p.closingData&&((p.closingData.wire||0)<=0||(p.closingData.selfFunded||0)<-0.01)).length;
+    const overdueLoansCount=[
+      ...activePropsData.flatMap(p=>p.loans.filter(l=>!l.endDate&&l.dueDate&&l.dueDate<TODAY)),
+      ...(data.unassigned||[]).filter(l=>!l.endDate&&l.dueDate&&l.dueDate<TODAY),
+    ].length;
+    const drawsAvailableCount=activePropsData.flatMap(prop=>
+      prop.loans.filter(l=>!l.endDate&&l.drawFacility&&drawRemaining(l)>0).map(l=>({l,prop}))
+    ).filter(({l,prop})=>{
+      const draws=l.drawFacility.draws||[];
+      const lastDraw=draws.reduce((m,d)=>!m||d.date>m?d.date:m,null);
+      const lastEvent=[lastDraw,prop.purchaseDate].filter(Boolean).sort().pop()??null;
+      return !lastEvent||daysBetween(lastEvent,TODAY)>=14;
+    }).length;
+    const fundingGapPropsCount=activePropsData.filter(prop=>{
+      const active=prop.loans.filter(l=>!l.endDate);
+      const funded=active.reduce((acc,l)=>acc+(l.principal||0)+(l.drawFacility?.committed||0),0);
+      return propNeeded(prop,active)-funded>0;
+    }).length;
     return {
-      activeProps:data.properties.filter(p=>!p.dateSold).length,
+      activeProps:activePropsData.length,
       activeLenders:[...new Set([...data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>l.lenderName)),...data.unassigned.filter(l=>!l.endDate).map(l=>l.lenderName)].filter(Boolean))].length,
       activeLoans:data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate)).length+(data.unassigned||[]).filter(l=>!l.endDate).length,
       closedCount:data.properties.filter(p=>p.dateSold).length,
+      fundingGapPropsCount,dupeLenderCount,overdueLoansCount,drawsAvailableCount,unbalancedClosingsCount,
     };
   },[data]);
 
@@ -9204,17 +9239,18 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
         {/* Nav items */}
         <nav className="flex flex-col gap-0.5 px-1.5 flex-1">
-          <SideBtn icon={<IcoHome/>} label="Properties" tooltip={`Properties (${activeProps})`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Properties");}}/>
-          <SideBtn icon={<IcoUsers/>} label="Lenders" tooltip={`Lenders (${activeLenders})`} active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("LenderDash");}}/>
-          <SideBtn icon={<IcoList/>} label="Loans" tooltip={`Loans (${activeLoans})`} active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("AllLoans");}}/>
+          <SideBtn icon={<IcoHome/>} label="Properties" badge={fundingGapPropsCount} tooltip={`Properties (${activeProps})${fundingGapPropsCount>0?` · ${fundingGapPropsCount} short of funding`:''}`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Properties");}}/>
+          <SideBtn icon={<IcoUsers/>} label="Lenders" badge={dupeLenderCount} tooltip={`Lenders (${activeLenders})${dupeLenderCount>0?` · ${dupeLenderCount} possible duplicate name${dupeLenderCount!==1?'s':''}`:''}`} active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("LenderDash");}}/>
+          <SideBtn icon={<IcoList/>} label="Loans" badge={overdueLoansCount} tooltip={`Loans (${activeLoans})${overdueLoansCount>0?` · ${overdueLoansCount} overdue`:''}`} active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("AllLoans");}}/>
 
           {/* Renovation group — hover reveals the submenu on desktop; also toggles on
               click so it works on touch/click-only devices (a laptop trackpad running
               Windows, an iPad) where hover never fires. */}
           <div ref={rehabMenuRef} className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
-            <button onClick={()=>setRehabOpen(o=>!o)}
-              className={`flex items-center justify-center w-full p-2.5 rounded-xl transition-all cursor-pointer ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+            <button onClick={()=>setRehabOpen(o=>!o)} title={`Renovation${drawsAvailableCount>0?` · ${drawsAvailableCount} draw${drawsAvailableCount!==1?'s':''} available`:''}`}
+              className={`relative flex items-center justify-center w-full p-2.5 rounded-xl transition-all cursor-pointer ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
               <span className={`shrink-0 ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}><IcoWrench/></span>
+              {drawsAvailableCount>0&&<span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[#F2F2F7] dark:ring-black"/>}
             </button>
             {(rehabHover||rehabOpen)&&(
               <div className="absolute left-full top-0 ml-2 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
@@ -9230,7 +9266,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           </div>
 
           {/* Records = Closed + History */}
-          <SideBtn icon={<IcoDocument/>} label="Records" tooltip="Records" active={["Closed","History"].includes(tab)&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
+          <SideBtn icon={<IcoDocument/>} label="Records" badge={unbalancedClosingsCount} tooltip={`Records${unbalancedClosingsCount>0?` · ${unbalancedClosingsCount} closing${unbalancedClosingsCount!==1?'s':''} don't balance`:''}`} active={["Closed","History"].includes(tab)&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
           <SideBtn icon={<IcoPin/>} label="Whiteboard" tooltip="Whiteboard" active={tab==="Whiteboard"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Whiteboard");}}/>
         </nav>
 
@@ -9296,19 +9332,60 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             <nav className="flex-1 py-2 px-2">
               {[
                 {id:"Dashboard",icon:<IcoPie/>,label:"Dashboard",match:t=>t==="Dashboard"},
-                {id:"Properties",icon:<IcoHome/>,label:"Properties",match:t=>t==="Properties"},
-                {id:"LenderDash",icon:<IcoUsers/>,label:"Lenders",match:t=>t==="LenderDash"},
-                {id:"AllLoans",icon:<IcoList/>,label:"Loans",match:t=>t==="AllLoans"},
-                {id:"RehabPriority",icon:<IcoClipboard/>,label:"Rehab Priority",match:t=>t==="RehabPriority"},
-                {id:"Draws",icon:<IcoGrid/>,label:"Draw Tracker",match:t=>t==="Draws"},
-                {id:"PropDash",icon:<IcoBar/>,label:"Prop Dashboard",match:t=>t==="PropDash"},
-                {id:"Closed",icon:<IcoDocument/>,label:"Records",match:t=>["Closed","History"].includes(t)},
-                {id:"Whiteboard",icon:<IcoPin/>,label:"Whiteboard",match:t=>t==="Whiteboard"},
-              ].map(({id,icon,label,match})=>(
+                {id:"Properties",icon:<IcoHome/>,label:"Properties",match:t=>t==="Properties",badge:fundingGapPropsCount},
+                {id:"LenderDash",icon:<IcoUsers/>,label:"Lenders",match:t=>t==="LenderDash",badge:dupeLenderCount},
+                {id:"AllLoans",icon:<IcoList/>,label:"Loans",match:t=>t==="AllLoans",badge:overdueLoansCount},
+              ].map(({id,icon,label,match,badge})=>(
                 <button key={id}
                   onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setMobileNavOpen(false);}}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-blue-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
-                  <span className={`shrink-0 ${match(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}>{icon}</span>
+                  <span className={`relative shrink-0 ${match(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}>
+                    {icon}
+                    {badge>0&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500"/>}
+                  </span>
+                  {label}
+                </button>
+              ))}
+
+              {/* Renovation group — expands in place instead of three separate rows */}
+              <button onClick={()=>setMobileRenovOpen(o=>!o)}
+                className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0&&!mobileRenovOpen?"bg-blue-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
+                <span className="flex items-center gap-3">
+                  <span className={`relative shrink-0 ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0&&!mobileRenovOpen?"text-white":"text-slate-400 dark:text-zinc-500"}`}>
+                    <IcoWrench/>
+                    {drawsAvailableCount>0&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500"/>}
+                  </span>
+                  Renovation
+                </span>
+                <span className="text-xs opacity-60">{mobileRenovOpen?"▲":"▼"}</span>
+              </button>
+              {mobileRenovOpen&&[
+                {id:"RehabPriority",icon:<IcoClipboard/>,label:"Rehab Priority",match:t=>t==="RehabPriority"},
+                {id:"Draws",icon:<IcoGrid/>,label:"Draw Tracker",match:t=>t==="Draws",badge:drawsAvailableCount},
+                {id:"PropDash",icon:<IcoBar/>,label:"Prop Dashboard",match:t=>t==="PropDash"},
+              ].map(({id,icon,label,match,badge})=>(
+                <button key={id}
+                  onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setMobileNavOpen(false);}}
+                  className={`w-full flex items-center gap-3 pl-9 pr-3 py-2 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
+                  <span className="relative shrink-0 text-slate-400 dark:text-zinc-500">
+                    {icon}
+                    {badge>0&&<span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500"/>}
+                  </span>
+                  {label}
+                </button>
+              ))}
+
+              {[
+                {id:"Closed",icon:<IcoDocument/>,label:"Records",match:t=>["Closed","History"].includes(t),badge:unbalancedClosingsCount},
+                {id:"Whiteboard",icon:<IcoPin/>,label:"Whiteboard",match:t=>t==="Whiteboard"},
+              ].map(({id,icon,label,match,badge})=>(
+                <button key={id}
+                  onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setMobileNavOpen(false);}}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-blue-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
+                  <span className={`relative shrink-0 ${match(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}>
+                    {icon}
+                    {badge>0&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500"/>}
+                  </span>
                   {label}
                 </button>
               ))}
