@@ -9163,9 +9163,15 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const globalSearchRef=useRef(null);
   const updatedAtRef=useRef(null);
   const saveQueueRef=useRef(Promise.resolve());
-  const undoStackRef=useRef([]); // [{ inverse: currentData => revertedData }, ...] oldest→newest, capped
+  // Each entry holds both directions ({undo, redo}: currentData => transformedData) so a
+  // step can move back and forth between the two stacks instead of just disappearing once
+  // undone. A fresh update() always clears the redo stack — same as Sheets/Docs, once you
+  // make a new change the old "forward" history no longer applies.
+  const undoStackRef=useRef([]); // oldest→newest, capped
+  const redoStackRef=useRef([]); // oldest→newest (most recently undone is last)
   const UNDO_STACK_LIMIT=10;
   const [undoCount,setUndoCount]=useState(0);
+  const [redoCount,setRedoCount]=useState(0);
 
   useEffect(()=>{
     const handler=e=>{
@@ -9303,10 +9309,13 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const update = fn => {
     setData(prev=>{
       const next=typeof fn==="function"?fn(prev):fn
-      const inverse = computeInverse(prev, next);
-      if(inverse){
-        undoStackRef.current=[...undoStackRef.current,{inverse}].slice(-UNDO_STACK_LIMIT);
+      const undo = computeInverse(prev, next);
+      if(undo){
+        const redo = computeInverse(next, prev);
+        undoStackRef.current=[...undoStackRef.current,{undo,redo}].slice(-UNDO_STACK_LIMIT);
         setUndoCount(undoStackRef.current.length);
+        redoStackRef.current=[];
+        setRedoCount(0);
       }
       saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(next, fn));
       return next
@@ -9318,10 +9327,26 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     const entry = stack[stack.length-1];
     undoStackRef.current = stack.slice(0,-1);
     setUndoCount(undoStackRef.current.length);
+    redoStackRef.current = [...redoStackRef.current, entry];
+    setRedoCount(redoStackRef.current.length);
     setData(prev=>{
-      const reverted = entry.inverse(prev);
-      saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(reverted, entry.inverse));
+      const reverted = entry.undo(prev);
+      saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(reverted, entry.undo));
       return reverted;
+    });
+  };
+  const handleRedo = () => {
+    const stack = redoStackRef.current;
+    if (!stack.length) return;
+    const entry = stack[stack.length-1];
+    redoStackRef.current = stack.slice(0,-1);
+    setRedoCount(redoStackRef.current.length);
+    undoStackRef.current = [...undoStackRef.current, entry];
+    setUndoCount(undoStackRef.current.length);
+    setData(prev=>{
+      const reapplied = entry.redo(prev);
+      saveQueueRef.current = saveQueueRef.current.then(()=>persistWithRetry(reapplied, entry.redo));
+      return reapplied;
     });
   };
   const navigate = entity => {
@@ -9723,14 +9748,23 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
             {/* Right side — Actions button, adjacent to search */}
             <div className="flex-1 flex justify-end sm:justify-start items-center gap-2 pl-0 sm:pl-3">
-            {undoCount>0 && (
-              <button onClick={handleUndo} title={`Undo last change${undoCount>1?` (${undoCount} steps available)`:''}`}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border border-slate-300 dark:border-zinc-600 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 shrink-0">
+            <div className="flex items-center rounded-full border border-slate-300 dark:border-zinc-600 overflow-hidden shrink-0">
+              <button onClick={handleUndo} disabled={undoCount===0}
+                title={undoCount>0?`Undo last change${undoCount>1?` (${undoCount} steps available)`:''}`:'Nothing to undo'}
+                className={`flex items-center gap-1.5 pl-2.5 sm:pl-3.5 pr-2 py-1.5 text-sm font-semibold transition-all ${undoCount===0?"text-slate-300 dark:text-zinc-700 cursor-not-allowed":"text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800"}`}>
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0"><path fillRule="evenodd" d="M9.707 3.293a1 1 0 010 1.414L7.414 7H12a5 5 0 110 10H8a1 1 0 110-2h4a3 3 0 100-6H7.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
                 <span className="hidden sm:inline">Undo</span>
                 {undoCount>1&&<span className="text-[10px] font-bold bg-slate-200 dark:bg-zinc-700 rounded-full px-1.5 py-0.5 leading-none">{undoCount}</span>}
               </button>
-            )}
+              <div className="w-px self-stretch bg-slate-300 dark:bg-zinc-600"/>
+              <button onClick={handleRedo} disabled={redoCount===0}
+                title={redoCount>0?`Redo${redoCount>1?` (${redoCount} steps available)`:''}`:'Nothing to redo'}
+                className={`flex items-center gap-1.5 pl-2 pr-2.5 sm:pr-3.5 py-1.5 text-sm font-semibold transition-all ${redoCount===0?"text-slate-300 dark:text-zinc-700 cursor-not-allowed":"text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800"}`}>
+                {redoCount>1&&<span className="text-[10px] font-bold bg-slate-200 dark:bg-zinc-700 rounded-full px-1.5 py-0.5 leading-none">{redoCount}</span>}
+                <span className="hidden sm:inline">Redo</span>
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0 scale-x-[-1]"><path fillRule="evenodd" d="M9.707 3.293a1 1 0 010 1.414L7.414 7H12a5 5 0 110 10H8a1 1 0 110-2h4a3 3 0 100-6H7.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+              </button>
+            </div>
             <div ref={fabRef} className="relative shrink-0">
               <button onClick={()=>setFabOpen(o=>!o)}
                 className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:border-blue-600 hover:text-white dark:hover:text-white"}`}>
