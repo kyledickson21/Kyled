@@ -425,14 +425,14 @@ const LockableInline = ({ locked, onToggle, children, className="" }) => (
 // `children` can be a node (whole item is the drag handle) or a render-prop
 // `(handleProps) => node` so the caller can put the handle on just part of
 // the item (e.g. a header bar) instead of the whole thing.
-const SortableItem = ({id,disabled,as:Tag="div",className,children}) => {
+const SortableItem = ({id,disabled,as:Tag="div",className,children,...rest}) => {
   const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id,disabled});
   const isRenderProp = typeof children==="function";
   const handleProps = disabled ? {} : {...attributes,...listeners};
   return (
     <Tag ref={setNodeRef} className={className}
       style={{transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.5:1,zIndex:isDragging?10:undefined,cursor:(!isRenderProp&&!disabled)?"grab":undefined}}
-      {...(isRenderProp?{}:handleProps)}>
+      {...(isRenderProp?{}:handleProps)} {...rest}>
       {isRenderProp ? children(handleProps) : children}
     </Tag>
   );
@@ -468,17 +468,26 @@ const Chip = ({children,color}) => {
 // Hover-only tooltip, portal-rendered to <body> (like DropdownPortal above) so it escapes
 // any `overflow-x-auto` ancestor — e.g. a scrollable table — instead of being clipped.
 // `tip` can be a plain string or richer JSX (multi-line breakdowns, lists); pass `wide` for
-// those so the box isn't forced to one line.
-const HoverTip = ({children,tip,wide}) => {
+// those so the box isn't forced to one line. Pass `interactive` when `tip` itself contains
+// clickable content (e.g. links to another page) — this keeps pointer events enabled inside
+// the tooltip and bridges hover with a short close-delay so the mouse can travel from the
+// trigger into the tooltip without it disappearing first.
+const HoverTip = ({children,tip,wide,interactive}) => {
   const ref = useRef(null);
   const [rect, setRect] = useState(null);
+  const hideTimer = useRef(null);
+  const show = () => { clearTimeout(hideTimer.current); setRect(ref.current.getBoundingClientRect()); };
+  const hide = () => {
+    if (!interactive) { setRect(null); return; }
+    hideTimer.current = setTimeout(()=>setRect(null), 150);
+  };
   return (
-    <span ref={ref} className="inline-block max-w-full"
-      onMouseEnter={()=>setRect(ref.current.getBoundingClientRect())}
-      onMouseLeave={()=>setRect(null)}>
+    <span ref={ref} className="inline-block max-w-full" onMouseEnter={show} onMouseLeave={hide}>
       {children}
       {rect && createPortal(
-        <div className="fixed z-[100] pointer-events-none" style={{left:rect.left+rect.width/2,top:rect.top-6,transform:"translate(-50%,-100%)"}}>
+        <div className={`fixed z-[100] ${interactive?"":"pointer-events-none"}`}
+          style={{left:rect.left+rect.width/2,top:rect.top-6,transform:"translate(-50%,-100%)"}}
+          onMouseEnter={interactive?show:undefined} onMouseLeave={interactive?hide:undefined}>
           <div className={`px-2.5 py-1.5 bg-zinc-900 dark:bg-zinc-700 text-white text-[11px] rounded-lg shadow-lg ${wide?"whitespace-normal min-w-[160px] text-left":"whitespace-nowrap"}`}>
             {tip}
           </div>
@@ -3374,7 +3383,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           {h:"Status", left:false},
         ];
         const manualMode=propSortMode==="manual";
-        const rowClass="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors";
+        const rowClass="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors cursor-pointer";
         const tbody=(
           <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
             {sorted.map(({prop,active,funded,needed,short,over,under,full,pd,daysOwned,months,interestCarry})=>{
@@ -3392,12 +3401,13 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 </td>
                 <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">
                   {active.length>0?(
-                    <HoverTip wide tip={
+                    <HoverTip wide interactive tip={
                       <div className="flex flex-col gap-0.5">
                         {active.map(l=>(
-                          <div key={l.id} className="flex justify-between gap-3">
-                            <span>{l.lenderName}</span><span className="font-semibold tabular-nums">{$$p(l.principal||0)}</span>
-                          </div>
+                          <button key={l.id} onClick={e=>{e.stopPropagation();openPanel({type:'lender',name:l.lenderName});}}
+                            className="flex justify-between gap-3 w-full text-left hover:text-blue-300 transition-colors">
+                            <span className="underline decoration-dotted underline-offset-2">{l.lenderName}</span><span className="font-semibold tabular-nums">{$$p(l.principal||0)}</span>
+                          </button>
                         ))}
                       </div>
                     }><span>{active.length}</span></HoverTip>
@@ -3425,15 +3435,16 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 </td>
                 <td className="py-2.5 px-2 text-right">
                   <div className="flex gap-0.5 justify-end items-center">
-                    <button onClick={()=>setModal({type:"editProp",prop})} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs">✏️</button>
-                    <button onClick={()=>delProp(prop.id)} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs">🗑</button>
+                    <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs">✏️</button>
+                    <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs">🗑</button>
                   </div>
                 </td>
               </>);
+              const openProp=()=>openPanel({type:'property',id:prop.id});
               return manualMode ? (
-                <SortableItem key={prop.id} id={prop.id} as="tr" className={rowClass}>{cells}</SortableItem>
+                <SortableItem key={prop.id} id={prop.id} as="tr" className={rowClass} onClick={openProp}>{cells}</SortableItem>
               ) : (
-                <tr key={prop.id} className={rowClass}>{cells}</tr>
+                <tr key={prop.id} className={rowClass} onClick={openProp}>{cells}</tr>
               );
             })}
           </tbody>
