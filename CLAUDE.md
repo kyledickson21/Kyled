@@ -108,7 +108,11 @@ update(d => ({...d, properties: [{newField: value}]}))
   },
   homeOrder: [],     // Home screen icon order
   folders: [],       // Home screen folders ({id, name, linkIds})
-  quickLinks: []     // Home screen quick links ({id, label, url, icon, useLogo})
+  quickLinks: [],    // Home screen quick links ({id, label, url, icon, useLogo})
+  dashboardLayout: { // Dashboard card drag-order + hidden cards, synced across devices
+    order: [],       // card ids, see DASHBOARD_CARD_DEFS in Tracker.jsx
+    hidden: []       // card ids currently hidden
+  }
 }
 ```
 
