@@ -2844,24 +2844,6 @@ const OVERAGE_SOURCES = [["insurance","Insurance"],["taxes","Taxes"],["overcharg
 const overageSourceLabel = src => (OVERAGE_SOURCES.find(([v])=>v===src)||[])[1] || "Overage";
 const overageCheckTotal = prop => (prop.overageChecks||[]).reduce((s,c)=>s+(c.amount||0),0);
 const effectiveProfit = prop => (prop.closingData?.profit||0) + overageCheckTotal(prop);
-// One glance-able traffic light per active property instead of combining funding %,
-// an overdue/upcoming due date, and whether it's running past its estimated hold time in
-// your head. null for a sold property (that status no longer applies).
-const propertyHealthStatus = prop => {
-  if (prop.dateSold) return null;
-  const active = (prop.loans||[]).filter(l => !l.endDate);
-  const funded = active.reduce((s,l) => s + (l.principal||0) + (l.drawFacility?.committed||0), 0);
-  const gap = propNeeded(prop, active) - funded;
-  const overdue = active.some(l => l.dueDate && l.dueDate < TODAY);
-  if (gap > 0 || overdue) return 'red';
-  const dueSoon = active.some(l => l.dueDate && l.dueDate >= TODAY && daysBetween(TODAY, l.dueDate) <= 30);
-  const daysOwned = prop.purchaseDate ? daysBetween(prop.purchaseDate, TODAY) : 0;
-  const overTime = daysOwned > effectiveMonths(prop) * 30;
-  if (dueSoon || overTime) return 'yellow';
-  return 'green';
-};
-const HEALTH_DOT = { red:"bg-red-500", yellow:"bg-amber-400", green:"bg-emerald-500" };
-const HEALTH_LABEL = { red:"Needs attention", yellow:"Worth watching", green:"On track" };
 // Human-readable label for a navigate() entity — used for the "Recently Viewed" search list,
 // resolved at the moment it's visited since loans/properties can get renamed/closed later.
 const labelForEntity = (entity, data) => {
@@ -3388,10 +3370,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                     return(
                     <tr key={prop.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
                       <td className="py-2.5 px-4 tabular-nums text-[11px] text-slate-300 dark:text-zinc-600">{rankMap[prop.id]}</td>
-                      <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">
-                        {propertyHealthStatus(prop)&&<span title={HEALTH_LABEL[propertyHealthStatus(prop)]} className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${HEALTH_DOT[propertyHealthStatus(prop)]}`}/>}
-                        {prop.address||"Unnamed"}
-                      </td>
+                      <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">{prop.address||"Unnamed"}</td>
                       <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">{active.length}</td>
                       <td className="py-2.5 px-4 text-right tabular-nums text-slate-700 dark:text-zinc-200 font-medium">{funded>0?$$p(funded):"—"}</td>
                       <td className="py-2.5 px-4 text-right tabular-nums text-slate-400 dark:text-zinc-500">{needed>0?$$p(needed):"—"}</td>
@@ -3441,7 +3420,6 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   <div className="flex justify-between items-start gap-2 mb-2">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="text-[11px] text-slate-300 dark:text-zinc-600 tabular-nums font-medium shrink-0">{rankMap[prop.id]}</span>
-                      {propertyHealthStatus(prop)&&<span title={HEALTH_LABEL[propertyHealthStatus(prop)]} className={`shrink-0 inline-block w-1.5 h-1.5 rounded-full ${HEALTH_DOT[propertyHealthStatus(prop)]}`}/>}
                       <span className="font-semibold text-slate-900 dark:text-zinc-100 truncate text-sm">{prop.address?.split(',')[0]||"Unnamed Property"}</span>
                     </div>
                     <div className="shrink-0 text-[11px] whitespace-nowrap">
@@ -3516,7 +3494,6 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 min-w-0 mr-3">
                     <span className="text-[11px] text-slate-300 dark:text-zinc-600 tabular-nums font-medium shrink-0">{rankMap[prop.id]}</span>
-                    {propertyHealthStatus(prop)&&<span title={HEALTH_LABEL[propertyHealthStatus(prop)]} className={`shrink-0 inline-block w-1.5 h-1.5 rounded-full ${HEALTH_DOT[propertyHealthStatus(prop)]}`}/>}
                     <button onClick={e=>{e.stopPropagation();openPanel?.({type:'property',id:prop.id});}} className="font-semibold text-slate-900 dark:text-zinc-100 truncate hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</button>
                   </div>
                   <div className="shrink-0 flex items-center gap-1.5">
@@ -7297,16 +7274,6 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                 {prop.dateSold ? `Sold ${prop.dateSold}` : "Active"}
               </span>
               {prop.isRental && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400">Rental</span>}
-              {propertyHealthStatus(prop) && (
-                <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  propertyHealthStatus(prop)==='red' ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                  : propertyHealthStatus(prop)==='yellow' ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
-                  : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${HEALTH_DOT[propertyHealthStatus(prop)]}`}/>
-                  {HEALTH_LABEL[propertyHealthStatus(prop)]}
-                </span>
-              )}
             </div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">{prop.address || "Unnamed Property"}</h1>
             {prop.purchaseDate && <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Acquired {prop.purchaseDate}</p>}
@@ -8462,37 +8429,6 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const [formDirty, setFormDirty] = useState(false);
   const closeModal = () => confirmDiscard(formDirty, () => setModal(null));
 
-  // "Since you were last here" digest — compares event dates (loan start/close, draws,
-  // overage checks) against the date this device last opened the Dashboard. Snapshot the
-  // OLD value once at mount before overwriting it, so the banner doesn't vanish mid-render
-  // the instant we record this visit. Note this compares against the EVENT's own date, not
-  // when it was entered — a loan backdated to 3 weeks ago won't show up here even though
-  // it's new to the tracker, since there's no separate "entered at" timestamp to compare.
-  const [lastVisitAt, setLastVisitAt] = usePersistedState("nx-lastVisitAt", null);
-  const [sinceDate] = useState(() => lastVisitAt);
-  const [digestOpen, setDigestOpen] = useState(true);
-  useEffect(() => { setLastVisitAt(TODAY); }, []);
-  const digestItems = (() => {
-    if (!sinceDate || sinceDate >= TODAY) return [];
-    const items = [];
-    data.properties.forEach(p => {
-      p.loans.forEach(l => {
-        if (l.startDate > sinceDate) items.push(`${l.lenderName || "A lender"} started a ${h$(l.principal)} loan on ${p.address || "a property"}`);
-        if (l.endDate && l.endDate > sinceDate) items.push(`${l.lenderName || "A loan"}'s loan on ${p.address || "a property"} closed`);
-        (l.drawFacility?.draws || []).forEach(d => {
-          if (d.date > sinceDate) items.push(`${h$(d.amount)} drawn on ${p.address || "a property"} (${l.lenderName || "a loan"})`);
-        });
-      });
-      (p.overageChecks || []).forEach(c => {
-        if (c.date > sinceDate) items.push(`${h$(c.amount)} overage check added for ${p.address || "a property"}`);
-      });
-    });
-    (data.unassigned || []).forEach(l => {
-      if (l.startDate > sinceDate) items.push(`${l.lenderName || "A lender"} sent ${h$(l.principal)} — not yet placed`);
-    });
-    return items;
-  })();
-
   const activePropsData = data.properties.filter(p => !p.dateSold);
   const unassignedFunds = (data.unassigned || []).filter(l => !l.endDate);
   const allActiveLoans = activePropsData.flatMap(p => p.loans.filter(l => !l.endDate));
@@ -8508,32 +8444,6 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const unassignedTotal = unassignedFunds.reduce((s, l) => s + (l.principal || 0), 0);
   const activeLendersCount = [...new Set(allActivePlusUnassigned.map(l => l.lenderName).filter(Boolean))].length;
   const totalLoansCount = allActivePlusUnassigned.length;
-
-  // Possible duplicate lender names — same person entered slightly differently (extra
-  // space, different case, a stray period) ends up tracked as two separate lenders with
-  // their principal split between them, which is easy to miss just scrolling the list.
-  const lenderNameDupes = (() => {
-    const allNames = new Set([
-      ...data.properties.flatMap(p => p.loans.map(l => l.lenderName)),
-      ...(data.unassigned || []).map(l => l.lenderName),
-    ].filter(Boolean));
-    const normalize = n => n.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const groups = {};
-    allNames.forEach(n => {
-      const key = normalize(n);
-      if (!key) return;
-      (groups[key] = groups[key] || new Set()).add(n);
-    });
-    return Object.values(groups).filter(set => set.size > 1).map(set => [...set]);
-  })();
-
-  // Closed properties whose own closing numbers never balanced — going forward this is
-  // blocked at close-out time (MarkSoldModal/EditClosingModal both require Confirm/Save
-  // Anyway for an unbalanced closing), but older data from before that gate existed can
-  // still have one sitting unnoticed.
-  const unbalancedClosings = data.properties.filter(p =>
-    p.dateSold && p.closingData && ((p.closingData.wire || 0) <= 0 || (p.closingData.selfFunded || 0) < -0.01)
-  );
 
   // Draws: eligible if 14+ days since the LATER of (last draw date) or (property purchase date)
   const drawsAvailable = activePropsData.flatMap(prop =>
@@ -8698,51 +8608,6 @@ function DashboardPage({ data, update, onNavigateTab }) {
         <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-1">Nexus Homes</div>
         <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">Funding Center</h1>
       </div>
-
-      {/* ── Since You Were Last Here ── */}
-      {digestOpen && digestItems.length > 0 && (
-        <div className="mb-4 rounded-2xl overflow-hidden bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40">
-          <div className="px-4 py-2.5 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-sm">👋</span>
-              <div className="text-[11px] font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400">Since You Were Last Here</div>
-            </div>
-            <button onClick={() => setDigestOpen(false)} className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 text-xs font-bold px-1">✕</button>
-          </div>
-          <div className="px-4 pb-3 space-y-1">
-            {digestItems.slice(0, 5).map((text, i) => (
-              <div key={i} className="text-sm text-slate-700 dark:text-zinc-200">• {text}</div>
-            ))}
-            {digestItems.length > 5 && <div className="text-xs text-slate-500 dark:text-zinc-400">+{digestItems.length - 5} more</div>}
-          </div>
-        </div>
-      )}
-
-      {/* ── Needs a Look: data-quality issues that are easy to miss otherwise ── */}
-      {(lenderNameDupes.length > 0 || unbalancedClosings.length > 0) && (
-        <div className="mb-4 rounded-2xl overflow-hidden bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40">
-          <div className="px-4 py-2.5 flex items-center gap-2">
-            <span className="text-sm">🔎</span>
-            <div className="text-[11px] font-bold uppercase tracking-widest text-red-600 dark:text-red-400">Needs a Look</div>
-          </div>
-          <div className="divide-y divide-red-100 dark:divide-red-900/30">
-            {lenderNameDupes.map((names, i) => (
-              <button key={`dupe-${i}`} onClick={() => onNavigateTab("LenderDash")}
-                className="w-full text-left px-4 py-2.5 hover:bg-red-100/50 dark:hover:bg-red-900/20 transition-colors">
-                <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100">Possible duplicate lender: {names.join(" / ")}</div>
-                <div className="text-[11px] text-slate-500 dark:text-zinc-400">These might be the same person entered differently — worth a look.</div>
-              </button>
-            ))}
-            {unbalancedClosings.map(p => (
-              <button key={p.id} onClick={() => openPanel({ type: 'property', id: p.id })}
-                className="w-full text-left px-4 py-2.5 hover:bg-red-100/50 dark:hover:bg-red-900/20 transition-colors">
-                <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100">{p.address || "Unnamed property"} — closing numbers don't balance</div>
-                <div className="text-[11px] text-slate-500 dark:text-zinc-400">Sold {p.dateSold} · worth double-checking the wire/lender payoff amounts.</div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── HERO: Unassigned Money ── */}
       {unassignedFunds.length > 0 ? (
@@ -9045,6 +8910,13 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [rehabHover,setRehabHover]=useState(false);
   const [rehabOpen,setRehabOpen]=useState(false);
   const rehabMenuRef=useRef(null);
+  // Closing on mouseleave fires the instant the cursor crosses the small gap between the
+  // wrench button and the flyout (that gap isn't part of either element's hit box), which
+  // made it feel impossible to actually reach the flyout. A short close delay — cleared the
+  // moment the cursor re-enters anywhere in this group — gives it time to arrive instead.
+  const rehabCloseTimerRef=useRef(null);
+  const openRehabHover=()=>{clearTimeout(rehabCloseTimerRef.current);setRehabHover(true);};
+  const closeRehabHoverDelayed=()=>{rehabCloseTimerRef.current=setTimeout(()=>setRehabHover(false),300);};
   const fabRef=useRef(null);
   const settingsRef=useRef(null);
   const globalSearchRef=useRef(null);
@@ -9228,43 +9100,15 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   // `data` is still null while the initial load is in flight — these run unconditionally
   // (before the `if(loading) return` below) so hook order never changes between renders,
   // and just no-op until data actually lands.
-  const {activeProps,activeLenders,activeLoans,closedCount,
-    fundingGapPropsCount,dupeLenderCount,overdueLoansCount,drawsAvailableCount,unbalancedClosingsCount}=useMemo(()=>{
-    const empty={activeProps:0,activeLenders:0,activeLoans:0,closedCount:0,
-      fundingGapPropsCount:0,dupeLenderCount:0,overdueLoansCount:0,drawsAvailableCount:0,unbalancedClosingsCount:0};
+  const {activeProps,activeLenders,activeLoans,closedCount,unassignedFundsCount}=useMemo(()=>{
+    const empty={activeProps:0,activeLenders:0,activeLoans:0,closedCount:0,unassignedFundsCount:0};
     if(!data) return empty;
-    const activePropsData=data.properties.filter(p=>!p.dateSold);
-    // Same normalize-collision check as Dashboard's "Needs a Look" card — kept in sync so
-    // the nav badge count and the Dashboard list never disagree.
-    const allNames=new Set([...data.properties.flatMap(p=>p.loans.map(l=>l.lenderName)),...(data.unassigned||[]).map(l=>l.lenderName)].filter(Boolean));
-    const normalize=n=>n.toLowerCase().replace(/[^a-z0-9]/g,"");
-    const nameGroups={};
-    allNames.forEach(n=>{const key=normalize(n);if(!key)return;(nameGroups[key]=nameGroups[key]||new Set()).add(n);});
-    const dupeLenderCount=Object.values(nameGroups).filter(set=>set.size>1).length;
-    const unbalancedClosingsCount=data.properties.filter(p=>p.dateSold&&p.closingData&&((p.closingData.wire||0)<=0||(p.closingData.selfFunded||0)<-0.01)).length;
-    const overdueLoansCount=[
-      ...activePropsData.flatMap(p=>p.loans.filter(l=>!l.endDate&&l.dueDate&&l.dueDate<TODAY)),
-      ...(data.unassigned||[]).filter(l=>!l.endDate&&l.dueDate&&l.dueDate<TODAY),
-    ].length;
-    const drawsAvailableCount=activePropsData.flatMap(prop=>
-      prop.loans.filter(l=>!l.endDate&&l.drawFacility&&drawRemaining(l)>0).map(l=>({l,prop}))
-    ).filter(({l,prop})=>{
-      const draws=l.drawFacility.draws||[];
-      const lastDraw=draws.reduce((m,d)=>!m||d.date>m?d.date:m,null);
-      const lastEvent=[lastDraw,prop.purchaseDate].filter(Boolean).sort().pop()??null;
-      return !lastEvent||daysBetween(lastEvent,TODAY)>=14;
-    }).length;
-    const fundingGapPropsCount=activePropsData.filter(prop=>{
-      const active=prop.loans.filter(l=>!l.endDate);
-      const funded=active.reduce((acc,l)=>acc+(l.principal||0)+(l.drawFacility?.committed||0),0);
-      return propNeeded(prop,active)-funded>0;
-    }).length;
     return {
-      activeProps:activePropsData.length,
+      activeProps:data.properties.filter(p=>!p.dateSold).length,
       activeLenders:[...new Set([...data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>l.lenderName)),...data.unassigned.filter(l=>!l.endDate).map(l=>l.lenderName)].filter(Boolean))].length,
       activeLoans:data.properties.flatMap(p=>p.loans.filter(l=>!l.endDate)).length+(data.unassigned||[]).filter(l=>!l.endDate).length,
       closedCount:data.properties.filter(p=>p.dateSold).length,
-      fundingGapPropsCount,dupeLenderCount,overdueLoansCount,drawsAvailableCount,unbalancedClosingsCount,
+      unassignedFundsCount:(data.unassigned||[]).filter(l=>!l.endDate).length,
     };
   },[data]);
 
@@ -9374,21 +9218,20 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
         {/* Nav items */}
         <nav className="flex flex-col gap-0.5 px-1.5 flex-1">
-          <SideBtn icon={<IcoHome/>} label="Properties" badge={fundingGapPropsCount} tooltip={`Properties (${activeProps})${fundingGapPropsCount>0?` · ${fundingGapPropsCount} short of funding`:''}`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Properties");}}/>
-          <SideBtn icon={<IcoUsers/>} label="Lenders" badge={dupeLenderCount} tooltip={`Lenders (${activeLenders})${dupeLenderCount>0?` · ${dupeLenderCount} possible duplicate name${dupeLenderCount!==1?'s':''}`:''}`} active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("LenderDash");}}/>
-          <SideBtn icon={<IcoList/>} label="Loans" badge={overdueLoansCount} tooltip={`Loans (${activeLoans})${overdueLoansCount>0?` · ${overdueLoansCount} overdue`:''}`} active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("AllLoans");}}/>
+          <SideBtn icon={<IcoHome/>} label="Properties" badge={unassignedFundsCount} tooltip={`Properties (${activeProps})${unassignedFundsCount>0?` · ${unassignedFundsCount} fund${unassignedFundsCount!==1?'s':''} unassigned`:''}`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Properties");}}/>
+          <SideBtn icon={<IcoUsers/>} label="Lenders" tooltip={`Lenders (${activeLenders})`} active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("LenderDash");}}/>
+          <SideBtn icon={<IcoList/>} label="Loans" tooltip={`Loans (${activeLoans})`} active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("AllLoans");}}/>
 
           {/* Renovation group — hover reveals the submenu on desktop; also toggles on
               click so it works on touch/click-only devices (a laptop trackpad running
               Windows, an iPad) where hover never fires. */}
-          <div ref={rehabMenuRef} className="relative" onMouseEnter={()=>setRehabHover(true)} onMouseLeave={()=>setRehabHover(false)}>
-            <button onClick={()=>setRehabOpen(o=>!o)} title={`Renovation${drawsAvailableCount>0?` · ${drawsAvailableCount} draw${drawsAvailableCount!==1?'s':''} available`:''}`}
+          <div ref={rehabMenuRef} className="relative" onMouseEnter={openRehabHover} onMouseLeave={closeRehabHoverDelayed}>
+            <button onClick={()=>setRehabOpen(o=>!o)} title="Renovation"
               className={`relative flex items-center justify-center w-full p-2.5 rounded-xl transition-all cursor-pointer ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
               <span className={`shrink-0 ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}><IcoWrench/></span>
-              {drawsAvailableCount>0&&<span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[#F2F2F7] dark:ring-black"/>}
             </button>
             {(rehabHover||rehabOpen)&&(
-              <div className="absolute left-full top-0 ml-2 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
+              <div className="absolute left-full top-0 ml-0.5 bg-white dark:bg-zinc-800 rounded-xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden w-44 z-50 py-1">
                 <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Renovation</div>
                 {[{id:"RehabPriority",ico:<IcoClipboard/>,l:"Rehab Priority"},{id:"Draws",ico:<IcoGrid/>,l:"Draw Tracker"},{id:"PropDash",ico:<IcoBar/>,l:"Prop Dashboard"}].map(({id,ico,l})=>(
                   <button key={id} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setRehabHover(false);setRehabOpen(false);}}
@@ -9401,7 +9244,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           </div>
 
           {/* Records = Closed + History */}
-          <SideBtn icon={<IcoDocument/>} label="Records" badge={unbalancedClosingsCount} tooltip={`Records${unbalancedClosingsCount>0?` · ${unbalancedClosingsCount} closing${unbalancedClosingsCount!==1?'s':''} don't balance`:''}`} active={["Closed","History"].includes(tab)&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
+          <SideBtn icon={<IcoDocument/>} label="Records" tooltip="Records" active={["Closed","History"].includes(tab)&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(["Closed","History"].includes(tab)?tab:"Closed");}}/>
           <SideBtn icon={<IcoPin/>} label="Whiteboard" tooltip="Whiteboard" active={tab==="Whiteboard"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Whiteboard");}}/>
         </nav>
 
@@ -9467,9 +9310,9 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             <nav className="flex-1 py-2 px-2">
               {[
                 {id:"Dashboard",icon:<IcoPie/>,label:"Dashboard",match:t=>t==="Dashboard"},
-                {id:"Properties",icon:<IcoHome/>,label:"Properties",match:t=>t==="Properties",badge:fundingGapPropsCount},
-                {id:"LenderDash",icon:<IcoUsers/>,label:"Lenders",match:t=>t==="LenderDash",badge:dupeLenderCount},
-                {id:"AllLoans",icon:<IcoList/>,label:"Loans",match:t=>t==="AllLoans",badge:overdueLoansCount},
+                {id:"Properties",icon:<IcoHome/>,label:"Properties",match:t=>t==="Properties",badge:unassignedFundsCount},
+                {id:"LenderDash",icon:<IcoUsers/>,label:"Lenders",match:t=>t==="LenderDash"},
+                {id:"AllLoans",icon:<IcoList/>,label:"Loans",match:t=>t==="AllLoans"},
               ].map(({id,icon,label,match,badge})=>(
                 <button key={id}
                   onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setMobileNavOpen(false);}}
@@ -9486,9 +9329,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               <button onClick={()=>setMobileRenovOpen(o=>!o)}
                 className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0&&!mobileRenovOpen?"bg-blue-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
                 <span className="flex items-center gap-3">
-                  <span className={`relative shrink-0 ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0&&!mobileRenovOpen?"text-white":"text-slate-400 dark:text-zinc-500"}`}>
+                  <span className={`shrink-0 ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0&&!mobileRenovOpen?"text-white":"text-slate-400 dark:text-zinc-500"}`}>
                     <IcoWrench/>
-                    {drawsAvailableCount>0&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500"/>}
                   </span>
                   Renovation
                 </span>
@@ -9496,22 +9338,19 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               </button>
               {mobileRenovOpen&&[
                 {id:"RehabPriority",icon:<IcoClipboard/>,label:"Rehab Priority",match:t=>t==="RehabPriority"},
-                {id:"Draws",icon:<IcoGrid/>,label:"Draw Tracker",match:t=>t==="Draws",badge:drawsAvailableCount},
+                {id:"Draws",icon:<IcoGrid/>,label:"Draw Tracker",match:t=>t==="Draws"},
                 {id:"PropDash",icon:<IcoBar/>,label:"Prop Dashboard",match:t=>t==="PropDash"},
-              ].map(({id,icon,label,match,badge})=>(
+              ].map(({id,icon,label,match})=>(
                 <button key={id}
                   onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setMobileNavOpen(false);}}
                   className={`w-full flex items-center gap-3 pl-9 pr-3 py-2 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
-                  <span className="relative shrink-0 text-slate-400 dark:text-zinc-500">
-                    {icon}
-                    {badge>0&&<span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500"/>}
-                  </span>
+                  <span className="shrink-0 text-slate-400 dark:text-zinc-500">{icon}</span>
                   {label}
                 </button>
               ))}
 
               {[
-                {id:"Closed",icon:<IcoDocument/>,label:"Records",match:t=>["Closed","History"].includes(t),badge:unbalancedClosingsCount},
+                {id:"Closed",icon:<IcoDocument/>,label:"Records",match:t=>["Closed","History"].includes(t)},
                 {id:"Whiteboard",icon:<IcoPin/>,label:"Whiteboard",match:t=>t==="Whiteboard"},
               ].map(({id,icon,label,match,badge})=>(
                 <button key={id}
