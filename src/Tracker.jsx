@@ -8423,12 +8423,31 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
 // here; each card's actual content is computed inline in DashboardPage (it needs a lot
 // of locally-computed numbers) and looked up by id at render time. Order/hidden state
 // is persisted to data.dashboardLayout so it's the same on every device.
+// Every section of the Dashboard is one of these cards — all draggable and hideable from
+// the same Customize mode, laid out in a responsive grid so small ones sit side by side.
+// `wide: true` cards (lists/banners) span the full grid width; the rest are single tiles.
 const DASHBOARD_CARD_DEFS = [
-  { id:"drawsDetail", label:"Draws Available" },
-  { id:"lenderConcentration", label:"Top Lenders by Balance" },
-  { id:"recentClosings", label:"Recently Closed" },
-  { id:"portfolioOverview", label:"Portfolio Overview" },
+  { id:"moneyReady", label:"Money Ready to Place", wide:true },
+  { id:"upcomingDue", label:"Upcoming Due Dates", wide:true },
+  { id:"activeProperties", label:"Active Properties" },
+  { id:"activeLenders", label:"Active Lenders" },
+  { id:"totalActiveLoans", label:"Total Active Loans" },
+  { id:"drawsAvailableAmt", label:"Draws Available" },
+  { id:"fundingGap", label:"Funding Gap" },
+  { id:"totalPayoff", label:"Total Payoff" },
+  { id:"totalPrivateMoneyNeeded", label:"Total Private Money Needed" },
+  { id:"privateMoneyOnHand", label:"Private Money On Hand" },
+  { id:"privateMoneyGap", label:"Private Money Gap" },
+  { id:"neededIfRehabFullyDrawn", label:"Needed If Rehab Fully Drawn" },
+  { id:"closedProperties", label:"Closed Properties" },
+  { id:"activeRehabOnHand", label:"Active + Rehab On Hand" },
+  { id:"lifetimeProfit", label:"Lifetime Profit" },
   { id:"interestThisMonth", label:"Interest Accruing This Month" },
+  { id:"hardMoneyDue", label:"Hard Money Due", wide:true },
+  { id:"monthlyHolding", label:"Monthly Holding", wide:true },
+  { id:"drawsDetail", label:"Draws Available by Property", wide:true },
+  { id:"lenderConcentration", label:"Top Lenders by Balance", wide:true },
+  { id:"recentClosings", label:"Recently Closed", wide:true },
 ];
 const DEFAULT_DASHBOARD_ORDER = DASHBOARD_CARD_DEFS.map(c=>c.id);
 
@@ -8443,7 +8462,6 @@ function DashboardPage({ data, update, onNavigateTab }) {
   // dashboard fits without scrolling — tap a header to expand just the one you want.
   const [fundsOpen, setFundsOpen] = usePersistedState("nx-dashFundsOpen", false);
   const [dueDatesOpen, setDueDatesOpen] = usePersistedState("nx-dashDueDatesOpen", false);
-  const [statsOpen, setStatsOpen] = usePersistedState("nx-dashStatsOpen", false);
   const [burningOpen, setBurningOpen] = usePersistedState("nx-dashBurningOpen", false);
   const [drawsOpen, setDrawsOpen] = usePersistedState("nx-dashDrawsOpen", false);
   const [lendersOpen, setLendersOpen] = usePersistedState("nx-dashLendersOpen", false);
@@ -8669,233 +8687,227 @@ function DashboardPage({ data, update, onNavigateTab }) {
   // The 5 original sections — fixed position, not draggable/hideable (see note on
   // DASHBOARD_CARD_DEFS above). Each list-bearing one collapses to just its header/summary
   // row by default so the whole dashboard fits without scrolling.
-  const fixedCards = (
-    <>
-      {unassignedFunds.length > 0 && (
-        <div className="mb-4 rounded-2xl overflow-hidden bg-gradient-to-br from-violet-600 to-purple-700 shadow-[0_4px_24px_rgba(124,58,237,0.30)] dark:shadow-[0_4px_24px_rgba(124,58,237,0.20)]">
-          <button onClick={() => setFundsOpen(o => !o)}
-            className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-white/5 transition-colors">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm shrink-0">⚠️</span>
-              <div className="text-left min-w-0">
-                <div className="text-[9px] font-bold uppercase tracking-widest text-violet-200/70 leading-none">Money Ready to Place</div>
-                <div className="flex items-baseline gap-1.5 mt-0.5">
-                  <span className="text-lg font-black text-white tabular-nums tracking-tight leading-none">{h$(unassignedTotal)}</span>
-                  <span className="text-[11px] text-violet-200/70 leading-none">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} idle</span>
-                </div>
+  // One self-contained card per entry in DASHBOARD_CARD_DEFS — every section of the
+  // Dashboard, atomized, so each can be independently dragged/hidden in Customize mode.
+  // Small KPI tiles render null never; list/banner cards render null when there's nothing
+  // to show right now (auto-hidden outside edit mode, same as before).
+  const kpiTileDefs = [
+    { id: "activeProperties", label: "Active Properties", value: activePropsData.length, sub: "tap to view", color: "blue", icon: "🏠", tab: "Properties" },
+    { id: "activeLenders", label: "Active Lenders", value: activeLendersCount, sub: "tap to view", color: "indigo", icon: "👥", tab: "LenderDash" },
+    { id: "totalActiveLoans", label: "Total Active Loans", value: totalLoansCount, sub: "across all", color: "slate", icon: "📋", tab: "AllLoans" },
+    { id: "drawsAvailableAmt", label: "Draws Available", value: h$(drawsAvailable), sub: "14d+ since last event", color: "amber", icon: "🏗️", tab: "Draws" },
+    { id: "fundingGap", label: "Funding Gap", value: h$(totalFundingGap), sub: "short of 100%", color: "orange", icon: "📉", tab: "PropDash" },
+    { id: "totalPayoff", label: "Total Payoff", value: h$(totalPayoff), sub: "all active balances", color: "slate", icon: "💰", tab: "LenderDash" },
+    { id: "totalPrivateMoneyNeeded", label: "Total Private Money Needed", value: h$(totalPrivateMoneyNeeded), sub: "purchase + rehab + hard $ carry", color: "violet", icon: "💵", tab: "Properties",
+      breakdown: [
+        { label: "Purchase", value: hc$(privateMoneyNeeded) },
+        { label: "No Draws", value: hc$(rehabNoDraws) },
+        { label: "Draw Gap", value: hc$(rehabDrawGap) },
+        { label: "Hard $", value: hc$(hardMoneyFullTimeline) },
+      ] },
+    { id: "privateMoneyOnHand", label: "Private Money On Hand", value: h$(privateMoneyOnHand), sub: "principal + committed", color: "emerald", icon: "🤝", tab: "LenderDash" },
+    { id: "privateMoneyGap", label: "Private Money Gap", value: hs$(privateMoneyGap), sub: privateMoneyGap > 0 ? "still needed" : "surplus on hand", color: privateMoneyGap > 0 ? "orange" : "emerald", icon: "⚖️", tab: "Properties" },
+    { id: "neededIfRehabFullyDrawn", label: "Needed If Rehab Fully Drawn", value: h$(totalPrivateMoneyNeededIfFullyDrawn), sub: "purchase + hard $ carry only", color: "violet", icon: "🏗️", tab: "Properties" },
+    { id: "closedProperties", label: "Closed Properties", value: closedPropsData.length, sub: "tap to view", color: "slate", icon: "🏁", tab: "Closed" },
+    { id: "activeRehabOnHand", label: "Active + Rehab On Hand", value: h$(activePurchaseRehab), sub: "purchase + rehab, active only", color: "violet", icon: "🧮", tab: "Properties" },
+    { id: "lifetimeProfit", label: "Lifetime Profit", value: hs$(lifetimeProfit), sub: "all closed sales", color: lifetimeProfit >= 0 ? "emerald" : "orange", icon: "📈", tab: "Closed" },
+    { id: "interestThisMonth", label: "Interest Accruing This Month", value: h$(interestThisMonth), sub: "all monthly-paid loans, any type", color: "slate", icon: "📅", tab: "AllLoans" },
+  ];
+  const renderKpiTile = ({ label, value, sub, color, icon, tab, breakdown }) => (
+    <button onClick={() => onNavigateTab(tab)}
+      className="w-full h-full bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group border border-slate-100 dark:border-zinc-800">
+      <div className="flex items-start justify-between mb-2">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 leading-tight pr-1">{label}</div>
+        <span className="text-base shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">{icon}</span>
+      </div>
+      <div className={`text-xl font-black tabular-nums tracking-tight ${NAV_COLORS[color]}`}>{value}</div>
+      <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 flex items-center gap-1">
+        {sub}
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all">
+          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/>
+        </svg>
+      </div>
+      {breakdown && (
+        <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-x-2.5 gap-y-0.5">
+          {breakdown.map(b => (
+            <span key={b.label} className="text-[9px] text-slate-400 dark:text-zinc-500">{b.label} <strong className="text-slate-600 dark:text-zinc-300 tabular-nums">{b.value}</strong></span>
+          ))}
+        </div>
+      )}
+    </button>
+  );
+
+  const cardContent = {
+    ...Object.fromEntries(kpiTileDefs.map(t => [t.id, renderKpiTile(t)])),
+
+    moneyReady: unassignedFunds.length === 0 ? null : (
+      <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-violet-600 to-purple-700 shadow-[0_4px_24px_rgba(124,58,237,0.30)] dark:shadow-[0_4px_24px_rgba(124,58,237,0.20)]">
+        <button onClick={() => setFundsOpen(o => !o)}
+          className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-white/5 transition-colors">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm shrink-0">⚠️</span>
+            <div className="text-left min-w-0">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-violet-200/70 leading-none">Money Ready to Place</div>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-lg font-black text-white tabular-nums tracking-tight leading-none">{h$(unassignedTotal)}</span>
+                <span className="text-[11px] text-violet-200/70 leading-none">{unassignedFunds.length} fund{unassignedFunds.length !== 1 ? "s" : ""} idle</span>
               </div>
             </div>
-            <span className="text-white/40 text-xs font-bold ml-3 shrink-0">{fundsOpen ? "▲" : "▼"}</span>
-          </button>
-          {fundsOpen && (
-            <div className="border-t border-white/15 divide-y divide-white/10">
-              {sortedFunds.map(u => {
-                const principal = u.principal || u.amount || 0;
-                const days = daysBetween(u.startDate, TODAY);
-                return (
-                  <div key={u.id} className="px-4 py-2 flex items-center justify-between gap-2 hover:bg-white/5 transition-colors">
-                    <div className="flex-1 min-w-0 flex items-center gap-2.5 flex-wrap">
-                      <button onClick={() => openPanel({ type: 'loan', loanId: u.id, propId: null })}
-                        className="font-semibold text-white text-sm hover:text-violet-200 transition-colors text-left">{u.lenderName}</button>
-                      <span className="font-bold text-white/90 text-sm tabular-nums">{h$(principal)}</span>
-                      {u.interestRate != null && <span className="text-xs text-violet-200/60">{fmtRate(u)}</span>}
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        days > 60 ? "bg-red-500/30 text-red-200" :
-                        days > 30 ? "bg-amber-400/25 text-amber-200" :
-                        "bg-white/10 text-white/60"
-                      }`}>{days}d idle</span>
-                    </div>
-                    <div className="flex gap-1.5 shrink-0 items-center">
-                      <button onClick={() => setModal({ type: "place", fund: u })}
-                        className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>
-                      <div className="relative z-20">
-                        <button onClick={() => setMenuOpen(o => o === u.id ? null : u.id)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white text-sm font-bold transition-colors">⋯</button>
-                        {menuOpen === u.id && (
-                          <div className="absolute right-0 top-8 w-36 bg-white dark:bg-zinc-800 rounded-xl shadow-xl border border-slate-100 dark:border-zinc-700 overflow-hidden z-20 py-1">
-                            <button onClick={() => { setMenuOpen(null); setModal({ type: "editUnassigned", fund: u }); }}
-                              className="w-full text-left px-3 py-2 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
-                              ✏️ Edit
-                            </button>
-                            <button onClick={() => { setMenuOpen(null); delUnassigned(u.id); }}
-                              className="w-full text-left px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                              🗑 Remove
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {dueSchedule.length > 0 && (
-        <div className="mb-4 bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
-          <button onClick={() => setDueDatesOpen(o => !o)}
-            className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-orange-500 dark:text-orange-400">⏰ Upcoming Due Dates</div>
-            <div className="flex items-center gap-2">
-              <div className="text-xs text-slate-400 dark:text-zinc-500">{dueSchedule.length} scheduled</div>
-              <span className="text-slate-300 dark:text-zinc-600 text-xs">{dueDatesOpen ? "▲" : "▼"}</span>
-            </div>
-          </button>
-          {dueDatesOpen && (
-            <div className="divide-y divide-slate-50 dark:divide-zinc-800 border-t border-slate-100 dark:border-zinc-800">
-              {dueSchedule.map(item => (
-                <button key={item.id} onClick={item.onClick}
-                  className="w-full px-5 py-3.5 flex items-center gap-3.5 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors text-left">
-                  <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0 ${
-                    item.days < 0 ? "bg-red-600 text-white"
-                    : item.days <= 14 ? "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400"
-                    : item.days <= 30 ? "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
-                    : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"
-                  }`}>
-                    <span className="text-[9px] font-bold uppercase leading-none">{item.month}</span>
-                    <span className="text-lg font-black leading-none mt-0.5">{item.day}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100 truncate">{item.label}</div>
-                    <div className="text-xs text-slate-400 dark:text-zinc-500 truncate">{item.sub}</div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-black text-base tabular-nums text-slate-800 dark:text-zinc-100">{h$(item.amount)}</div>
-                    <div className={`text-[11px] font-bold ${
-                      item.days < 0 ? "text-red-600 dark:text-red-400"
-                      : item.days <= 14 ? "text-red-600 dark:text-red-400"
-                      : item.days <= 30 ? "text-amber-600 dark:text-amber-400"
-                      : "text-slate-400 dark:text-zinc-500"
-                    }`}>{item.days < 0 ? `${Math.abs(item.days)}d overdue` : item.days === 0 ? "Due today" : `in ${item.days}d`}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="mb-4 bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
-        <button onClick={() => setStatsOpen(o => !o)}
-          className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400">🔢 Key Numbers</div>
-          <span className="text-slate-300 dark:text-zinc-600 text-xs">{statsOpen ? "▲" : "▼"}</span>
+          </div>
+          <span className="text-white/40 text-xs font-bold ml-3 shrink-0">{fundsOpen ? "▲" : "▼"}</span>
         </button>
-        {statsOpen && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 pt-0 border-t border-slate-100 dark:border-zinc-800 mt-0">
-            {[
-              { label: "Active Properties", value: activePropsData.length, sub: "tap to view",        color: "blue",   icon: "🏠", tab: "Properties"  },
-              { label: "Active Lenders",    value: activeLendersCount,    sub: "tap to view",         color: "indigo", icon: "👥", tab: "LenderDash"  },
-              { label: "Total Active Loans",value: totalLoansCount,      sub: "across all",           color: "slate",  icon: "📋", tab: "AllLoans"    },
-              { label: "Draws Available",   value: h$(drawsAvailable),   sub: "14d+ since last event",color: "amber",  icon: "🏗️", tab: "Draws"       },
-              { label: "Funding Gap",       value: h$(totalFundingGap),  sub: "short of 100%",        color: "orange", icon: "📉", tab: "PropDash"    },
-              { label: "Total Payoff",      value: h$(totalPayoff),      sub: "all active balances",  color: "slate",  icon: "💰", tab: "LenderDash"  },
-              { label: "Total Private Money Needed", value: h$(totalPrivateMoneyNeeded), sub: "purchase + rehab + hard $ carry", color: "violet", icon: "💵", tab: "Properties",
-                breakdown: [
-                  { label: "Purchase", value: hc$(privateMoneyNeeded) },
-                  { label: "No Draws", value: hc$(rehabNoDraws) },
-                  { label: "Draw Gap", value: hc$(rehabDrawGap) },
-                  { label: "Hard $", value: hc$(hardMoneyFullTimeline) },
-                ] },
-              { label: "Private Money On Hand", value: h$(privateMoneyOnHand), sub: "principal + committed",   color: "emerald", icon: "🤝", tab: "LenderDash" },
-              { label: "Private Money Gap", value: hs$(privateMoneyGap), sub: privateMoneyGap>0?"still needed":"surplus on hand", color: privateMoneyGap>0?"orange":"emerald", icon: "⚖️", tab: "Properties" },
-              { label: "Needed If Rehab Fully Drawn", value: h$(totalPrivateMoneyNeededIfFullyDrawn), sub: "purchase + hard $ carry only", color: "violet", icon: "🏗️", tab: "Properties" },
-            ].map(({ label, value, sub, color, icon, tab, breakdown }) => (
-              <button key={label} onClick={() => onNavigateTab(tab)}
-                className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group border border-slate-100 dark:border-zinc-800">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 leading-tight pr-1">{label}</div>
-                  <span className="text-base shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">{icon}</span>
-                </div>
-                <div className={`text-xl font-black tabular-nums tracking-tight ${NAV_COLORS[color]}`}>{value}</div>
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 flex items-center gap-1">
-                  {sub}
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all">
-                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/>
-                  </svg>
-                </div>
-                {breakdown&&(
-                  <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-x-2.5 gap-y-0.5">
-                    {breakdown.map(b=>(
-                      <span key={b.label} className="text-[9px] text-slate-400 dark:text-zinc-500">{b.label} <strong className="text-slate-600 dark:text-zinc-300 tabular-nums">{b.value}</strong></span>
-                    ))}
+        {fundsOpen && (
+          <div className="border-t border-white/15 divide-y divide-white/10">
+            {sortedFunds.map(u => {
+              const principal = u.principal || u.amount || 0;
+              const days = daysBetween(u.startDate, TODAY);
+              return (
+                <div key={u.id} className="px-4 py-2 flex items-center justify-between gap-2 hover:bg-white/5 transition-colors">
+                  <div className="flex-1 min-w-0 flex items-center gap-2.5 flex-wrap">
+                    <button onClick={() => openPanel({ type: 'loan', loanId: u.id, propId: null })}
+                      className="font-semibold text-white text-sm hover:text-violet-200 transition-colors text-left">{u.lenderName}</button>
+                    <span className="font-bold text-white/90 text-sm tabular-nums">{h$(principal)}</span>
+                    {u.interestRate != null && <span className="text-xs text-violet-200/60">{fmtRate(u)}</span>}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      days > 60 ? "bg-red-500/30 text-red-200" :
+                      days > 30 ? "bg-amber-400/25 text-amber-200" :
+                      "bg-white/10 text-white/60"
+                    }`}>{days}d idle</span>
                   </div>
-                )}
+                  <div className="flex gap-1.5 shrink-0 items-center">
+                    <button onClick={() => setModal({ type: "place", fund: u })}
+                      className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>
+                    <div className="relative z-20">
+                      <button onClick={() => setMenuOpen(o => o === u.id ? null : u.id)}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white text-sm font-bold transition-colors">⋯</button>
+                      {menuOpen === u.id && (
+                        <div className="absolute right-0 top-8 w-36 bg-white dark:bg-zinc-800 rounded-xl shadow-xl border border-slate-100 dark:border-zinc-700 overflow-hidden z-20 py-1">
+                          <button onClick={() => { setMenuOpen(null); setModal({ type: "editUnassigned", fund: u }); }}
+                            className="w-full text-left px-3 py-2 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
+                            ✏️ Edit
+                          </button>
+                          <button onClick={() => { setMenuOpen(null); delUnassigned(u.id); }}
+                            className="w-full text-left px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                            🗑 Remove
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    ),
+
+    upcomingDue: dueSchedule.length === 0 ? null : (
+      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+        <button onClick={() => setDueDatesOpen(o => !o)}
+          className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-orange-500 dark:text-orange-400">⏰ Upcoming Due Dates</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xs text-slate-400 dark:text-zinc-500">{dueSchedule.length} scheduled</div>
+            <span className="text-slate-300 dark:text-zinc-600 text-xs">{dueDatesOpen ? "▲" : "▼"}</span>
+          </div>
+        </button>
+        {dueDatesOpen && (
+          <div className="divide-y divide-slate-50 dark:divide-zinc-800 border-t border-slate-100 dark:border-zinc-800">
+            {dueSchedule.map(item => (
+              <button key={item.id} onClick={item.onClick}
+                className="w-full px-5 py-3.5 flex items-center gap-3.5 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors text-left">
+                <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0 ${
+                  item.days < 0 ? "bg-red-600 text-white"
+                  : item.days <= 14 ? "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                  : item.days <= 30 ? "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
+                  : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"
+                }`}>
+                  <span className="text-[9px] font-bold uppercase leading-none">{item.month}</span>
+                  <span className="text-lg font-black leading-none mt-0.5">{item.day}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-slate-800 dark:text-zinc-100 truncate">{item.label}</div>
+                  <div className="text-xs text-slate-400 dark:text-zinc-500 truncate">{item.sub}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="font-black text-base tabular-nums text-slate-800 dark:text-zinc-100">{h$(item.amount)}</div>
+                  <div className={`text-[11px] font-bold ${
+                    item.days < 0 ? "text-red-600 dark:text-red-400"
+                    : item.days <= 14 ? "text-red-600 dark:text-red-400"
+                    : item.days <= 30 ? "text-amber-600 dark:text-amber-400"
+                    : "text-slate-400 dark:text-zinc-500"
+                  }`}>{item.days < 0 ? `${Math.abs(item.days)}d overdue` : item.days === 0 ? "Due today" : `in ${item.days}d`}</div>
+                </div>
               </button>
             ))}
           </div>
         )}
       </div>
+    ),
 
-      {hardMonthly > 0 && (
-        <button onClick={() => onNavigateTab("AllLoans:hard")}
-          className="w-full mb-4 bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 flex items-center justify-between hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-1">💸 Hard Money — Due 1st of Month</div>
-            <div className="text-xs text-slate-400 dark:text-zinc-500">{hardMonthlyLoans.length} loan{hardMonthlyLoans.length!==1?"s":""} · tap to view →</div>
-          </div>
-          <div className="text-right shrink-0">
-            <div className="text-2xl font-black text-red-600 dark:text-red-400 tabular-nums">{h$(hardMonthly)}</div>
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500">per month</div>
-          </div>
-        </button>
-      )}
+    hardMoneyDue: hardMonthly === 0 ? null : (
+      <button onClick={() => onNavigateTab("AllLoans:hard")}
+        className="w-full bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 flex items-center justify-between hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-1">💸 Hard Money — Due 1st of Month</div>
+          <div className="text-xs text-slate-400 dark:text-zinc-500">{hardMonthlyLoans.length} loan{hardMonthlyLoans.length!==1?"s":""} · tap to view →</div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-2xl font-black text-red-600 dark:text-red-400 tabular-nums">{h$(hardMonthly)}</div>
+          <div className="text-[10px] text-slate-400 dark:text-zinc-500">per month</div>
+        </div>
+      </button>
+    ),
 
-      {topBurning.length > 0 && (
-        <div className="mb-4 bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
-          <div className="px-5 py-4 flex items-start justify-between gap-3">
-            <button onClick={() => onNavigateTab("RehabPriority")} className="text-left group">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-orange-500 dark:text-orange-400 flex items-center gap-1">
-                🔥 Monthly Holding
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/></svg>
-              </div>
-              <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">All active properties by monthly cost · tap for Rehab Priority</div>
-            </button>
-            <button onClick={() => setBurningOpen(o => !o)} className="shrink-0 text-right flex items-center gap-2">
-              <div>
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold tracking-widest mb-0.5">Total/mo</div>
-                <div className="text-lg font-black text-orange-600 dark:text-orange-400 tabular-nums">{h$(topBurning.reduce((s,{monthly})=>s+monthly,0))}</div>
-              </div>
-              <span className="text-slate-300 dark:text-zinc-600 text-xs">{burningOpen ? "▲" : "▼"}</span>
-            </button>
-          </div>
-          {burningOpen && (
-            <div className="divide-y divide-slate-50 dark:divide-zinc-800 border-t border-slate-100 dark:border-zinc-800">
-              {topBurning.map(({ prop, monthly, daysOwned, totalInterest }, idx) => (
-                <div key={prop.id} className="px-5 py-4 flex items-center gap-4 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
-                  <div className="w-6 h-6 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-[11px] font-black text-orange-600 dark:text-orange-400 shrink-0">
-                    {idx + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <button onClick={() => openPanel({ type: 'property', id: prop.id })}
-                      className="font-semibold text-sm text-slate-800 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left truncate block w-full">
-                      {prop.address}
-                    </button>
-                    <div className="flex items-center gap-3 mt-1 flex-wrap">
-                      <span className="text-[11px] font-bold text-orange-600 dark:text-orange-400 tabular-nums">{h$(monthly)}/mo</span>
-                      {daysOwned > 0 && <span className="text-[11px] text-slate-400 dark:text-zinc-500 tabular-nums">{daysOwned}d owned</span>}
-                      {totalInterest > 0 && <span className="text-[11px] text-amber-600 dark:text-amber-400 tabular-nums">{h$(totalInterest)} interest so far</span>}
-                    </div>
+    monthlyHolding: topBurning.length === 0 ? null : (
+      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div className="px-5 py-4 flex items-start justify-between gap-3">
+          <button onClick={() => onNavigateTab("RehabPriority")} className="text-left group">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-orange-500 dark:text-orange-400 flex items-center gap-1">
+              🔥 Monthly Holding
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/></svg>
+            </div>
+            <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">All active properties by monthly cost · tap for Rehab Priority</div>
+          </button>
+          <button onClick={() => setBurningOpen(o => !o)} className="shrink-0 text-right flex items-center gap-2">
+            <div>
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold tracking-widest mb-0.5">Total/mo</div>
+              <div className="text-lg font-black text-orange-600 dark:text-orange-400 tabular-nums">{h$(topBurning.reduce((s,{monthly})=>s+monthly,0))}</div>
+            </div>
+            <span className="text-slate-300 dark:text-zinc-600 text-xs">{burningOpen ? "▲" : "▼"}</span>
+          </button>
+        </div>
+        {burningOpen && (
+          <div className="divide-y divide-slate-50 dark:divide-zinc-800 border-t border-slate-100 dark:border-zinc-800">
+            {topBurning.map(({ prop, monthly, daysOwned, totalInterest }, idx) => (
+              <div key={prop.id} className="px-5 py-4 flex items-center gap-4 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
+                <div className="w-6 h-6 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-[11px] font-black text-orange-600 dark:text-orange-400 shrink-0">
+                  {idx + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <button onClick={() => openPanel({ type: 'property', id: prop.id })}
+                    className="font-semibold text-sm text-slate-800 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left truncate block w-full">
+                    {prop.address}
+                  </button>
+                  <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    <span className="text-[11px] font-bold text-orange-600 dark:text-orange-400 tabular-nums">{h$(monthly)}/mo</span>
+                    {daysOwned > 0 && <span className="text-[11px] text-slate-400 dark:text-zinc-500 tabular-nums">{daysOwned}d owned</span>}
+                    {totalInterest > 0 && <span className="text-[11px] text-amber-600 dark:text-amber-400 tabular-nums">{h$(totalInterest)} interest so far</span>}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </>
-  );
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    ),
 
-  // The 5 newer "smaller" cards — these are the ones that actually drag-reorder/hide
-  // (see the Customize button below).
-  const cardContent = {
     drawsDetail: drawsAvailableList.length === 0 ? null : (
       <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
         <div className="px-5 py-4 flex items-center justify-between">
           <button onClick={() => onNavigateTab("Draws")} className="text-left group">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400">🏗️ Draws Available</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400">🏗️ Draws Available by Property</div>
             <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">14d+ since last draw or purchase · tap for Draw Tracker</div>
           </button>
           <button onClick={() => setDrawsOpen(o => !o)} className="flex items-center gap-2 shrink-0">
@@ -8919,6 +8931,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
         )}
       </div>
     ),
+
     lenderConcentration: topLenders.length === 0 ? null : (
       <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
         <button onClick={() => setLendersOpen(o => !o)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
@@ -8941,6 +8954,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
         )}
       </div>
     ),
+
     recentClosings: recentClosings.length === 0 ? null : (
       <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
         <button onClick={() => setClosingsOpen(o => !o)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
@@ -8969,36 +8983,10 @@ function DashboardPage({ data, update, onNavigateTab }) {
         )}
       </div>
     ),
-    portfolioOverview: (
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: "Active Properties", value: activePropsData.length, color: "blue", tab: "Properties" },
-          { label: "Closed Properties", value: closedPropsData.length, color: "slate", tab: "Closed" },
-          { label: "Active + Rehab On Hand", value: h$(activePurchaseRehab), color: "violet", tab: "Properties" },
-          { label: "Lifetime Profit", value: hs$(lifetimeProfit), color: lifetimeProfit >= 0 ? "emerald" : "orange", tab: "Closed" },
-        ].map(({ label, value, color, tab }) => (
-          <button key={label} onClick={() => onNavigateTab(tab)}
-            className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">{label}</div>
-            <div className={`text-xl font-black tabular-nums tracking-tight ${NAV_COLORS[color]}`}>{value}</div>
-          </button>
-        ))}
-      </div>
-    ),
-    interestThisMonth: (
-      <button onClick={() => onNavigateTab("AllLoans")}
-        className="w-full bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 flex items-center justify-between hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
-        <div>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">📅 Interest Accruing This Month</div>
-          <div className="text-xs text-slate-400 dark:text-zinc-500">All monthly-paid loans, any type · tap for Loans</div>
-        </div>
-        <div className="text-2xl font-black text-slate-700 dark:text-zinc-200 tabular-nums shrink-0">{h$(interestThisMonth)}</div>
-      </button>
-    ),
   };
 
   return (
-    <div className="px-5 pt-5 pb-8 w-full max-w-5xl mx-auto">
+    <div className="px-5 pt-5 pb-8 w-full max-w-6xl mx-auto">
       {menuOpen && <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)}/>}
 
       {/* Header */}
@@ -9013,42 +9001,43 @@ function DashboardPage({ data, update, onNavigateTab }) {
         </button>
       </div>
 
-      {fixedCards}
-
       <DndContext sensors={dashDragSensors} collisionDetection={closestCenter} onDragEnd={handleDashDragEnd}>
-        <SortableContext items={cardOrder} strategy={verticalListSortingStrategy}>
-          {cardOrder.map(id => {
-            const def = DASHBOARD_CARD_DEFS.find(c => c.id === id);
-            if (!def) return null;
-            const isHidden = cardHidden.includes(id);
-            const content = cardContent[id];
-            if (!editMode && (isHidden || !content)) return null;
-            return (
-              <SortableItem key={id} id={id} disabled={!editMode} className="mb-4">
-                {handleProps => (
-                  <div>
-                    {editMode && (
-                      <div className="flex items-center justify-between mb-1.5 px-1">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">
-                          <span {...handleProps} className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-zinc-600 text-sm leading-none">⠿</span>
-                          {def.label}
+        <SortableContext items={cardOrder} strategy={rectSortingStrategy}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {cardOrder.map(id => {
+              const def = DASHBOARD_CARD_DEFS.find(c => c.id === id);
+              if (!def) return null;
+              const isHidden = cardHidden.includes(id);
+              const content = cardContent[id];
+              if (!editMode && (isHidden || !content)) return null;
+              const spanClass = def.wide ? "col-span-2 sm:col-span-3 lg:col-span-4" : "col-span-1";
+              return (
+                <SortableItem key={id} id={id} disabled={!editMode} className={spanClass}>
+                  {handleProps => (
+                    <div className="h-full">
+                      {editMode && (
+                        <div className="flex items-center justify-between mb-1.5 px-1">
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 min-w-0">
+                            <span {...handleProps} className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-zinc-600 text-sm leading-none shrink-0">⠿</span>
+                            <span className="truncate">{def.label}</span>
+                          </div>
+                          <button onClick={() => toggleCardHidden(id)} className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline shrink-0 ml-2">
+                            {isHidden ? "Show" : "Hide"}
+                          </button>
                         </div>
-                        <button onClick={() => toggleCardHidden(id)} className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline">
-                          {isHidden ? "Show" : "Hide"}
-                        </button>
-                      </div>
-                    )}
-                    {!isHidden && content}
-                    {(isHidden || !content) && editMode && (
-                      <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 px-4 py-5 text-center text-xs text-slate-400 dark:text-zinc-500">
-                        {isHidden ? "Hidden — tap Show to bring it back" : "Nothing to show right now"}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </SortableItem>
-            );
-          })}
+                      )}
+                      {!isHidden && content}
+                      {(isHidden || !content) && editMode && (
+                        <div className="h-full rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 px-4 py-5 text-center text-xs text-slate-400 dark:text-zinc-500">
+                          {isHidden ? "Hidden — tap Show to bring it back" : "Nothing to show right now"}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </SortableItem>
+              );
+            })}
+          </div>
         </SortableContext>
       </DndContext>
 
@@ -9099,7 +9088,7 @@ function EntityDetailView({ entity, data, update, onBack, navigate }) {
 
 // ── Sidebar monochrome SVG icons — pure/stateless, hoisted to module scope so they
 // aren't redefined (and their identity doesn't change) on every Tracker render ──
-const IcoHome=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h4v-4h2v4h4a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/></svg>;
+const IcoHomeEmoji=()=><span className="text-[15px] leading-none shrink-0">🏠</span>;
 const IcoUsers=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>;
 const IcoDocument=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd"/></svg>;
 const IcoWrench=()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px] shrink-0"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>;
@@ -9484,7 +9473,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
         {/* Nav items */}
         <nav className="flex flex-col gap-0.5 px-1.5 flex-1">
-          <SideBtn icon={<IcoHome/>} label="Properties" badge={unassignedFundsCount} tooltip={`Properties (${activeProps})${unassignedFundsCount>0?` · ${unassignedFundsCount} fund${unassignedFundsCount!==1?'s':''} unassigned`:''}`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Properties");}}/>
+          <SideBtn icon={<IcoHomeEmoji/>} label="Properties" badge={unassignedFundsCount} tooltip={`Properties (${activeProps})${unassignedFundsCount>0?` · ${unassignedFundsCount} fund${unassignedFundsCount!==1?'s':''} unassigned`:''}`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Properties");}}/>
           <SideBtn icon={<IcoUsers/>} label="Lenders" tooltip={`Lenders (${activeLenders})`} active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("LenderDash");}}/>
           <SideBtn icon={<IcoList/>} label="Loans" tooltip={`Loans (${activeLoans})`} active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("AllLoans");}}/>
 
@@ -9576,7 +9565,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             <nav className="flex-1 py-2 px-2">
               {[
                 {id:"Dashboard",icon:<IcoPie/>,label:"Dashboard",match:t=>t==="Dashboard"},
-                {id:"Properties",icon:<IcoHome/>,label:"Properties",match:t=>t==="Properties",badge:unassignedFundsCount},
+                {id:"Properties",icon:<IcoHomeEmoji/>,label:"Properties",match:t=>t==="Properties",badge:unassignedFundsCount},
                 {id:"LenderDash",icon:<IcoUsers/>,label:"Lenders",match:t=>t==="LenderDash"},
                 {id:"AllLoans",icon:<IcoList/>,label:"Loans",match:t=>t==="AllLoans"},
               ].map(({id,icon,label,match,badge})=>(
@@ -9748,21 +9737,18 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
             {/* Right side — Actions button, adjacent to search */}
             <div className="flex-1 flex justify-end sm:justify-start items-center gap-2 pl-0 sm:pl-3">
-            <div className="flex items-center rounded-full border border-slate-300 dark:border-zinc-600 overflow-hidden shrink-0">
+            <div className="flex items-center gap-0.5 shrink-0">
               <button onClick={handleUndo} disabled={undoCount===0}
                 title={undoCount>0?`Undo last change${undoCount>1?` (${undoCount} steps available)`:''}`:'Nothing to undo'}
-                className={`flex items-center gap-1.5 pl-2.5 sm:pl-3.5 pr-2 py-1.5 text-sm font-semibold transition-all ${undoCount===0?"text-slate-300 dark:text-zinc-700 cursor-not-allowed":"text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800"}`}>
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0"><path fillRule="evenodd" d="M9.707 3.293a1 1 0 010 1.414L7.414 7H12a5 5 0 110 10H8a1 1 0 110-2h4a3 3 0 100-6H7.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                <span className="hidden sm:inline">Undo</span>
-                {undoCount>1&&<span className="text-[10px] font-bold bg-slate-200 dark:bg-zinc-700 rounded-full px-1.5 py-0.5 leading-none">{undoCount}</span>}
+                className={`relative flex items-center justify-center w-7 h-7 rounded-full transition-all ${undoCount===0?"text-slate-300 dark:text-zinc-700 cursor-not-allowed":"text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800"}`}>
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0"><path fillRule="evenodd" d="M9.707 3.293a1 1 0 010 1.414L7.414 7H12a5 5 0 110 10H8a1 1 0 110-2h4a3 3 0 100-6H7.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                {undoCount>1&&<span className="absolute -top-0.5 -right-0.5 text-[9px] font-bold bg-slate-300 dark:bg-zinc-600 text-slate-700 dark:text-zinc-200 rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">{undoCount}</span>}
               </button>
-              <div className="w-px self-stretch bg-slate-300 dark:bg-zinc-600"/>
               <button onClick={handleRedo} disabled={redoCount===0}
                 title={redoCount>0?`Redo${redoCount>1?` (${redoCount} steps available)`:''}`:'Nothing to redo'}
-                className={`flex items-center gap-1.5 pl-2 pr-2.5 sm:pr-3.5 py-1.5 text-sm font-semibold transition-all ${redoCount===0?"text-slate-300 dark:text-zinc-700 cursor-not-allowed":"text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800"}`}>
-                {redoCount>1&&<span className="text-[10px] font-bold bg-slate-200 dark:bg-zinc-700 rounded-full px-1.5 py-0.5 leading-none">{redoCount}</span>}
-                <span className="hidden sm:inline">Redo</span>
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0 scale-x-[-1]"><path fillRule="evenodd" d="M9.707 3.293a1 1 0 010 1.414L7.414 7H12a5 5 0 110 10H8a1 1 0 110-2h4a3 3 0 100-6H7.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                className={`relative flex items-center justify-center w-7 h-7 rounded-full transition-all ${redoCount===0?"text-slate-300 dark:text-zinc-700 cursor-not-allowed":"text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800"}`}>
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0 scale-x-[-1]"><path fillRule="evenodd" d="M9.707 3.293a1 1 0 010 1.414L7.414 7H12a5 5 0 110 10H8a1 1 0 110-2h4a3 3 0 100-6H7.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                {redoCount>1&&<span className="absolute -top-0.5 -right-0.5 text-[9px] font-bold bg-slate-300 dark:bg-zinc-600 text-slate-700 dark:text-zinc-200 rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">{redoCount}</span>}
               </button>
             </div>
             <div ref={fabRef} className="relative shrink-0">
