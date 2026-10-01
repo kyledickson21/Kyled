@@ -6183,7 +6183,7 @@ function OverageCheckPropertyPickerModal({ properties, onPick, onClose }) {
       {all.length===0
         ? <><p className="text-sm text-slate-400 dark:text-zinc-500 mb-3">No properties yet.</p><Btn onClick={onClose} color="ghost" full>Close</Btn></>
         : <>
-            <p className="text-xs text-slate-400 dark:text-zinc-500 mb-2">Which property is this check for?</p>
+            <p className="text-xs text-slate-400 dark:text-zinc-500 mb-2">Which property is this check for? For insurance/tax/overcharge money found after the fact — if a lender is instead refunding part of an overage as part of a closing, enter that on Mark Sold / Edit Closing instead.</p>
             <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search properties…" autoFocus
               className="w-full mb-3 px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
             <div className="space-y-1.5 mb-3 max-h-96 overflow-y-auto">
@@ -6238,7 +6238,7 @@ function OverageCheckModal({ prop, init, onSave, onDelete, onClose }) {
         <Sel label="Where's This From?" value={source} onChange={setSource} options={OVERAGE_SOURCES}/>
         <Inp label={`Notes${needsNote?" *":""}`} value={notes} onChange={setNotes} placeholder="What this was for, exactly — for the bookkeepers"/>
         {needsNote&&notes.trim()===""&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-2 mb-2">Say what this was for when the source is "Other".</p>}
-        <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-2">Counts toward this property's profit and shows up in History for the bookkeepers.</p>
+        <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-2">Counts toward this property's profit and shows up in History for the bookkeepers. For money unrelated to a specific lender — insurance, taxes, a closing overcharge — found after the fact. If instead a specific lender is refunding part of an overage as part of THIS closing, enter it on that lender's line in Mark Sold / Edit Closing instead — not here.</p>
         {!allConfirmed&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Tap ✓ Confirm on the date and amount before this can be saved.</p>}
         <div className="flex gap-2">
           <Btn onClick={()=>canSave&&onSave({date,amount:amt,source,notes})} color={canSave?"blue":"ghost"} disabled={!canSave} full>{init?"Save Changes":"Save Overage Check"}</Btn>
