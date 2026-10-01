@@ -2844,6 +2844,27 @@ const OVERAGE_SOURCES = [["insurance","Insurance"],["taxes","Taxes"],["overcharg
 const overageSourceLabel = src => (OVERAGE_SOURCES.find(([v])=>v===src)||[])[1] || "Overage";
 const overageCheckTotal = prop => (prop.overageChecks||[]).reduce((s,c)=>s+(c.amount||0),0);
 const effectiveProfit = prop => (prop.closingData?.profit||0) + overageCheckTotal(prop);
+// Human-readable label for a navigate() entity — used for the "Recently Viewed" search list,
+// resolved at the moment it's visited since loans/properties can get renamed/closed later.
+const labelForEntity = (entity, data) => {
+  if (!entity || !data) return null;
+  if (entity.type === 'property') {
+    const p = data.properties.find(x => x.id === entity.id);
+    return p ? { label: p.address || "Unnamed property", sub: p.dateSold ? `Sold ${p.dateSold}` : "Active" } : null;
+  }
+  if (entity.type === 'lender') {
+    return { label: entity.name, sub: "Lender" };
+  }
+  if (entity.type === 'loan') {
+    const allLoans = [
+      ...data.properties.flatMap(p => p.loans.map(l => ({ ...l, propAddress: p.address }))),
+      ...(data.unassigned || []).map(l => ({ ...l, propAddress: null })),
+    ];
+    const l = allLoans.find(x => x.id === entity.loanId);
+    return l ? { label: l.lenderName || "Loan", sub: `${$$p(l.principal)} · ${l.propAddress || "Unassigned"}` } : null;
+  }
+  return null;
+};
 
 // ── Undo support ──────────────────────────────────────────────────────────────
 // Rather than snapshot the whole blob (which would blindly clobber any concurrent
@@ -8930,6 +8951,9 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   const [mobileRenovOpen,setMobileRenovOpen]=useState(false);
   const [globalSearch,setGlobalSearch]=useState('');
   const [globalSelIdx,setGlobalSelIdx]=useState(-1);
+  const [searchFocused,setSearchFocused]=useState(false);
+  const [recentlyViewed,setRecentlyViewed]=usePersistedState("nx-recentlyViewed",[]);
+  const searchInputRef=useRef(null);
   const [navStack,setNavStack]=useState([]);
   const [panelStack,setPanelStack]=useState([]);
   const [rehabHover,setRehabHover]=useState(false);
@@ -8948,11 +8972,26 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     const handler=e=>{
       if(fabRef.current&&!fabRef.current.contains(e.target))setFabOpen(false);
       if(settingsRef.current&&!settingsRef.current.contains(e.target))setSettingsOpen(false);
-      if(globalSearchRef.current&&!globalSearchRef.current.contains(e.target))setGlobalSearch('');
+      if(globalSearchRef.current&&!globalSearchRef.current.contains(e.target)){setGlobalSearch('');setSearchFocused(false);}
       if(rehabMenuRef.current&&!rehabMenuRef.current.contains(e.target))setRehabOpen(false);
     };
     document.addEventListener('mousedown',handler);
     return ()=>document.removeEventListener('mousedown',handler);
+  },[]);
+
+  // "/" or Cmd/Ctrl+K jumps straight to search from anywhere, as long as focus isn't
+  // already in a text field (so it doesn't hijack typing "/" into a notes box).
+  useEffect(()=>{
+    const handler=e=>{
+      const tag=document.activeElement?.tagName;
+      const typing=tag==='INPUT'||tag==='TEXTAREA'||document.activeElement?.isContentEditable;
+      const isShortcut=(e.key==='/'&&!typing)||((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k');
+      if(!isShortcut) return;
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    };
+    document.addEventListener('keydown',handler);
+    return ()=>document.removeEventListener('keydown',handler);
   },[]);
 
   // Save with optimistic concurrency: if another tab/device saved since we last read,
@@ -9086,7 +9125,17 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       return reverted;
     });
   };
-  const navigate = entity => setPanelStack(s=>[...s,entity]);
+  const navigate = entity => {
+    setPanelStack(s=>[...s,entity]);
+    const resolved=labelForEntity(entity,data);
+    if(resolved){
+      setRecentlyViewed(prev=>{
+        const key=JSON.stringify(entity);
+        const next=[{entity,...resolved},...prev.filter(r=>JSON.stringify(r.entity)!==key)];
+        return next.slice(0,6);
+      });
+    }
+  };
   const navStackNavigate = entity => setNavStack(s=>[...s,entity]);
 
   // ── Derived values for sidebar counts and global search ──
@@ -9435,7 +9484,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             <div ref={globalSearchRef} className="relative flex-1 min-w-0 sm:flex-none sm:w-72">
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-zinc-500 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"/></svg>
-                <input type="text" value={globalSearch}
+                <input type="text" ref={searchInputRef} value={globalSearch}
+                  onFocus={()=>setSearchFocused(true)}
                   onChange={e=>{setGlobalSearch(e.target.value);setGlobalSelIdx(-1);}}
                   onKeyDown={e=>{
                     if(!globalResults.length) return;
@@ -9445,11 +9495,25 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                       const r=globalResults[globalSelIdx];
                       if(r.action) r.action(); else navigate(r.entity);
                       setGlobalSearch('');setGlobalSelIdx(-1);
-                    } else if(e.key==='Escape'){setGlobalSearch('');setGlobalSelIdx(-1);}
+                    } else if(e.key==='Escape'){setGlobalSearch('');setGlobalSelIdx(-1);searchInputRef.current?.blur();}
                   }}
-                  placeholder="Search properties, lenders, notes, amounts…"
+                  placeholder="Search properties, lenders, notes, amounts… (/)"
                   className="w-full pl-8 pr-3 py-1.5 rounded-full text-sm bg-black/[0.06] dark:bg-white/[0.08] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 border-0"/>
               </div>
+              {globalSearch.length===0&&searchFocused&&recentlyViewed.length>0&&(
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
+                  <div className="px-4 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Recently Viewed</div>
+                  {recentlyViewed.map((r,i)=>(
+                    <button key={i} onClick={()=>{navigate(r.entity);setGlobalSearch('');setSearchFocused(false);}}
+                      className="w-full text-left flex items-start gap-2.5 px-4 py-2 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
+                      <div className="min-w-0">
+                        <div className="text-sm text-slate-800 dark:text-zinc-200 font-semibold truncate">{r.label}</div>
+                        {r.sub&&<div className="text-xs text-slate-400 dark:text-zinc-500 truncate">{r.sub}</div>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
               {globalSearch.length>1&&(
                 <div className="absolute top-full left-0 right-0 mt-1.5 max-h-[70vh] overflow-y-auto bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
                   {globalResults.length===0
