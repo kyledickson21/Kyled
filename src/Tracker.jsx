@@ -465,6 +465,30 @@ const Chip = ({children,color}) => {
   return <span className={`inline-flex items-center text-[11px] font-semibold border rounded-full px-2.5 py-0.5 ${cls[color]||cls.gray}`}>{children}</span>;
 };
 
+// Hover-only tooltip, portal-rendered to <body> (like DropdownPortal above) so it escapes
+// any `overflow-x-auto` ancestor — e.g. a scrollable table — instead of being clipped.
+// `tip` can be a plain string or richer JSX (multi-line breakdowns, lists); pass `wide` for
+// those so the box isn't forced to one line.
+const HoverTip = ({children,tip,wide}) => {
+  const ref = useRef(null);
+  const [rect, setRect] = useState(null);
+  return (
+    <span ref={ref} className="inline-block max-w-full"
+      onMouseEnter={()=>setRect(ref.current.getBoundingClientRect())}
+      onMouseLeave={()=>setRect(null)}>
+      {children}
+      {rect && createPortal(
+        <div className="fixed z-[100] pointer-events-none" style={{left:rect.left+rect.width/2,top:rect.top-6,transform:"translate(-50%,-100%)"}}>
+          <div className={`px-2.5 py-1.5 bg-zinc-900 dark:bg-zinc-700 text-white text-[11px] rounded-lg shadow-lg ${wide?"whitespace-normal min-w-[160px] text-left":"whitespace-nowrap"}`}>
+            {tip}
+          </div>
+        </div>,
+        document.body
+      )}
+    </span>
+  );
+};
+
 function Modal({title,onClose,children}) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-md" onClick={onClose}>
@@ -2952,7 +2976,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const [formDirty,setFormDirty]=useState(false);
   const closeModal=()=>confirmDiscard(formDirty,()=>setModal(null));
   const [expanded,setExpanded]=useState({});
-  const [viewMode,setViewMode]=usePersistedState("nx-propViewMode","expanded");
+  const [viewMode,setViewMode]=usePersistedState("nx-propViewMode","condensed");
   const [propSort,setPropSort]=usePersistedState("nx-propSort",{col:null,dir:"asc"});
   const [propSearch,setPropSearch]=useState("");
   const [propSortMode,setPropSortMode]=usePersistedState("nx-propSortMode","shortage");
@@ -3318,29 +3342,103 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           const short=Math.max(0,needed-funded);
           const _f=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
           const over=needed>0?Math.max(0,funded-needed):0;
-          return{prop,active,funded,needed,short,over,full:_f,under:!prop.dateSold&&short>0&&!_f};
+          const pd=prop.purchaseDate||(prop.loans.map(l=>l.startDate).filter(Boolean).sort()[0]);
+          const daysOwned=pd?Math.floor((new Date(TODAY)-new Date(pd))/86400000):null;
+          const months=effectiveMonths(prop);
+          const monthlyInt=active.reduce((s,l)=>s+monthlyLoanPayment(l),0);
+          const interestCarry=monthlyInt*months;
+          return{prop,active,funded,needed,short,over,full:_f,under:!prop.dateSold&&short>0&&!_f,pd,daysOwned,months,interestCarry};
         });
         // No column header actively clicked — keep rows' order, which already reflects the
-        // sort dropdown (propSortMode/propSortDir) via visible[]. A clicked column overrides it.
-        const sorted=!propSort.col ? rows : [...rows].sort((a,b)=>{
+        // sort dropdown (propSortMode/propSortDir) via visible[]. A clicked column overrides it —
+        // except in Manual mode, where drag order must stay authoritative, so the column click
+        // is ignored there (dragging would otherwise fight the column sort for row position).
+        const sorted=(!propSort.col||propSortMode==="manual") ? rows : [...rows].sort((a,b)=>{
           const d=propSort.dir==="asc"?1:-1;
           switch(propSort.col){
-            case"Address": return d*streetSortKey(a.prop.address).localeCompare(streetSortKey(b.prop.address));
-            case"Loans":   return d*(a.active.length-b.active.length);
-            case"Funded":  return d*(a.funded-b.funded);
-            case"Needed":  return d*(a.needed-b.needed);
-            case"Status":  return d*(a.short-b.short);
-            default:       return 0;
+            case"Address":    return d*streetSortKey(a.prop.address).localeCompare(streetSortKey(b.prop.address));
+            case"Days Owned": return d*((a.daysOwned??-1)-(b.daysOwned??-1));
+            case"Loans":      return d*(a.active.length-b.active.length);
+            case"Funded":     return d*(a.funded-b.funded);
+            case"Needed":     return d*(a.needed-b.needed);
+            case"Status":     return d*(a.short-b.short);
+            default:          return 0;
           }
         });
         const COLS=[
           {h:"Address",left:true},
+          {h:"Days Owned",left:false},
           {h:"Loans",  left:false},
           {h:"Funded", left:false},
           {h:"Needed", left:false},
           {h:"Status", left:false},
         ];
-        return (
+        const manualMode=propSortMode==="manual";
+        const rowClass="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors";
+        const tbody=(
+          <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+            {sorted.map(({prop,active,funded,needed,short,over,under,full,pd,daysOwned,months,interestCarry})=>{
+              const cells=(<>
+                <td className="py-2.5 px-4 tabular-nums text-[11px] text-slate-300 dark:text-zinc-600">{rankMap[prop.id]}</td>
+                <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px]">
+                  <HoverTip tip={prop.address||"Unnamed"}>
+                    <span className="truncate block">{prop.address?.split(',')[0]||"Unnamed"}</span>
+                  </HoverTip>
+                </td>
+                <td className="py-2.5 px-4 text-right tabular-nums text-slate-500 dark:text-zinc-400">
+                  {daysOwned!=null?(
+                    <HoverTip tip={`Bought ${pd}`}><span>{daysOwned}d</span></HoverTip>
+                  ):"—"}
+                </td>
+                <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">
+                  {active.length>0?(
+                    <HoverTip wide tip={
+                      <div className="flex flex-col gap-0.5">
+                        {active.map(l=>(
+                          <div key={l.id} className="flex justify-between gap-3">
+                            <span>{l.lenderName}</span><span className="font-semibold tabular-nums">{$$p(l.principal||0)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    }><span>{active.length}</span></HoverTip>
+                  ):active.length}
+                </td>
+                <td className="py-2.5 px-4 text-right tabular-nums text-slate-700 dark:text-zinc-200 font-medium">{funded>0?$$p(funded):"—"}</td>
+                <td className="py-2.5 px-4 text-right tabular-nums text-slate-400 dark:text-zinc-500">
+                  {needed>0?(
+                    <HoverTip wide tip={
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex justify-between gap-3"><span>Purchase</span><span className="font-semibold tabular-nums">{$$p(prop.purchasePrice||0)}</span></div>
+                        <div className="flex justify-between gap-3"><span>Rehab</span><span className="font-semibold tabular-nums">{$$p(prop.rehabBudget||0)}</span></div>
+                        <div className="flex justify-between gap-3"><span>Interest carry ({months}mo)</span><span className="font-semibold tabular-nums">{$$p(interestCarry)}</span></div>
+                      </div>
+                    }><span>{$$p(needed)}</span></HoverTip>
+                  ):"—"}
+                </td>
+                <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                  {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 font-semibold">Sold</span>}
+                  {full&&short===0&&over>needed*0.05&&<span className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">+{$$p(over)} over</span>}
+                  {full&&short===0&&over<=needed*0.05&&<span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Full</span>}
+                  {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">−{$$p(short)}</span>}
+                  {under&&<span className="text-red-500 dark:text-red-400 font-bold tabular-nums">−{$$p(short)}</span>}
+                  {!prop.dateSold&&!full&&!under&&funded===0&&<span className="text-slate-300 dark:text-zinc-600">—</span>}
+                </td>
+                <td className="py-2.5 px-2 text-right">
+                  <div className="flex gap-0.5 justify-end items-center">
+                    <button onClick={()=>setModal({type:"editProp",prop})} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs">✏️</button>
+                    <button onClick={()=>delProp(prop.id)} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs">🗑</button>
+                  </div>
+                </td>
+              </>);
+              return manualMode ? (
+                <SortableItem key={prop.id} id={prop.id} as="tr" className={rowClass}>{cells}</SortableItem>
+              ) : (
+                <tr key={prop.id} className={rowClass}>{cells}</tr>
+              );
+            })}
+          </tbody>
+        );
+        const table=(
           <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -3365,37 +3463,21 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                     <th className="py-2.5 px-2"></th>
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
-                  {sorted.map(({prop,active,funded,needed,short,over,under,full},i)=>{
-                    return(
-                    <tr key={prop.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
-                      <td className="py-2.5 px-4 tabular-nums text-[11px] text-slate-300 dark:text-zinc-600">{rankMap[prop.id]}</td>
-                      <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[160px] truncate">{prop.address||"Unnamed"}</td>
-                      <td className="py-2.5 px-4 text-right text-slate-500 dark:text-zinc-400">{active.length}</td>
-                      <td className="py-2.5 px-4 text-right tabular-nums text-slate-700 dark:text-zinc-200 font-medium">{funded>0?$$p(funded):"—"}</td>
-                      <td className="py-2.5 px-4 text-right tabular-nums text-slate-400 dark:text-zinc-500">{needed>0?$$p(needed):"—"}</td>
-                      <td className="py-2.5 px-4 text-right whitespace-nowrap">
-                        {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 font-semibold">Sold</span>}
-                        {full&&short===0&&over>needed*0.05&&<span className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">+{$$p(over)} over</span>}
-                        {full&&short===0&&over<=needed*0.05&&<span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Full</span>}
-                        {full&&short>0&&<span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">−{$$p(short)}</span>}
-                        {under&&<span className="text-red-500 dark:text-red-400 font-bold tabular-nums">−{$$p(short)}</span>}
-                        {!prop.dateSold&&!full&&!under&&funded===0&&<span className="text-slate-300 dark:text-zinc-600">—</span>}
-                      </td>
-                      <td className="py-2.5 px-2 text-right">
-                        <div className="flex gap-0.5 justify-end items-center">
-                          <button onClick={()=>setModal({type:"editProp",prop})} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs">✏️</button>
-                          <button onClick={()=>delProp(prop.id)} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs">🗑</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                  })}
-                </tbody>
+                {tbody}
               </table>
             </div>
           </div>
         );
+        // DndContext's accessibility live-region renders a <div>, which can't be a direct
+        // child of <table> — so it wraps the whole card from outside the table, not between
+        // <table> and <tbody>, even though only the <tr>s inside are actually sortable.
+        return manualMode ? (
+          <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sorted.map(r=>r.prop.id)} strategy={verticalListSortingStrategy}>
+              {table}
+            </SortableContext>
+          </DndContext>
+        ) : table;
       })()}
 
       {viewMode==="grid"&&visible.length>0&&(
@@ -9088,7 +9170,7 @@ function EntityDetailView({ entity, data, update, onBack, navigate }) {
 
 // ── Sidebar monochrome SVG icons — pure/stateless, hoisted to module scope so they
 // aren't redefined (and their identity doesn't change) on every Tracker render ──
-const IcoHomeEmoji=()=><span className="text-[15px] leading-none shrink-0">🏠</span>;
+const IcoHome=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h4v-4h2v4h4a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/></svg>;
 const IcoUsers=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>;
 const IcoDocument=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15px] h-[15px] shrink-0"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd"/></svg>;
 const IcoWrench=()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px] shrink-0"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>;
@@ -9473,7 +9555,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
         {/* Nav items */}
         <nav className="flex flex-col gap-0.5 px-1.5 flex-1">
-          <SideBtn icon={<IcoHomeEmoji/>} label="Properties" badge={unassignedFundsCount} tooltip={`Properties (${activeProps})${unassignedFundsCount>0?` · ${unassignedFundsCount} fund${unassignedFundsCount!==1?'s':''} unassigned`:''}`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Properties");}}/>
+          <SideBtn icon={<IcoHome/>} label="Properties" badge={unassignedFundsCount} tooltip={`Properties (${activeProps})${unassignedFundsCount>0?` · ${unassignedFundsCount} fund${unassignedFundsCount!==1?'s':''} unassigned`:''}`} active={tab==="Properties"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Properties");}}/>
           <SideBtn icon={<IcoUsers/>} label="Lenders" tooltip={`Lenders (${activeLenders})`} active={tab==="LenderDash"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("LenderDash");}}/>
           <SideBtn icon={<IcoList/>} label="Loans" tooltip={`Loans (${activeLoans})`} active={tab==="AllLoans"&&navStack.length===0} onClick={()=>{setNavStack([]);setPanelStack([]);setTab("AllLoans");}}/>
 
@@ -9565,7 +9647,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             <nav className="flex-1 py-2 px-2">
               {[
                 {id:"Dashboard",icon:<IcoPie/>,label:"Dashboard",match:t=>t==="Dashboard"},
-                {id:"Properties",icon:<IcoHomeEmoji/>,label:"Properties",match:t=>t==="Properties",badge:unassignedFundsCount},
+                {id:"Properties",icon:<IcoHome/>,label:"Properties",match:t=>t==="Properties",badge:unassignedFundsCount},
                 {id:"LenderDash",icon:<IcoUsers/>,label:"Lenders",match:t=>t==="LenderDash"},
                 {id:"AllLoans",icon:<IcoList/>,label:"Loans",match:t=>t==="AllLoans"},
               ].map(({id,icon,label,match,badge})=>(
