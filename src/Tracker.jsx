@@ -494,6 +494,13 @@ const LockBadge = ({loan}) => {
 // Each row jumps straight to where the thing actually gets fixed: a note-needed loan opens
 // straight into its edit form (not just the detail view), an idle fund opens the Place modal.
 // Renders nothing when there's nothing open, same as every other attention-only section here.
+// Small "up-right" arrow used next to each stat number, matching REsimpli's tile style.
+const IcoStatArrow = () => (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 shrink-0">
+    <path d="M6 14L14 6M14 6H7M14 6V13"/>
+  </svg>
+);
+
 const TasksCard = ({ data, openPanel, onPlaceFund }) => {
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
@@ -501,17 +508,36 @@ const TasksCard = ({ data, openPanel, onPlaceFund }) => {
   const total = noteTasks.length + assignTasks.length;
   if (total === 0) return null;
   return (
-    <div className="mb-4 bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden border border-amber-100 dark:border-amber-900/30">
-      <div className="px-5 py-4 flex items-center justify-between">
-        <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400">✅ Tasks</div>
-        <div className="text-lg font-black text-amber-600 dark:text-amber-400 tabular-nums">{total}</div>
+    <div className="mb-4 bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden border border-slate-100 dark:border-zinc-800">
+      <div className="px-5 pt-5 pb-4">
+        <div className="text-lg font-bold text-slate-900 dark:text-zinc-100 mb-3">Tasks</div>
+        <div className="flex items-start gap-8 flex-wrap">
+          {noteTasks.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1 text-red-500 dark:text-red-400">
+                <span className="text-3xl font-black tabular-nums leading-none">{noteTasks.length}</span>
+                <IcoStatArrow/>
+              </div>
+              <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">Notes needed</div>
+            </div>
+          )}
+          {assignTasks.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1 text-amber-500 dark:text-amber-400">
+                <span className="text-3xl font-black tabular-nums leading-none">{assignTasks.length}</span>
+                <IcoStatArrow/>
+              </div>
+              <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">Funds to assign</div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="divide-y divide-slate-50 dark:divide-zinc-800 border-t border-slate-100 dark:border-zinc-800">
         {noteTasks.map(({loan,propId,propAddress}) => (
           <button key={`note-${loan.id}`} onClick={() => openPanel({type:'loan', loanId:loan.id, propId, startEditing:true})}
-            className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors text-left">
-            <div className="min-w-0 flex items-center gap-2.5">
-              <span className="text-base shrink-0">📄</span>
+            className="w-full px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors text-left">
+            <div className="min-w-0 flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-red-50 dark:bg-red-900/30 flex items-center justify-center text-base shrink-0">📄</span>
               <div className="min-w-0">
                 <div className="font-semibold text-sm text-slate-800 dark:text-zinc-200 truncate">Add promissory note — {loan.lenderName}</div>
                 <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{propAddress||"Unassigned"}</div>
@@ -522,9 +548,9 @@ const TasksCard = ({ data, openPanel, onPlaceFund }) => {
         ))}
         {assignTasks.map(fund => (
           <button key={`assign-${fund.id}`} onClick={() => onPlaceFund(fund)}
-            className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors text-left">
-            <div className="min-w-0 flex items-center gap-2.5">
-              <span className="text-base shrink-0">💰</span>
+            className="w-full px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors text-left">
+            <div className="min-w-0 flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center text-base shrink-0">💰</span>
               <div className="min-w-0">
                 <div className="font-semibold text-sm text-slate-800 dark:text-zinc-200 truncate">Assign {fund.lenderName}'s money</div>
                 <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{h$(fund.principal||fund.amount||0)} idle</div>
