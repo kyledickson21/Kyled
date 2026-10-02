@@ -9846,10 +9846,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             </div>
             <div ref={fabRef} className="relative shrink-0">
               <button onClick={()=>setFabOpen(o=>!o)}
-                className={`flex items-center gap-1.5 pl-2 pr-3 sm:pr-3.5 py-1.5 rounded-full text-sm font-semibold text-white transition-all border ${fabOpen?"bg-teal-500 border-teal-400":"bg-teal-600 border-teal-500 hover:bg-teal-500"}`}>
-                <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 shrink-0"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
-                </span>
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-sm font-semibold text-teal-700 dark:text-teal-400 transition-all border border-teal-500/40 dark:border-teal-400/40 ${fabOpen?"bg-teal-500/15":"bg-teal-500/5 hover:bg-teal-500/15"}`}>
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
                 <span className="hidden sm:inline">Actions</span>
               </button>
               {fabOpen&&(
