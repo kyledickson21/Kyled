@@ -154,6 +154,18 @@ const fmtRate = (l) => {
 // while the loan is active; a closed/rolled loan's paperwork is moot.
 const needsPromissoryNote = loan => loan.loanType==="private" && loan.lockedToProperty && !loan.promissoryNoteUrl && !loan.endDate;
 
+// Every currently-open "needs attention" item across the portfolio — the single source of
+// truth behind <TasksCard>, shown identically on the Dashboard and the Properties page.
+const getOpenTasks = data => {
+  const activePropsData = (data.properties||[]).filter(p=>!p.dateSold);
+  const unassignedFunds = (data.unassigned||[]).filter(l=>!l.endDate);
+  const noteTasks = [
+    ...activePropsData.flatMap(p=>p.loans.filter(needsPromissoryNote).map(l=>({loan:l,propId:p.id,propAddress:p.address}))),
+    ...unassignedFunds.filter(needsPromissoryNote).map(l=>({loan:l,propId:null,propAddress:null})),
+  ];
+  return { noteTasks, assignTasks: unassignedFunds };
+};
+
 // ─── Privacy context ──────────────────────────────────────────────────────────
 const PrivacyContext = createContext(false);
 const usePrivacy = () => useContext(PrivacyContext);
@@ -475,6 +487,54 @@ const LockBadge = ({loan}) => {
     <span title="Fixed to Property — promissory note on file" className="inline-flex items-center gap-1 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 rounded-full font-semibold text-[10px] px-2 py-0.5">
       🔒 Fixed
     </span>
+  );
+};
+
+// Shared "what needs doing" checklist — identical on the Dashboard and the Properties page.
+// Each row jumps straight to where the thing actually gets fixed: a note-needed loan opens
+// straight into its edit form (not just the detail view), an idle fund opens the Place modal.
+// Renders nothing when there's nothing open, same as every other attention-only section here.
+const TasksCard = ({ data, openPanel, onPlaceFund }) => {
+  const prv = usePrivacy();
+  const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
+  const { noteTasks, assignTasks } = getOpenTasks(data);
+  const total = noteTasks.length + assignTasks.length;
+  if (total === 0) return null;
+  return (
+    <div className="mb-4 bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden border border-amber-100 dark:border-amber-900/30">
+      <div className="px-5 py-4 flex items-center justify-between">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400">✅ Tasks</div>
+        <div className="text-lg font-black text-amber-600 dark:text-amber-400 tabular-nums">{total}</div>
+      </div>
+      <div className="divide-y divide-slate-50 dark:divide-zinc-800 border-t border-slate-100 dark:border-zinc-800">
+        {noteTasks.map(({loan,propId,propAddress}) => (
+          <button key={`note-${loan.id}`} onClick={() => openPanel({type:'loan', loanId:loan.id, propId, startEditing:true})}
+            className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors text-left">
+            <div className="min-w-0 flex items-center gap-2.5">
+              <span className="text-base shrink-0">📄</span>
+              <div className="min-w-0">
+                <div className="font-semibold text-sm text-slate-800 dark:text-zinc-200 truncate">Add promissory note — {loan.lenderName}</div>
+                <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{propAddress||"Unassigned"}</div>
+              </div>
+            </div>
+            <span className="text-slate-300 dark:text-zinc-600 text-xs shrink-0">→</span>
+          </button>
+        ))}
+        {assignTasks.map(fund => (
+          <button key={`assign-${fund.id}`} onClick={() => onPlaceFund(fund)}
+            className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors text-left">
+            <div className="min-w-0 flex items-center gap-2.5">
+              <span className="text-base shrink-0">💰</span>
+              <div className="min-w-0">
+                <div className="font-semibold text-sm text-slate-800 dark:text-zinc-200 truncate">Assign {fund.lenderName}'s money</div>
+                <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{h$(fund.principal||fund.amount||0)} idle</div>
+              </div>
+            </div>
+            <span className="text-slate-300 dark:text-zinc-600 text-xs shrink-0">→</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 };
 
@@ -3315,6 +3375,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   return (
     <div>
       {menuOpen && <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)}/>}
+      <TasksCard data={data} openPanel={openPanel} onPlaceFund={fund=>setModal({type:"place",fund})}/>
       <div className="flex justify-between items-center mb-5">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Properties</h2>
@@ -8660,7 +8721,6 @@ const DASHBOARD_CARD_DEFS = [
   { id:"drawsDetail", label:"Draws Available by Property", wide:true },
   { id:"lenderConcentration", label:"Top Lenders by Balance", wide:true },
   { id:"recentClosings", label:"Recently Closed", wide:true },
-  { id:"promissoryNotesNeeded", label:"Promissory Notes Needed", wide:true },
 ];
 const DEFAULT_DASHBOARD_ORDER = DASHBOARD_CARD_DEFS.map(c=>c.id);
 
@@ -8706,12 +8766,6 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const unassignedFunds = (data.unassigned || []).filter(l => !l.endDate);
   const allActiveLoans = activePropsData.flatMap(p => p.loans.filter(l => !l.endDate));
   const allActivePlusUnassigned = [...allActiveLoans, ...unassignedFunds];
-
-  // Fixed-to-Property private loans missing their promissory note / mortgage link.
-  const loansNeedingNotes = [
-    ...activePropsData.flatMap(p => p.loans.filter(needsPromissoryNote).map(l => ({ loan: l, propId: p.id, propAddress: p.address }))),
-    ...unassignedFunds.filter(needsPromissoryNote).map(l => ({ loan: l, propId: null, propAddress: null })),
-  ];
 
   // Loans with a fixed maturity date (not just "due whenever the property sells")
   const loansDueSoon = [
@@ -9202,29 +9256,6 @@ function DashboardPage({ data, update, onNavigateTab }) {
         )}
       </div>
     ),
-    promissoryNotesNeeded: loansNeedingNotes.length === 0 ? null : (
-      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden border border-red-100 dark:border-red-900/40">
-        <div className="w-full px-5 py-4 flex items-center justify-between">
-          <div className="text-left">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400">🔴 Promissory Notes Needed</div>
-            <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Fixed-to-Property loans missing their note/mortgage link</div>
-          </div>
-          <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums shrink-0">{loansNeedingNotes.length}</div>
-        </div>
-        <div className="divide-y divide-slate-50 dark:divide-zinc-800 border-t border-slate-100 dark:border-zinc-800">
-          {loansNeedingNotes.map(({loan: l, propId, propAddress}) => (
-            <button key={l.id} onClick={() => openPanel({ type: 'loan', loanId: l.id, propId })}
-              className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors text-left">
-              <div className="min-w-0">
-                <div className="font-semibold text-sm text-slate-800 dark:text-zinc-200 truncate">{l.lenderName}</div>
-                <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{propAddress||"Unassigned"}</div>
-              </div>
-              <div className="text-sm font-bold text-slate-700 dark:text-zinc-200 tabular-nums shrink-0">{h$(l.principal||0)}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-    ),
   };
 
   return (
@@ -9242,6 +9273,8 @@ function DashboardPage({ data, update, onNavigateTab }) {
           {editMode ? "Done" : "Customize"}
         </button>
       </div>
+
+      <TasksCard data={data} openPanel={openPanel} onPlaceFund={fund=>setModal({type:"place",fund})}/>
 
       <DndContext sensors={dashDragSensors} collisionDetection={closestCenter} onDragEnd={handleDashDragEnd}>
         <SortableContext items={cardOrder} strategy={rectSortingStrategy}>
