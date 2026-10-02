@@ -8,14 +8,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Overrides Tailwind's stock `teal` scale with Kyle's REsimpli brand color
-        // (#008080, sampled directly from their logo) at the 700 position, with the
-        // rest of the scale generated at the same hue so every existing `teal-NNN`
-        // class across the app (hundreds of them) repaints without touching the JSX.
+        // Overrides Tailwind's stock `teal` scale with Kyle's brand color. Sampled the
+        // REsimpli logo directly (#008080), then nudged darker and bluer per feedback
+        // ("still looks too green") — hue shifted from 180° to 195°, lightness trimmed
+        // slightly — generated at the same hue across the scale so every existing
+        // `teal-NNN` class across the app (hundreds of them) repaints without touching
+        // the JSX.
         teal: {
-          50: '#F0FDFD', 100: '#CCFBFB', 200: '#99F6F6', 300: '#5EEAEA',
-          400: '#2DD4D4', 500: '#14B8B8', 600: '#0D9494', 700: '#008080',
-          800: '#115E5E', 900: '#134E4E', 950: '#042F2F',
+          50: '#F0FAFD', 100: '#CCEFFB', 200: '#99DFF6', 300: '#5EC7EA',
+          400: '#2DAAD4', 500: '#148FB8', 600: '#0D7294', 700: '#0F5C76',
+          800: '#114B5E', 900: '#133F4E', 950: '#04242F',
         },
       },
     },
