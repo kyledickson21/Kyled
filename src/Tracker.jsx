@@ -3222,7 +3222,10 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   };
 
   const placeOnProperty = (fund,propId) => {
-    const loan={id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",paymentType:fund.paymentType||"closing",monthlyPayment:fund.monthlyPayment||0,splitMonthlyRate:fund.splitMonthlyRate??null,drawFacility:fund.drawFacility||null,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null,dueDate:fund.dueDate||null};
+    // Spread the full fund first — fields like lockedToProperty/promissoryNoteUrl that
+    // aren't explicitly listed below need to survive placement too, same as splitPiece
+    // already does; listing fields out one by one without the spread silently dropped them.
+    const loan={...fund,id:uid(),lenderName:fund.lenderName,loanType:fund.loanType,principal:fund.principal||fund.amount||0,startDate:fund.startDate||fund.date||TODAY,interestRate:fund.interestRate||0,interestType:fund.interestType||"percentage",paymentType:fund.paymentType||"closing",monthlyPayment:fund.monthlyPayment||0,splitMonthlyRate:fund.splitMonthlyRate??null,drawFacility:fund.drawFacility||null,specialTerms:fund.specialTerms||fund.notes||"",endDate:fund.endDate||null,dueDate:fund.dueDate||null};
     update(d=>({...d,unassigned:d.unassigned.filter(u=>u.id!==fund.id),properties:d.properties.map(p=>p.id!==propId?p:{...p,loans:[...p.loans,loan]})}));
     setExpanded(e=>({...e,[propId]:true}));
     setModal(null);
@@ -8906,7 +8909,11 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const interestThisMonth = allActivePlusUnassigned.reduce((s, l) => s + monthlyLoanPayment(l), 0);
 
   const placeOnProperty = (fund, propId) => {
+    // Spread the full fund first — fields like lockedToProperty/promissoryNoteUrl that
+    // aren't explicitly listed below need to survive placement too, same as splitPiece
+    // already does; listing fields out one by one without the spread silently dropped them.
     const loan = {
+      ...fund,
       id: uid(), lenderName: fund.lenderName, loanType: fund.loanType,
       principal: fund.principal || fund.amount || 0, startDate: fund.startDate || TODAY,
       interestRate: fund.interestRate || 0, interestType: fund.interestType || "percentage",
