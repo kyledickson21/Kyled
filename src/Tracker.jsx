@@ -8334,11 +8334,16 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
     if(ef.paymentType==="monthly_rate_split"&&ef.splitMonthlyRate!==""&&isNaN(parseFloat(ef.splitMonthlyRate))){ alert("Monthly-paid portion isn't a valid number."); return; }
     const newPrincipal = ef.principal!==""?parseFloat(ef.principal)||loan.principal:loan.principal;
     const newStartDate = ef.startDate||loan.startDate;
-    // Same timing/funding-gap check the shared Add Lender Money form runs whenever this
-    // loan is saved from there — re-run here too so the two editors agree on what's
-    // allowed instead of one being stricter than the other.
+    // Funding-gap check, same as placing/moving a loan elsewhere — but this loan is
+    // already one of prop.loans, so checking against `prop` as-is would count its own
+    // current principal as already "funded" and then ALSO demand room for the full new
+    // amount on top of that, double-counting it and reporting a false no-room conflict
+    // even when nothing about the amount actually changed. Exclude it from the property's
+    // loans first so the check reflects "does this loan's amount fit", not "is there
+    // extra room on top of what this loan already fills."
     if(prop){
-      const conflict = propConflict(newStartDate, newPrincipal, prop);
+      const propExcludingThisLoan = {...prop, loans: prop.loans.filter(l=>l.id!==loanId)};
+      const conflict = propConflict(newStartDate, newPrincipal, propExcludingThisLoan);
       if(conflict==='date'){ setEfBlockMsg("Cannot save — this start date is before the property was acquired, so for that stretch of time the loan wouldn't have had this property backing it up."); return; }
       if(conflict==='size'){ setEfBlockMsg("Cannot save — not enough funding gap on this property for this amount (including the usual 10% cushion)."); return; }
     }
