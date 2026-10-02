@@ -193,9 +193,11 @@ const update = fn => {
 ## UI Design Language
 - iOS/Apple aesthetic: frosted glass headers, squircle icons, SF Pro font stack
 - Cards: `rounded-2xl`, `shadow-[0_2px_12px_rgba(0,0,0,0.07)]`
-- Dark mode: `dark:bg-[#1C1C1E]`, `dark:bg-black`
-- Background: `bg-[#F2F2F7]` light / `bg-black` dark
-- Accent: blue-600 primary, emerald for positive/green, red for negative/danger, violet for rolled/purple
+- Dark mode: `dark:bg-[#1C1F2B]` (cards), `dark:bg-[#14161F]` (page/sidebar) — a navy/charcoal
+  palette matching Kyle's REsimpli CRM, not pure black
+- Background: `bg-[#F2F2F7]` light / `bg-[#14161F]` dark
+- Accent: teal-600 primary (matches REsimpli's signature blueish-green), emerald for
+  positive/green, red for negative/danger, violet for rolled/purple
 - No external UI libraries — all custom Tailwind components
 
 ## Inline Component Library (inside Tracker.jsx)

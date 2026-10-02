@@ -240,7 +240,7 @@ function AddressField({ value, onChange }) {
       <div className="relative">
         <input value={q} onChange={e=>handleChange(e.target.value)} onFocus={()=>sugg.length>0&&setOpen(true)} onKeyDown={onKey}
           placeholder="Start typing an address…"
-          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 pr-10 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 pr-10 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
         <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 dark:text-zinc-600 pointer-events-none text-sm">
           {loading ? <span className="animate-spin inline-block">⟳</span> : "📍"}
         </div>
@@ -248,7 +248,7 @@ function AddressField({ value, onChange }) {
           <div className="absolute z-50 mt-1 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden">
             {sugg.map((s,i)=>(
               <button key={i} onMouseDown={e=>{e.preventDefault();pick(s.label);}}
-                className={`w-full text-left px-4 py-3 text-sm border-b border-slate-50 dark:border-zinc-800 last:border-0 transition-colors ${i===activeIdx?"bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
+                className={`w-full text-left px-4 py-3 text-sm border-b border-slate-50 dark:border-zinc-800 last:border-0 transition-colors ${i===activeIdx?"bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
                 <span className="text-slate-300 dark:text-zinc-600 mr-1.5 text-xs">📍</span>{s.label}
               </button>
             ))}
@@ -352,15 +352,15 @@ const Inp = ({label,type="text",value,onChange,placeholder,helpText,money,percen
     <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
     {money ? (
       <MoneyField value={value} onChange={onChange} placeholder={placeholder} autoFocus={autoFocus} onBlur={onBlur}
-        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
     ) : percent ? (
       <PercentField value={value} onChange={onChange} placeholder={placeholder} autoFocus={autoFocus} onBlur={onBlur}
-        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl pl-4 pr-9 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl pl-4 pr-9 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
     ) : (
       <input type={type} value={value??""} onChange={e=>onChange(e.target.value)}
         onWheel={e=>e.target.blur()}
         placeholder={placeholder} autoFocus={autoFocus} onBlur={onBlur}
-        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
     )}
     {helpText&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5">{helpText}</p>}
   </div>
@@ -370,7 +370,7 @@ const Sel = ({label,value,onChange,options,onBlur,autoFocus}) => (
   <div className="mb-3">
     <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
     <select value={value??""} onChange={e=>onChange(e.target.value)} onBlur={onBlur} autoFocus={autoFocus}
-      className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none">
+      className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all appearance-none">
       {options.map(([v,l])=><option key={v} value={v}>{l}</option>)}
     </select>
   </div>
@@ -381,7 +381,7 @@ const DateInp = ({label,value,onChange,helpText,autoFocus,onBlur}) => (
     <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">{label}</label>
     <div className="relative">
       <input type="date" value={value??""} onChange={e=>onChange(e.target.value)} autoFocus={autoFocus} onBlur={onBlur}
-        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all pr-10"/>
+        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all pr-10"/>
       {value && <button type="button" onClick={()=>onChange("")}
         className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-100 dark:bg-zinc-700 hover:bg-red-100 dark:hover:bg-red-900/50 hover:text-red-500 text-slate-400 dark:text-zinc-400 flex items-center justify-center text-[10px] font-bold transition-colors">✕</button>}
     </div>
@@ -501,8 +501,8 @@ const HoverTip = ({children,tip,wide,interactive}) => {
 function Modal({title,onClose,children}) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-md" onClick={onClose}>
-      <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.25)] w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
-        <div className="flex justify-between items-center px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.06] sticky top-0 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl rounded-t-2xl z-10">
+      <div className="bg-white/95 dark:bg-[#1C1F2B]/95 backdrop-blur-2xl rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.25)] w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.06] sticky top-0 bg-white/95 dark:bg-[#1C1F2B]/95 backdrop-blur-2xl rounded-t-2xl z-10">
           <h2 className="font-semibold text-slate-900 dark:text-zinc-100 text-base tracking-[-0.2px]">{title}</h2>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-500 dark:text-zinc-400 hover:bg-black/10 dark:hover:bg-white/15 transition-all text-xl leading-none">&times;</button>
         </div>
@@ -552,7 +552,7 @@ function DropdownPortal({ anchorRef, open, onClose, children }) {
 
 const Btn = ({onClick,children,color="blue",full,sm,disabled}) => {
   const cls={
-    blue:  "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm shadow-blue-200 dark:shadow-none",
+    blue:  "bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white shadow-sm shadow-teal-200 dark:shadow-none",
     green: "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-sm shadow-emerald-200 dark:shadow-none",
     purple:"bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white shadow-sm shadow-violet-200 dark:shadow-none",
     red:   "bg-red-500 hover:bg-red-600 active:bg-red-700 text-white shadow-sm shadow-red-200 dark:shadow-none",
@@ -583,7 +583,7 @@ function LenderAutocomplete({ value, onChange, properties }) {
       </label>
       <input value={value} onChange={e=>{ onChange(e.target.value); setShow(true); }} onFocus={()=>setShow(true)}
         placeholder="John Doe"
-        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+        className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
       {show && matches.length > 0 && (
         <div className="absolute z-50 mt-1 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden">
           {matches.map(name => (
@@ -803,7 +803,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
             Lender <span className="text-red-400">*</span>
           </label>
           <select value={lenderSel} onChange={e=>setLenderSel(e.target.value)}
-            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none">
+            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all appearance-none">
             <option value="">— Select a lender —</option>
             <option value="_new_">➕ Add New Lender</option>
             {[...lenders].sort((a,b)=>a.name.localeCompare(b.name)).map(l=>(
@@ -812,8 +812,8 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           </select>
         </div>
         {lenderSel==="_new_"&&(
-          <div className="mb-3 p-3.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 space-y-2">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-2">New Lender Info</div>
+          <div className="mb-3 p-3.5 rounded-xl bg-teal-50/50 dark:bg-teal-950/20 border border-teal-100 dark:border-teal-900/40 space-y-2">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-teal-500 dark:text-teal-400 mb-2">New Lender Info</div>
             <Inp label="Lender Name *" value={newName} onChange={setNewName} placeholder="John Doe"/>
             <Sel label="Lender Type *" value={newType} onChange={setNewType} options={[
               ["private","Private Money — individual lender"],
@@ -955,7 +955,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
           <label className="flex items-center gap-3 cursor-pointer mb-1">
             <input type="checkbox" checked={!!f.drawFacility}
               onChange={e=>sf(p=>({...p,drawFacility:e.target.checked?{committed:"",draws:[]}:null}))}
-              className="w-4 h-4 rounded border-slate-300 dark:border-zinc-600 accent-blue-600 cursor-pointer"/>
+              className="w-4 h-4 rounded border-slate-300 dark:border-zinc-600 accent-teal-600 cursor-pointer"/>
             <div>
               <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Rehab Draw Facility</div>
               <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Lender committed rehab funding, drawn in stages</div>
@@ -1025,7 +1025,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
         </label>
         {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 mb-2">{blockMsg}</div>}
         <button ref={destBtnRef} type="button" onClick={()=>setDestPickerOpen(o=>!o)}
-          className="relative w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm flex items-center justify-between gap-2 text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+          className="relative w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm flex items-center justify-between gap-2 text-slate-800 dark:text-zinc-100 hover:border-teal-400 dark:hover:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all">
           <span className="truncate">
             {f.destination==="unassigned"
               ? "💼 Unassigned — not yet placed on a property"
@@ -1037,7 +1037,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
             {activeProps.length>0&&(
               <div className="sticky top-0 bg-white dark:bg-zinc-800 border-b border-slate-100 dark:border-zinc-700 p-1.5">
                 <input type="text" value={destSearch} onChange={e=>setDestSearch(e.target.value)} placeholder="Search properties…" autoFocus
-                  className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                  className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
               </div>
             )}
             {!destSearch&&(
@@ -1183,7 +1183,7 @@ function PlaceOnPropertyModal({ fund, properties, onPlace, onClose }) {
             <div className="space-y-1.5">
               {available.map(p=>(
                 <button key={p.id} onClick={()=>{setBlockMsg('');handleClick(p);}}
-                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 border border-slate-200 dark:border-zinc-700 hover:border-teal-300 dark:hover:border-teal-700 transition-all">
                   <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">🏠 {p.address}</span>
                 </button>
               ))}
@@ -1275,7 +1275,7 @@ function MoveModal({ item, properties, onMove, onClose }) {
           <div>
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Remove from Property</div>
             <button onClick={()=>handleClick('unassigned')}
-              className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+              className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 border border-slate-200 dark:border-zinc-700 hover:border-teal-300 dark:hover:border-teal-700 transition-all">
               <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">💼 Move to Unassigned</span>
             </button>
           </div>
@@ -1286,7 +1286,7 @@ function MoveModal({ item, properties, onMove, onClose }) {
             <div className="space-y-1.5">
               {available.map(p=>(
                 <button key={p.id} onClick={()=>{setBlockMsg('');handleClick(p.id);}}
-                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 border border-slate-200 dark:border-zinc-700 hover:border-teal-300 dark:hover:border-teal-700 transition-all">
                   <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">🏠 {p.address}</span>
                 </button>
               ))}
@@ -1373,7 +1373,7 @@ function QuickDrawModal({ data, onSave, onClose }) {
         <div className="space-y-1.5">
           <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Select Draw Facility</label>
           <select value={selId} onChange={e=>setSelId(e.target.value)}
-            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500">
             {drawLoans.map(l=>(
               <option key={l.id} value={l.id}>
                 {l.propAddress} — {l.lenderName} ({$$p(l.remaining)} avail
@@ -1514,7 +1514,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
           {blockMsg&&<div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300">{blockMsg}</div>}
           {(available.length+blockedSize.length+blockedDate.length)>1&&(
             <input type="text" value={placeSearch} onChange={e=>setPlaceSearch(e.target.value)} placeholder="Search properties…"
-              className="w-full px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+              className="w-full px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-teal-500"/>
           )}
           {showUnassigned&&(
             <div>
@@ -1531,7 +1531,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
               <div className="space-y-1.5">
                 {available.filter(p=>matchesSearch(p,placeSearch)).map(p=>(
                   <button key={p.id} type="button" onClick={()=>{setBlockMsg("");handlePlace(p.id);}}
-                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex items-center justify-between gap-2">
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 border border-slate-200 dark:border-zinc-700 hover:border-teal-300 dark:hover:border-teal-700 transition-all flex items-center justify-between gap-2">
                     <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200 truncate">🏠 {p.address}</span>
                     <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0 tabular-nums">{$$p(propGap(p))} avail</span>
                   </button>
@@ -1608,12 +1608,12 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                             }
                             setSplits(s=>s.map((r,j)=>j===i?{...r,amount:val,propId:newPropId}:r));
                           }}
-                          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"/>
+                          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-teal-500 tabular-nums"/>
                       </LockableInline>
                     </div>
                     <div className="flex-1 relative">
                       <button ref={el=>pickerBtnRefs.current[i]=el} type="button" disabled={!hasAmt} onClick={()=>setOpenPicker(openPicker===i?null:i)}
-                        className={`relative w-full text-left px-2 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs flex items-center justify-between gap-1 ${!hasAmt?"opacity-40 cursor-not-allowed text-slate-400 dark:text-zinc-500":"text-slate-800 dark:text-zinc-100 hover:border-blue-400 dark:hover:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"}`}>
+                        className={`relative w-full text-left px-2 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs flex items-center justify-between gap-1 ${!hasAmt?"opacity-40 cursor-not-allowed text-slate-400 dark:text-zinc-500":"text-slate-800 dark:text-zinc-100 hover:border-teal-400 dark:hover:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"}`}>
                         <span className="truncate">{pickerLabel}</span>
                         <span className="shrink-0 text-slate-400 dark:text-zinc-500">▾</span>
                       </button>
@@ -1621,7 +1621,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                           {candidateProps.length>1&&(
                             <div className="sticky top-0 bg-white dark:bg-zinc-800 border-b border-slate-100 dark:border-zinc-700 p-1.5">
                               <input type="text" value={rowSearch} onChange={e=>setRowSearch(e.target.value)} placeholder="Search properties…" autoFocus
-                                className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
                             </div>
                           )}
                           {!rowSearch&&(
@@ -1653,7 +1653,7 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
                 </div>
               );
             })}
-            <button type="button" onClick={addRow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold">+ Add destination</button>
+            <button type="button" onClick={addRow} className="text-xs text-teal-600 dark:text-teal-400 hover:underline font-semibold">+ Add destination</button>
           </div>
           <div className={`flex justify-between text-sm font-semibold border-t border-slate-200 dark:border-zinc-700 pt-3 ${Math.abs(remaining)<0.01?"text-emerald-600 dark:text-emerald-400":remaining<0?"text-red-500 dark:text-red-400":"text-amber-600 dark:text-amber-400"}`}>
             <span>Unallocated</span>
@@ -1682,7 +1682,7 @@ function CloseLoanModal({ loan, onConfirm, onClose }) {
     ? Math.round((payoff-(loan.principal||0))*100)/100
     : Math.round(calcIntEarned(loan, closeDate) * 100) / 100;
   const monthlyPaidPortion = calcMonthlyPaidPortion(loan, closeDate);
-  const inputCls = "flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500";
+  const inputCls = "flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500";
   return (
     <Modal title={`Close Loan — ${loan.lenderName}`} onClose={onClose}>
       <div className="space-y-4">
@@ -1918,10 +1918,10 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
     }, isRental);
   };
 
-  const inputCls="flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums";
+  const inputCls="flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500 tabular-nums";
   const autoCls="flex-1 border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-right text-slate-400 dark:text-zinc-500 tabular-nums select-none";
   const labelCls="w-40 text-sm text-slate-600 dark:text-zinc-300 shrink-0 leading-tight";
-  const numIn="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums text-slate-800 dark:text-zinc-100";
+  const numIn="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 tabular-nums text-slate-800 dark:text-zinc-100";
   const autoNum="w-full border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-right text-slate-400 dark:text-zinc-500 tabular-nums select-none";
 
   return (
@@ -1932,7 +1932,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
         <div className="flex gap-2 mb-5">
           {[["1 · Settle Lenders",1],["2 · Wire & Costs",2]].map(([label,s])=>(
             <button key={s} type="button" onClick={()=>s<step?setStep(s):undefined}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${s===step?"bg-blue-600 text-white":s<step?"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 cursor-pointer":"bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 cursor-not-allowed"}`}>
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${s===step?"bg-teal-600 text-white":s<step?"bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 cursor-pointer":"bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 cursor-not-allowed"}`}>
               {label}
             </button>
           ))}
@@ -2004,7 +2004,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                             else if(r.type==="waiveInterest") patch.newStartDate=nextDay(soldDate);
                             upd(r.loanId,patch);
                           }}
-                          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500">
                           <option value="paidOut">💰 Paid Out — {$$p(r.calcPayoff)} leaves Nexus</option>
                           <option value="rollFull">🔄 Roll Full {$$p(r.calcPayoff)} to next deal</option>
                           {r.calcInterest>0.01&&<>
@@ -2142,7 +2142,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           <div>
                             <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">Roll To</div>
                             <select value={r.destination} onChange={e=>upd(r.loanId,{destination:e.target.value})}
-                              className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                              className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-teal-500">
                               <option value="unassigned">💼 Unassigned</option>
                               {otherProps.map(p=><option key={p.id} value={p.id}>🏠 {p.address}</option>)}
                             </select>
@@ -2150,7 +2150,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                           <div>
                             <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase mb-1">New Start Date</div>
                             <input type="date" value={r.newStartDate} onChange={e=>upd(r.loanId,{newStartDate:e.target.value})}
-                              className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                              className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
                           </div>
                         </div>
                       )}
@@ -2226,15 +2226,15 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
           <div className="space-y-5 pb-2">
 
             {/* Lender reference from step 1 */}
-            <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-4 py-3">
+            <div className="rounded-xl bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 px-4 py-3">
               <div className="flex items-center justify-between mb-2">
-                <div className="text-[10px] font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-widest">Lender Settlements (Step 1)</div>
+                <div className="text-[10px] font-semibold text-teal-500 dark:text-teal-400 uppercase tracking-widest">Lender Settlements (Step 1)</div>
                 <div className="text-right">
                   {titleTotal>0&&<div className="text-[10px] text-amber-600 dark:text-amber-400 tabular-nums">🏛 Title: {$$p(titleTotal)}</div>}
-                  <div className="font-bold text-lg tabular-nums text-blue-700 dark:text-blue-300">Wire: {$$p(lenderTotal)}</div>
+                  <div className="font-bold text-lg tabular-nums text-teal-700 dark:text-teal-300">Wire: {$$p(lenderTotal)}</div>
                 </div>
               </div>
-              <div className="text-[11px] text-blue-600 dark:text-blue-400 space-y-0.5">
+              <div className="text-[11px] text-teal-600 dark:text-teal-400 space-y-0.5">
                 {rows.map(r=>{
                   let label;
                   if(r.paidAtTitle){
@@ -2277,7 +2277,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Money Costs <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(from step 1)</span></span>
                   <div className={autoCls} title="Auto-derived from lender interest in step 1">{$$p(moneyCosts)}</div>
-                  <button type="button" onClick={()=>setStep(1)} className="shrink-0 text-[10px] font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors whitespace-nowrap">edit ↑</button>
+                  <button type="button" onClick={()=>setStep(1)} className="shrink-0 text-[10px] font-semibold text-teal-500 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition-colors whitespace-nowrap">edit ↑</button>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
@@ -2297,7 +2297,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
               <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Wire Received</span>
               <LockableInline locked={locked.wire} onToggle={()=>toggleLock("wire")} className="flex-1">
                 <MoneyField value={wireIn} onChange={handleWireChange} placeholder="0"
-                    className="w-full border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
+                    className="w-full border-2 border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-teal-700 dark:text-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-500 tabular-nums"/>
               </LockableInline>
             </div>
 
@@ -2560,10 +2560,10 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
                       {multi&&(
                         <input type="text" value={entry.note} onChange={e=>updateHudEntry(key,"note",entry.id,e.target.value)}
                           placeholder={`Item ${idx+1} (optional)`}
-                          className="w-28 shrink-0 border border-slate-200 dark:border-zinc-700 rounded-xl px-2.5 py-3 text-xs bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                          className="w-28 shrink-0 border border-slate-200 dark:border-zinc-700 rounded-xl px-2.5 py-3 text-xs bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500"/>
                       )}
                       <input type="text" value={entry.value} onChange={e=>updateHudEntry(key,"value",entry.id,e.target.value)} placeholder={placeholder}
-                        className={`flex-1 border rounded-xl px-4 py-3 text-sm bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 transition-all ${invalid?"border-red-300 dark:border-red-700 focus:ring-red-500":"border-slate-200 dark:border-zinc-700 focus:ring-blue-500"}`}/>
+                        className={`flex-1 border rounded-xl px-4 py-3 text-sm bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 transition-all ${invalid?"border-red-300 dark:border-red-700 focus:ring-red-500":"border-slate-200 dark:border-zinc-700 focus:ring-teal-500"}`}/>
                       {multi&&(
                         <button type="button" onClick={()=>removeHudEntry(key,entry.id)}
                           className="shrink-0 w-8 flex items-center justify-center rounded-xl text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors">✕</button>
@@ -2571,7 +2571,7 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
                     </div>
                   );
                 })}
-                <button type="button" onClick={()=>addHudEntry(key)} className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">+ Add another</button>
+                <button type="button" onClick={()=>addHudEntry(key)} className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline">+ Add another</button>
                 {multi&&(
                   <div className="flex justify-between text-[11px] font-semibold text-slate-500 dark:text-zinc-400 mt-1.5">
                     <span>Subtotal</span><span className="tabular-nums">{$$p(sumHudEntries(entries))}</span>
@@ -2602,7 +2602,7 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
             Project Length (months)
             {f.projectMonths!==""&&parseFloat(f.projectMonths)!==autoMonths&&(
               <button type="button" onClick={()=>s("projectMonths")("")}
-                className="text-blue-500 hover:text-blue-700 dark:text-blue-400 text-[10px] font-semibold transition-colors normal-case">
+                className="text-teal-500 hover:text-teal-700 dark:text-teal-400 text-[10px] font-semibold transition-colors normal-case">
                 ↺ Reset ({autoMonths} mo)
               </button>
             )}
@@ -2611,7 +2611,7 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
             value={f.projectMonths!==""?f.projectMonths:autoMonths}
             onChange={e=>s("projectMonths")(e.target.value)}
             onBlur={()=>setEditingMonths(false)}
-            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
           {rehab>0&&<p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5">Formula: {Math.floor(rehab/1000)} rehab days + 60 listing days = {autoMonths} mo</p>}
         </div>
       ) : (
@@ -2663,14 +2663,14 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
             instead of stacked as a second modal on top of the Add Property one, which was
             forcing a scroll back up to it every time. */}
         {addingLoan ? (
-          <div className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/30 dark:bg-blue-900/10">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-2">Add a Loan</div>
+          <div className="p-3.5 rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50/30 dark:bg-teal-900/10">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-teal-600 dark:text-teal-400 mb-2">Add a Loan</div>
             <LenderMoneyForm properties={[draftProp]} lenders={lenders||[]} init={{destination:draftPropId}}
               lockDestinationTo={{id:draftPropId,label:f.address||"this property"}}
               onSave={addLoanDraft} onClose={()=>setAddingLoan(false)}/>
           </div>
         ) : (
-          <button type="button" onClick={()=>setAddingLoan(true)} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">+ Add a Loan</button>
+          <button type="button" onClick={()=>setAddingLoan(true)} className="text-xs font-semibold text-teal-600 dark:text-teal-400 hover:underline">+ Add a Loan</button>
         )}
       </div>
 
@@ -2685,7 +2685,7 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
 }
 
 // ─── Shared page toolbar components ───────────────────────────────────────────
-const SEARCH_CLS = "ml-auto w-52 px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 shrink-0";
+const SEARCH_CLS = "ml-auto w-52 px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-teal-500 shrink-0";
 
 function SortDropdown({ value, onChange, options }) {
   const [open, setOpen] = useState(false);
@@ -2707,7 +2707,7 @@ function SortDropdown({ value, onChange, options }) {
         <div className="absolute left-0 top-9 w-44 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-30 py-1">
           {options.map(([v,l])=>(
             <button key={v} onClick={()=>{onChange(v);setOpen(false);}}
-              className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${value===v?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-semibold":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+              className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${value===v?"bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 font-semibold":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
               {l}
             </button>
           ))}
@@ -2727,7 +2727,7 @@ function CollapsibleUnassigned({ funds, total, onPlace, onEdit, onDelete }) {
   const sorted=[...funds].sort((a,b)=>(a.startDate||"").localeCompare(b.startDate||""));
 
   return (
-    <div className="mb-3 rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+    <div className="mb-3 rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
       <button onClick={()=>setOpen(o=>!o)}
         className="w-full px-5 py-3.5 flex items-center justify-between transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <div className="flex items-center gap-3">
@@ -2746,9 +2746,9 @@ function CollapsibleUnassigned({ funds, total, onPlace, onEdit, onDelete }) {
             const earned=bal-principal;
             const days=daysBetween(u.startDate,TODAY);
             return (
-              <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 bg-white dark:bg-[#1C1C1E] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+              <div key={u.id} className="px-5 py-3.5 flex items-center justify-between gap-2 bg-white dark:bg-[#1C1F2B] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
                 <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                  <button onClick={()=>openPanel({type:'loan',loanId:u.id,propId:null})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{u.lenderName}</button>
+                  <button onClick={()=>openPanel({type:'loan',loanId:u.id,propId:null})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{u.lenderName}</button>
                   <span className="font-bold text-violet-700 dark:text-violet-300 text-sm tabular-nums">{h$(principal)}</span>
                   {(u.interestRate!=null)&&<span className="text-xs text-slate-400 dark:text-zinc-500">{hr(u)}</span>}
                   {earned>0.01&&<span className="text-xs text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(earned)}</span>}
@@ -2758,7 +2758,7 @@ function CollapsibleUnassigned({ funds, total, onPlace, onEdit, onDelete }) {
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={()=>onPlace(u)} className="text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1 transition-colors">Place →</button>
-                  <button onClick={()=>onEdit(u)}  className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-sm transition-colors">✏️</button>
+                  <button onClick={()=>onEdit(u)}  className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-sm transition-colors">✏️</button>
                   <button onClick={()=>onDelete(u.id)} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-sm transition-colors">🗑</button>
                 </div>
               </div>
@@ -3385,7 +3385,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         const manualMode=propSortMode==="manual";
         const rowClass="hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors cursor-pointer";
         const tbody=(
-          <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+          <tbody className="bg-white dark:bg-[#1C1F2B] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
             {sorted.map(({prop,active,funded,needed,short,over,under,full,pd,daysOwned,months,interestCarry})=>{
               const cells=(<>
                 <td className="py-2.5 px-4 tabular-nums text-[11px] text-slate-300 dark:text-zinc-600">{rankMap[prop.id]}</td>
@@ -3405,7 +3405,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                       <div className="flex flex-col gap-0.5">
                         {active.map(l=>(
                           <button key={l.id} onClick={e=>{e.stopPropagation();openPanel({type:'lender',name:l.lenderName});}}
-                            className="flex justify-between gap-3 w-full text-left hover:text-blue-300 transition-colors">
+                            className="flex justify-between gap-3 w-full text-left hover:text-teal-300 transition-colors">
                             <span className="underline decoration-dotted underline-offset-2">{l.lenderName}</span><span className="font-semibold tabular-nums">{$$p(l.principal||0)}</span>
                           </button>
                         ))}
@@ -3435,7 +3435,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 </td>
                 <td className="py-2.5 px-2 text-right">
                   <div className="flex gap-0.5 justify-end items-center">
-                    <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs">✏️</button>
+                    <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all text-xs">✏️</button>
                     <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs">🗑</button>
                   </div>
                 </td>
@@ -3450,7 +3450,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           </tbody>
         );
         const table=(
-          <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+          <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -3464,7 +3464,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                           <span className={`inline-flex items-center gap-0.5 ${left?"":"justify-end w-full"}`}>
                             {h}
                             {isActive
-                              ? <span className="text-blue-500 ml-0.5">{propSort.dir==="asc"?"↑":"↓"}</span>
+                              ? <span className="text-teal-500 ml-0.5">{propSort.dir==="asc"?"↑":"↓"}</span>
                               : <span className="opacity-40 ml-0.5">↕</span>
                             }
                           </span>
@@ -3508,7 +3508,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             return (
               <SortableItem key={prop.id} id={prop.id} disabled={propSortMode!=="manual"}>
               <button onClick={()=>openPanel?.({type:'property',id:prop.id})}
-                className={`w-full text-left rounded-2xl overflow-hidden transition-all hover:-translate-y-0.5 bg-white dark:bg-[#1C1C1E] ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)]"}`}>
+                className={`w-full text-left rounded-2xl overflow-hidden transition-all hover:-translate-y-0.5 bg-white dark:bg-[#1C1F2B] ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)]"}`}>
                 <div className={`px-4 py-3 ${under?"bg-red-50/60 dark:bg-red-950/15":""}`}>
                   <div className="flex justify-between items-start gap-2 mb-2">
                     <div className="flex items-center gap-1.5 min-w-0">
@@ -3526,7 +3526,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   {needed>0&&!prop.dateSold?(
                     <>
                       <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5">
-                        <div className={`h-full transition-all rounded-full ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
+                        <div className={`h-full transition-all rounded-full ${full?"bg-emerald-500":under?"bg-red-400":"bg-teal-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
                       </div>
                       <div className="flex justify-between text-[10px]">
                         <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{h$(funded)}</span>
@@ -3578,7 +3578,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 
           return (
             <SortableItem key={prop.id} id={prop.id} disabled={!manualMode}
-              className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none"} bg-white dark:bg-[#1C1C1E]`}>
+              className={`rounded-2xl overflow-hidden transition-all ${prop.dateSold?"opacity-50":"shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none"} bg-white dark:bg-[#1C1F2B]`}>
             {handleProps => (<>
 
               {/* Header — clean PropDash style, click anywhere to expand (drag handle in manual mode) */}
@@ -3587,7 +3587,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2 min-w-0 mr-3">
                     <span className="text-[11px] text-slate-300 dark:text-zinc-600 tabular-nums font-medium shrink-0">{rankMap[prop.id]}</span>
-                    <button onClick={e=>{e.stopPropagation();openPanel?.({type:'property',id:prop.id});}} className="font-semibold text-slate-900 dark:text-zinc-100 truncate hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</button>
+                    <button onClick={e=>{e.stopPropagation();openPanel?.({type:'property',id:prop.id});}} className="font-semibold text-slate-900 dark:text-zinc-100 truncate hover:text-teal-600 dark:hover:text-teal-400 text-left transition-colors">{isOpen?(prop.address||"Unnamed Property"):(prop.address?.split(',')[0]||"Unnamed Property")}</button>
                   </div>
                   <div className="shrink-0 flex items-center gap-1.5">
                     {prop.dateSold&&<span className="text-slate-400 dark:text-zinc-500 text-xs font-semibold">Sold</span>}
@@ -3600,7 +3600,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 {needed>0&&!prop.dateSold&&(
                   <>
                     <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5 relative">
-                      <div className={`h-full absolute left-0 top-0 transition-all rounded-full ${full?"bg-emerald-500":under?"bg-red-400":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
+                      <div className={`h-full absolute left-0 top-0 transition-all rounded-full ${full?"bg-emerald-500":under?"bg-red-400":"bg-teal-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
                       {hasBreakdown&&purchaseAmt>0&&(rehabAmt>0||intAmt>0)&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/40" style={{left:`${d1}%`}}/>}
                       {hasBreakdown&&(purchaseAmt+rehabAmt)>0&&intAmt>0&&<div className="absolute top-0 h-full w-[2px] bg-white/80 dark:bg-black/40" style={{left:`${d2}%`}}/>}
                     </div>
@@ -3650,60 +3650,60 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                       const monthly=monthlyLoanPayment(loan);
                       const drawn=(loan.drawFacility?.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
                       return (
-                        <div key={loan.id} className={`px-4 py-3 bg-white dark:bg-[#1C1C1E] transition-all ${loan.endDate?"opacity-55":""}`}>
+                        <div key={loan.id} className={`px-4 py-3 bg-white dark:bg-[#1C1F2B] transition-all ${loan.endDate?"opacity-55":""}`}>
                           <div className="flex items-start gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                                <button onClick={()=>openPanel?.({type:'loan',loanId:loan.id,propId:prop.id})} className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px] hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors">{hn(loan.lenderName)}</button>
+                                <button onClick={()=>openPanel?.({type:'loan',loanId:loan.id,propId:prop.id})} className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px] hover:text-teal-600 dark:hover:text-teal-400 text-left transition-colors">{hn(loan.lenderName)}</button>
                                 {loan.endDate&&<Chip color="gray">Closed {loan.endDate}</Chip>}
                               </div>
                               <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
                                 <span className="text-slate-500 dark:text-zinc-400"><strong className="text-slate-800 dark:text-zinc-200 tabular-nums">{h$(loan.principal)}</strong> principal</span>
                                 <span className="text-slate-400 dark:text-zinc-500">{hr(loan)}</span>
                                 <span className="text-slate-400 dark:text-zinc-500">from {loan.startDate}</span>
-                                <span className="text-slate-500 dark:text-zinc-400">bal <strong className="text-blue-600 dark:text-blue-400 tabular-nums">{h$(bal)}</strong></span>
+                                <span className="text-slate-500 dark:text-zinc-400">bal <strong className="text-teal-600 dark:text-teal-400 tabular-nums">{h$(bal)}</strong></span>
                                 {monthly>0&&<span className="text-slate-400 dark:text-zinc-500"><strong className="text-orange-500 dark:text-orange-400 tabular-nums">{h$(monthly)}/mo</strong></span>}
                                 <span className="text-slate-400 dark:text-zinc-500">{monthly>0?"paid":"earned"} <strong className="text-emerald-600 dark:text-emerald-400 tabular-nums">{h$(earned)}</strong></span>
                               </div>
                               {loan.specialTerms&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 italic mt-1">{loan.specialTerms}</div>}
                               {loan.drawFacility&&(
-                                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-100 dark:border-blue-900/50">
+                                <div className="mt-3 p-3 bg-teal-50 dark:bg-teal-950/30 rounded-lg border border-teal-100 dark:border-teal-900/50">
                                   <div className="flex items-center justify-between mb-2">
-                                    <div className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Rehab Draw Facility</div>
+                                    <div className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-widest">Rehab Draw Facility</div>
                                     {!loan.endDate&&(inlineDraw?.loanId===loan.id
                                       ? <button type="button" onClick={()=>setInlineDraw(null)} className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-slate-300 dark:border-zinc-600 text-slate-500 dark:text-zinc-400 hover:border-red-400 hover:text-red-500 transition-colors">Cancel</button>
-                                      : <button type="button" onClick={()=>setInlineDraw({propId:prop.id,loanId:loan.id,date:TODAY,amt:"",dateLocked:false,amtLocked:false})} className="text-[10px] font-semibold px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors">+ Add Draw</button>
+                                      : <button type="button" onClick={()=>setInlineDraw({propId:prop.id,loanId:loan.id,date:TODAY,amt:"",dateLocked:false,amtLocked:false})} className="text-[10px] font-semibold px-2.5 py-1 rounded-md bg-teal-600 hover:bg-teal-700 text-white transition-colors">+ Add Draw</button>
                                     )}
                                   </div>
                                   <div className="grid grid-cols-3 gap-2 text-center text-xs mb-2">
-                                    {[["Committed",h$(loan.drawFacility.committed),"text-blue-700 dark:text-blue-300"],["Drawn",h$(drawn),"text-slate-700 dark:text-zinc-200"],["Available",h$(drawRemaining(loan)),"text-emerald-600 dark:text-emerald-400"]].map(([l,v,c])=>(
-                                      <div key={l}><div className="text-[9px] text-blue-400 dark:text-blue-500 uppercase mb-1">{l}</div><div className={`font-bold tabular-nums ${c}`}>{v}</div></div>
+                                    {[["Committed",h$(loan.drawFacility.committed),"text-teal-700 dark:text-teal-300"],["Drawn",h$(drawn),"text-slate-700 dark:text-zinc-200"],["Available",h$(drawRemaining(loan)),"text-emerald-600 dark:text-emerald-400"]].map(([l,v,c])=>(
+                                      <div key={l}><div className="text-[9px] text-teal-400 dark:text-teal-500 uppercase mb-1">{l}</div><div className={`font-bold tabular-nums ${c}`}>{v}</div></div>
                                     ))}
                                   </div>
                                   {(loan.drawFacility.draws||[]).map(d=>(
-                                    <div key={d.id} className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400 pt-1 border-t border-blue-100 dark:border-blue-900/40 first:border-0 mt-1">
+                                    <div key={d.id} className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400 pt-1 border-t border-teal-100 dark:border-teal-900/40 first:border-0 mt-1">
                                       <span>{d.date}</span><span className="tabular-nums">{h$(d.amount)} drawn</span>
                                     </div>
                                   ))}
                                   {inlineDraw?.loanId===loan.id&&(
-                                    <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800/60 space-y-2">
+                                    <div className="mt-2 pt-2 border-t border-teal-200 dark:border-teal-800/60 space-y-2">
                                       <div>
-                                        <div className="text-[9px] font-semibold text-blue-400 dark:text-blue-500 uppercase mb-1">Draw Date</div>
+                                        <div className="text-[9px] font-semibold text-teal-400 dark:text-teal-500 uppercase mb-1">Draw Date</div>
                                         <LockableInline locked={inlineDraw.dateLocked} onToggle={()=>setInlineDraw(p=>({...p,dateLocked:!p.dateLocked}))}>
                                           <input type="date" value={inlineDraw.date} onChange={e=>setInlineDraw(p=>({...p,date:e.target.value}))}
-                                            className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                            className="w-full border border-teal-200 dark:border-teal-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
                                         </LockableInline>
                                       </div>
                                       <div>
-                                        <div className="text-[9px] font-semibold text-blue-400 dark:text-blue-500 uppercase mb-1">Amount ($)</div>
+                                        <div className="text-[9px] font-semibold text-teal-400 dark:text-teal-500 uppercase mb-1">Amount ($)</div>
                                         <LockableInline locked={inlineDraw.amtLocked} onToggle={()=>setInlineDraw(p=>({...p,amtLocked:!p.amtLocked}))}>
                                           <MoneyField value={inlineDraw.amt} onChange={v=>setInlineDraw(p=>({...p,amt:v}))}
                                             placeholder="25000"
-                                            className="w-full border border-blue-200 dark:border-blue-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                                            className="w-full border border-teal-200 dark:border-teal-800 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
                                         </LockableInline>
                                       </div>
                                       <button type="button" onClick={commitInlineDraw}
-                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg py-2 transition-colors">
+                                        className="w-full bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg py-2 transition-colors">
                                         Record Draw
                                       </button>
                                     </div>
@@ -3873,7 +3873,7 @@ function LenderDashboard({ data }) {
       <div className="flex gap-1 mb-4">
         {[["active","Active"],["inactive","Inactive"],["all","All"]].map(([val,label])=>(
           <button key={val} onClick={()=>setLenderFilter(val)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${lenderFilter===val?"bg-blue-600 text-white shadow-sm":"bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-slate-700 dark:hover:text-zinc-200"}`}>
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${lenderFilter===val?"bg-teal-600 text-white shadow-sm":"bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-slate-700 dark:hover:text-zinc-200"}`}>
             {label}{lenderFilter===val?` (${lenderCounts[val]})`:null}
           </button>
         ))}
@@ -3883,10 +3883,10 @@ function LenderDashboard({ data }) {
       {lenderFilter!=="inactive"&&<div className="grid grid-cols-3 gap-3 mb-5">
         {[
           ["Total Principal", h$(totalPrin), "text-slate-900 dark:text-zinc-100"],
-          ["Total Balance", h$(totalBal), "text-blue-600 dark:text-blue-400"],
+          ["Total Balance", h$(totalBal), "text-teal-600 dark:text-teal-400"],
           ["Interest Accrued", h$(totalInt), "text-emerald-600 dark:text-emerald-400"],
         ].map(([label, val, color]) => (
-          <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div key={label} className="bg-white dark:bg-[#1C1F2B] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
             <div className={`text-xl font-bold tabular-nums ${color}`}>{val}</div>
           </div>
@@ -3911,11 +3911,11 @@ function LenderDashboard({ data }) {
           <div className="py-12 text-center text-slate-400 dark:text-zinc-500 text-sm">No lenders yet</div>
         ) : lenders.map(ld => (
           <button key={ld.name} onClick={() => navigate({type:'lender', name:ld.name})}
-            className="w-full text-left bg-white dark:bg-[#1C1C1E] rounded-2xl px-5 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:shadow-none dark:hover:bg-[#2C2C2E] transition-all group">
+            className="w-full text-left bg-white dark:bg-[#1C1F2B] rounded-2xl px-5 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:shadow-none dark:hover:bg-[#262A38] transition-all group">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[15px] group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{ld.name}</span>
+                  <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[15px] group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">{ld.name}</span>
                   {ld.types.map(t => <TypeLabel key={t} type={t}/>)}
                 </div>
                 <div className="text-xs text-slate-400 dark:text-zinc-500">
@@ -3926,9 +3926,9 @@ function LenderDashboard({ data }) {
               </div>
               <div className="text-right shrink-0">
                 <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Balance</div>
-                <div className="font-bold text-blue-600 dark:text-blue-400 tabular-nums text-sm">{h$(ld.totalBal)}</div>
+                <div className="font-bold text-teal-600 dark:text-teal-400 tabular-nums text-sm">{h$(ld.totalBal)}</div>
               </div>
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-300 dark:text-zinc-600 shrink-0 group-hover:text-blue-400 transition-colors">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-300 dark:text-zinc-600 shrink-0 group-hover:text-teal-400 transition-colors">
                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/>
               </svg>
             </div>
@@ -4042,13 +4042,13 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
       {/* Summary */}
       {filter !== "closed" && (
         <div className="grid grid-cols-2 gap-3 mb-5">
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Active Principal</div>
             <div className="text-xl font-bold tabular-nums text-slate-900 dark:text-zinc-100">{h$(totalPrin)}</div>
           </div>
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Active Balance</div>
-            <div className="text-xl font-bold tabular-nums text-blue-600 dark:text-blue-400">{h$(totalBal)}</div>
+            <div className="text-xl font-bold tabular-nums text-teal-600 dark:text-teal-400">{h$(totalBal)}</div>
           </div>
         </div>
       )}
@@ -4057,7 +4057,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         {["active","closed","all"].map(f => (
           <button key={f} onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${filter===f?"bg-blue-600 text-white":"bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"}`}>
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${filter===f?"bg-teal-600 text-white":"bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"}`}>
             {f.charAt(0).toUpperCase()+f.slice(1)}{filter===f?` (${filterCounts[f]})` : ""}
           </button>
         ))}
@@ -4073,7 +4073,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
       </div>
 
       {/* Loans table */}
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
         {filtered.length === 0 ? (
           <div className="py-12 text-center text-slate-400 dark:text-zinc-500 text-sm">No loans match this filter</div>
         ) : (
@@ -4083,7 +4083,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/20">
                 <th onClick={()=>toggleSort("num")} className="pl-4 pr-2 pb-2.5 pt-3 text-left font-semibold cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors">
                   <span className="inline-flex items-center gap-0.5">#
-                    {sortBy==="num"?<span className="text-blue-500 ml-0.5">{sortDir==="asc"?"↑":"↓"}</span>:<span className="opacity-30 ml-0.5">↕</span>}
+                    {sortBy==="num"?<span className="text-teal-500 ml-0.5">{sortDir==="asc"?"↑":"↓"}</span>:<span className="opacity-30 ml-0.5">↕</span>}
                   </span>
                 </th>
                 {[["lender","Lender","left","px-3"],["property","Property","left","px-3"],["principal","Principal","right","px-3"],["balance","Balance","right","px-3"],["type","Type","left","px-3"]].map(([col,label,align,px])=>(
@@ -4092,7 +4092,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
                     <span className={`inline-flex items-center gap-0.5 ${align==="right"?"justify-end w-full":""}`}>
                       {label}
                       {sortBy===col
-                        ? <span className="text-blue-500 ml-0.5">{sortDir==="asc"?"↑":"↓"}</span>
+                        ? <span className="text-teal-500 ml-0.5">{sortDir==="asc"?"↑":"↓"}</span>
                         : <span className="opacity-30 ml-0.5">↕</span>}
                     </span>
                   </th>
@@ -4103,7 +4103,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
                   <span className="inline-flex items-center gap-0.5 justify-end w-full">
                     Started
                     {sortBy==="date"
-                      ? <span className="text-blue-500 ml-0.5">{sortDir==="asc"?"↑":"↓"}</span>
+                      ? <span className="text-teal-500 ml-0.5">{sortDir==="asc"?"↑":"↓"}</span>
                       : <span className="opacity-30 ml-0.5">↕</span>}
                   </span>
                 </th>
@@ -4118,18 +4118,18 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
                   <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer" onClick={() => navigate({type:'loan', loanId:l.id, propId:l.propId})}>
                     <td className="pl-4 pr-2 py-3 tabular-nums text-[11px] text-slate-300 dark:text-zinc-600">{loanNumMap[l.id]}</td>
                     <td className="px-3 py-3">
-                      <button onClick={e=>{e.stopPropagation();navigate({type:'loan',loanId:l.id,propId:l.propId});}} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">
+                      <button onClick={e=>{e.stopPropagation();navigate({type:'loan',loanId:l.id,propId:l.propId});}} className="font-semibold text-teal-600 dark:text-teal-400 hover:underline text-left">
                         {l.lenderName||"Unknown"}
                       </button>
                     </td>
                     <td className="px-3 py-3">
                       {l.prop
-                        ? <button onClick={e=>{e.stopPropagation();navigate({type:'property',id:l.propId});}} className="text-slate-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline text-left max-w-[160px] truncate block">{l.propAddress}</button>
+                        ? <button onClick={e=>{e.stopPropagation();navigate({type:'property',id:l.propId});}} className="text-slate-600 dark:text-zinc-300 hover:text-teal-600 dark:hover:text-teal-400 hover:underline text-left max-w-[160px] truncate block">{l.propAddress}</button>
                         : <span className="text-slate-400 dark:text-zinc-500 italic">Unassigned</span>
                       }
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800 dark:text-zinc-200">{h$(l.principal)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-blue-600 dark:text-blue-400">{h$(bal)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-teal-600 dark:text-teal-400">{h$(bal)}</td>
                     <td className="px-3 py-3"><TypeLabel type={l.loanType}/></td>
                     <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{hr(l)}</td>
                     <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{l.startDate||"—"}</td>
@@ -4140,7 +4140,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
                     </td>
                     <td className="px-3 py-3 text-right">
                       {!l.endDate&&l.loanType!=="hard"&&(
-                        <button onClick={e=>{e.stopPropagation();setMoveLoan(l);}} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap transition-colors">Move →</button>
+                        <button onClick={e=>{e.stopPropagation();setMoveLoan(l);}} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 whitespace-nowrap transition-colors">Move →</button>
                       )}
                     </td>
                   </tr>
@@ -4213,10 +4213,10 @@ function PropertyDashboard({ data }) {
           <div className="text-xl font-bold tabular-nums">{hc(haveNow)}</div>
           <div className="text-[10px] text-slate-500 mt-1">deployed + ready</div>
         </div>
-        <div className="bg-blue-600 rounded-2xl p-4 text-white text-center">
-          <div className="text-[9px] font-semibold text-blue-200 uppercase tracking-widest mb-2">On Deals</div>
+        <div className="bg-teal-600 rounded-2xl p-4 text-white text-center">
+          <div className="text-[9px] font-semibold text-teal-200 uppercase tracking-widest mb-2">On Deals</div>
           <div className="text-xl font-bold tabular-nums">{hc(totalDeployed)}</div>
-          <div className="text-[10px] text-blue-200 mt-1">{rows.length} propert{rows.length===1?"y":"ies"}</div>
+          <div className="text-[10px] text-teal-200 mt-1">{rows.length} propert{rows.length===1?"y":"ies"}</div>
         </div>
         <div className="bg-violet-600 rounded-2xl p-4 text-white text-center">
           <div className="text-[9px] font-semibold text-violet-200 uppercase tracking-widest mb-2">Ready</div>
@@ -4245,7 +4245,7 @@ function PropertyDashboard({ data }) {
               <span className="text-sm font-bold text-white">{deployPct}%</span>
             </div>
             <input type="range" min={50} max={100} step={5} value={deployPct} onChange={e=>setDeployPct(Number(e.target.value))}
-              className="w-full accent-blue-400 cursor-pointer"/>
+              className="w-full accent-teal-400 cursor-pointer"/>
             <div className="flex justify-between text-[10px] text-slate-500 mt-1">
               <span>50% — large pipeline</span>
               <span>100% — fully deployed</span>
@@ -4281,14 +4281,14 @@ function PropertyDashboard({ data }) {
       {active.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-12 text-sm">No active properties.</div>}
       <div className="space-y-3">
         {rows.map(({prop,loans,funded,needed,short,under})=>(
-          <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+          <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
             <div className={`px-5 py-3.5 border-b border-black/[0.06] dark:border-white/[0.06] ${under?"bg-red-50/60 dark:bg-red-950/15":""}`}>
               <div className="flex justify-between items-center mb-2">
                 <span className="font-semibold text-slate-900 dark:text-zinc-100">{prop.address}</span>
                 {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{h$(short)}</span>}
               </div>
               <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5">
-                <div className={`h-full rounded-full ${under?"bg-red-400":pct(funded,needed)>=95?"bg-emerald-500":"bg-blue-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
+                <div className={`h-full rounded-full ${under?"bg-red-400":pct(funded,needed)>=95?"bg-emerald-500":"bg-teal-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
               </div>
               <div className="flex justify-between text-[10px]">
                 <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{h$(funded)} funded</span>
@@ -4297,7 +4297,7 @@ function PropertyDashboard({ data }) {
             </div>
             {loans.length>0&&(
               <div className="overflow-x-auto">
-              <table className="w-full text-xs bg-white dark:bg-[#1C1C1E]">
+              <table className="w-full text-xs bg-white dark:bg-[#1C1F2B]">
                 <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                   {loans.map(l=>(
                     <tr key={l.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
@@ -4305,7 +4305,7 @@ function PropertyDashboard({ data }) {
                       <td className="px-3 py-2.5"><TypeLabel type={l.loanType}/></td>
                       <td className="px-3 py-2.5 text-right text-slate-600 dark:text-zinc-300 tabular-nums">{h$(l.principal)}</td>
                       <td className="px-3 py-2.5 text-right text-slate-400 dark:text-zinc-500 whitespace-nowrap">{hr(l)}</td>
-                      <td className="px-5 py-2.5 text-right font-bold text-blue-700 dark:text-blue-400 tabular-nums">{h$(calcBalance(l))}</td>
+                      <td className="px-5 py-2.5 text-right font-bold text-teal-700 dark:text-teal-400 tabular-nums">{h$(calcBalance(l))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -4462,10 +4462,10 @@ function EditClosingModal({ prop, onSave, onClose }) {
     }});
   };
 
-  const inputCls="flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums";
+  const inputCls="flex-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500 tabular-nums";
   const autoCls="flex-1 border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-right text-slate-400 dark:text-zinc-500 tabular-nums select-none";
   const labelCls="w-40 text-sm text-slate-600 dark:text-zinc-300 shrink-0 leading-tight";
-  const numIn="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums text-slate-800 dark:text-zinc-100";
+  const numIn="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 tabular-nums text-slate-800 dark:text-zinc-100";
   const autoNum="w-full border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 text-sm text-right text-slate-400 dark:text-zinc-500 tabular-nums select-none";
 
   return (
@@ -4476,7 +4476,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
         <div className="flex gap-2 mb-5">
           {[["1 · Settle Lenders",1],["2 · Wire & Costs",2]].map(([label,s])=>(
             <button key={s} type="button" onClick={()=>setStep(s)}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${s===step?"bg-blue-600 text-white":"bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500"}`}>
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${s===step?"bg-teal-600 text-white":"bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500"}`}>
               {label}
             </button>
           ))}
@@ -4722,15 +4722,15 @@ function EditClosingModal({ prop, onSave, onClose }) {
           <div className="space-y-5 pb-2">
 
             {/* Lender reference from step 1 */}
-            <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-4 py-3">
+            <div className="rounded-xl bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 px-4 py-3">
               <div className="flex items-center justify-between mb-2">
-                <div className="text-[10px] font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-widest">Lender Settlements (Step 1)</div>
+                <div className="text-[10px] font-semibold text-teal-500 dark:text-teal-400 uppercase tracking-widest">Lender Settlements (Step 1)</div>
                 <div className="text-right">
                   {titleTotal>0&&<div className="text-[10px] text-amber-600 dark:text-amber-400 tabular-nums">🏛 Title: {$$p(titleTotal)}</div>}
-                  <div className="font-bold text-lg tabular-nums text-blue-700 dark:text-blue-300">Wire: {$$p(lenderTotal)}</div>
+                  <div className="font-bold text-lg tabular-nums text-teal-700 dark:text-teal-300">Wire: {$$p(lenderTotal)}</div>
                 </div>
               </div>
-              <div className="text-[11px] text-blue-600 dark:text-blue-400 space-y-0.5">
+              <div className="text-[11px] text-teal-600 dark:text-teal-400 space-y-0.5">
                 {rows.filter(r=>!r.isPreClosed).map(r=>{
                   let label;
                   if(r.paidAtTitle){
@@ -4773,7 +4773,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Money Costs <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(from step 1)</span></span>
                   <div className={autoCls} title="Auto-derived from lender interest in step 1">{$$p(moneyCosts)}</div>
-                  <button type="button" onClick={()=>setStep(1)} className="shrink-0 text-[10px] font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors whitespace-nowrap">edit ↑</button>
+                  <button type="button" onClick={()=>setStep(1)} className="shrink-0 text-[10px] font-semibold text-teal-500 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition-colors whitespace-nowrap">edit ↑</button>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={labelCls}>Misc <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">(utilities, insurance)</span></span>
@@ -4793,7 +4793,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
               <span className="w-40 text-sm font-bold text-slate-800 dark:text-zinc-100 shrink-0">Wire Received</span>
               <LockableInline locked={locked.wire} onToggle={()=>toggleLock("wire")} className="flex-1">
                 <MoneyField value={wireIn} onChange={handleWireChange} placeholder="0"
-                    className="w-full border-2 border-blue-400 dark:border-blue-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-blue-700 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"/>
+                    className="w-full border-2 border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm text-right font-bold text-teal-700 dark:text-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-500 tabular-nums"/>
               </LockableInline>
             </div>
 
@@ -4923,11 +4923,11 @@ const PropCard=({prop,isOpen,h$,hs,hn,hr,onOpenPanel,onToggleRental,onToggleExpa
   const cd=prop.closingData;
   const profit=cd?effectiveProfit(prop):null;
   return(
-    <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+    <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
       <div className="px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <button onClick={()=>onOpenPanel({type:'property',propId:prop.id})} className="font-semibold text-slate-900 dark:text-zinc-100 truncate hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{prop.address||"Unnamed"}</button>
+            <button onClick={()=>onOpenPanel({type:'property',propId:prop.id})} className="font-semibold text-slate-900 dark:text-zinc-100 truncate hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{prop.address||"Unnamed"}</button>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className="text-[11px] text-slate-400 dark:text-zinc-500">Sold {prop.dateSold}</span>
               <button
@@ -4957,7 +4957,7 @@ const PropCard=({prop,isOpen,h$,hs,hn,hr,onOpenPanel,onToggleRental,onToggleExpa
               <span className="text-xs text-slate-400 dark:text-zinc-500 italic">No data</span>
             )}
             <button onClick={()=>onEdit(prop)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm" title="Edit closing">✏️</button>
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all text-sm" title="Edit closing">✏️</button>
             <button onClick={()=>onReopen(prop)}
               className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all text-sm" title="Reopen property">↺</button>
             <button onClick={()=>onToggleExpand(prop.id)}
@@ -4985,7 +4985,7 @@ const PropCard=({prop,isOpen,h$,hs,hn,hr,onOpenPanel,onToggleRental,onToggleExpa
               <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                 {prop.loans.map(l=>(
                   <tr key={l.id}>
-                    <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100"><button onClick={()=>onOpenPanel({type:'lender',name:l.lenderName})} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(l.lenderName)}</button></td>
+                    <td className="py-2 font-semibold text-slate-800 dark:text-zinc-100"><button onClick={()=>onOpenPanel({type:'lender',name:l.lenderName})} className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{hn(l.lenderName)}</button></td>
                     <td className="py-2 text-right tabular-nums text-slate-700 dark:text-zinc-200">{h$(l.principal)}</td>
                     <td className="py-2 text-right tabular-nums text-slate-500 dark:text-zinc-400">{hr(l)}</td>
                     <td className="py-2 text-right"><TypeLabel type={l.loanType}/></td>
@@ -5134,11 +5134,11 @@ function ClosedDealsPage({ data, update }) {
         </div>
         <div className="relative">
           <button onClick={()=>{setShowClosePicker(v=>!v);setCloseSearch("");}}
-            className="text-[12px] font-semibold text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 rounded-xl px-3.5 py-2 transition-colors whitespace-nowrap shadow-sm">
+            className="text-[12px] font-semibold text-white bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-400 rounded-xl px-3.5 py-2 transition-colors whitespace-nowrap shadow-sm">
             + Close a Property
           </button>
           {showClosePicker&&(
-            <div className="absolute right-0 top-full mt-2 bg-white dark:bg-[#2C2C2E] rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.08] z-30 min-w-[220px] overflow-hidden">
+            <div className="absolute right-0 top-full mt-2 bg-white dark:bg-[#262A38] rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.08] z-30 min-w-[220px] overflow-hidden">
               {activeProps.length===0?(
                 <div className="px-4 py-3 text-sm text-slate-400 dark:text-zinc-500 text-center">No active properties to close</div>
               ):(
@@ -5147,7 +5147,7 @@ function ClosedDealsPage({ data, update }) {
                   {activeProps.length>1&&(
                     <div className="px-3 pb-2">
                       <input type="text" value={closeSearch} onChange={e=>setCloseSearch(e.target.value)} placeholder="Search properties…" autoFocus
-                        className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                        className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
                     </div>
                   )}
                   <div className="max-h-72 overflow-y-auto">
@@ -5193,8 +5193,8 @@ function ClosedDealsPage({ data, update }) {
             <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">{view==="flips"?"Flips":"Rentals"}</div>
             <div className="text-2xl font-bold">{withData.length}</div>
           </div>
-          <div className="bg-blue-600 rounded-2xl p-4 text-center text-white">
-            <div className="text-[9px] font-semibold text-blue-200 uppercase tracking-widest mb-2">Avg Cash to Close</div>
+          <div className="bg-teal-600 rounded-2xl p-4 text-center text-white">
+            <div className="text-[9px] font-semibold text-teal-200 uppercase tracking-widest mb-2">Avg Cash to Close</div>
             <div className="text-xl font-bold tabular-nums">{hc(avgC2C)}</div>
           </div>
           <div className="bg-slate-700 dark:bg-zinc-700 rounded-2xl p-4 text-center text-white">
@@ -5251,7 +5251,7 @@ function ClosedDealsPage({ data, update }) {
 // Sortable table header cell for HistoryPage's loan ledger — pure/props-only.
 const SortHd=({col,label,sort,onSort})=>{
   const active=sort.col===col;
-  return<button onClick={()=>onSort(col)} className={`text-left text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded transition-colors ${active?"text-blue-600 dark:text-blue-400":"text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>{label}{active?(sort.dir==="desc"?" ↓":" ↑"):""}</button>;
+  return<button onClick={()=>onSort(col)} className={`text-left text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded transition-colors ${active?"text-teal-600 dark:text-teal-400":"text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>{label}{active?(sort.dir==="desc"?" ↓":" ↑"):""}</button>;
 };
 
 function HistoryPage({ data }) {
@@ -5591,12 +5591,12 @@ function HistoryPage({ data }) {
       </div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <select value={lf} onChange={e=>setLf(e.target.value)}
-          className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-teal-500">
           <option value="all">All Lenders</option>
           {(view==="trail"?allL:allLedgerLenders).map((l,i)=><option key={l} value={l}>{prv?`Lender ${i+1}`:l}</option>)}
         </select>
         <select value={tf} onChange={e=>setTf(e.target.value)}
-          className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-teal-500">
           <option value="all">All Types</option><option value="private">Private</option><option value="hard">Hard</option>
         </select>
         {view==="trail"&&<input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
@@ -5606,7 +5606,7 @@ function HistoryPage({ data }) {
         <div>
           {!ledgerRows.length&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">🗂</div><p className="font-semibold">No closed loans yet</p></div>}
           {ledgerRows.length>0&&(
-            <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+            <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
               <div className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto] gap-x-3 px-5 py-2 border-b border-black/[0.06] dark:border-white/[0.06] bg-slate-50 dark:bg-zinc-800/50">
                 <SortHd col="lenderName" label="Lender" sort={ledgerSort} onSort={toggleSort}/>
                 <SortHd col="property" label="Property" sort={ledgerSort} onSort={toggleSort}/>
@@ -5625,12 +5625,12 @@ function HistoryPage({ data }) {
                     <div key={l.id} className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto] gap-x-3 px-5 py-3.5 items-center hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <button onClick={()=>openPanel?.({type:'lender',name:l.lenderName})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(l.lenderName)}</button>
+                          <button onClick={()=>openPanel?.({type:'lender',name:l.lenderName})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{hn(l.lenderName)}</button>
                           <TypeLabel type={l.loanType}/>
                         </div>
                         <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{rateLabel}</div>
                       </div>
-                      <div className="text-sm text-slate-600 dark:text-zinc-300 truncate"><button onClick={()=>openPanel?.({type:'property',id:l.propId})} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left truncate max-w-full block">{l.property}</button></div>
+                      <div className="text-sm text-slate-600 dark:text-zinc-300 truncate"><button onClick={()=>openPanel?.({type:'property',id:l.propId})} className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left truncate max-w-full block">{l.property}</button></div>
                       <div className="text-right">
                         <div className="text-xs font-mono text-slate-500 dark:text-zinc-400">{l.startDate}</div>
                         <div className="text-[10px] text-slate-300 dark:text-zinc-600">↓</div>
@@ -5665,7 +5665,7 @@ function HistoryPage({ data }) {
       )}
       {view==="trail"&&<>
       {!groupedTrail.length&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">📋</div><p className="font-semibold">No transactions yet</p></div>}
-      <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+      <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none divide-y divide-black/[0.05] dark:divide-white/[0.05]">
         {[...groupedTrail].reverse().map((ev,i)=>{
           const c=cfg[ev.etype]??cfg.closed;const pos=ev.nc>=0;const roll=ev.etype==="start"&&ev.pp>0;
           const rateLabel=ev.rate==null?"mixed rates":ev.interestType==="fixed"?"$"+Math.round(ev.rate).toLocaleString()+" fixed":ev.rate+"%/yr";
@@ -5676,16 +5676,16 @@ function HistoryPage({ data }) {
             const wireLenders=(cd.lenderPayoffs||[]).filter(lp=>(lp.wireAmount||0)>0.01);
             const profitAtClose=(cd.profit||0)-(cd.overageRefund||0);
             return(
-              <div key={ev.loanId} className="bg-blue-50/70 dark:bg-blue-950/15 border-l-4 border-blue-400 dark:border-blue-500 px-5 py-4">
+              <div key={ev.loanId} className="bg-teal-50/70 dark:bg-teal-950/15 border-l-4 border-teal-400 dark:border-teal-500 px-5 py-4">
                 <div className="flex items-center gap-2 mb-3">
                   <span className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 ${inCls}`}>↙</span>
                   <div>
-                    <div className="font-bold text-blue-900 dark:text-blue-100">Sale Closed — <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="hover:underline text-left">{ev.property}</button></div>
-                    <div className="text-xs text-blue-500 dark:text-blue-400">{ev.date} · For Bookkeepers</div>
+                    <div className="font-bold text-teal-900 dark:text-teal-100">Sale Closed — <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="hover:underline text-left">{ev.property}</button></div>
+                    <div className="text-xs text-teal-500 dark:text-teal-400">{ev.date} · For Bookkeepers</div>
                   </div>
                   <div className="ml-auto text-right">
-                    <div className="text-[10px] text-blue-400 dark:text-blue-500 uppercase font-semibold">Wire Received</div>
-                    <div className="font-bold text-xl text-blue-700 dark:text-blue-300 tabular-nums">{h$(cd.wire)}</div>
+                    <div className="text-[10px] text-teal-400 dark:text-teal-500 uppercase font-semibold">Wire Received</div>
+                    <div className="font-bold text-xl text-teal-700 dark:text-teal-300 tabular-nums">{h$(cd.wire)}</div>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-xs">
@@ -5727,11 +5727,11 @@ function HistoryPage({ data }) {
                         <span className="tabular-nums">{h$(cd.overageRefund)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{h$(cd.wire)}</span></div>
+                    <div className="flex justify-between font-bold text-teal-700 dark:text-teal-300 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{h$(cd.wire)}</span></div>
                   </div>
                 </div>
                 {ev.overageChecks.length>0&&(
-                  <div className="mt-3 pt-3 border-t border-blue-100 dark:border-blue-900/40">
+                  <div className="mt-3 pt-3 border-t border-teal-100 dark:border-teal-900/40">
                     <div className="text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-widest mb-2">Overage Checks — Received After Closing</div>
                     <div className="space-y-1 text-xs">
                       {ev.overageChecks.map(c=>(
@@ -5757,7 +5757,7 @@ function HistoryPage({ data }) {
                         <span className="font-mono text-[10px] text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 rounded-md px-1.5 py-0.5">{ev.date}</span>
                         <span className="text-[10px] font-semibold uppercase bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full px-2 py-0.5">Overage Check — {overageSourceLabel(ev.source)}</span>
                       </div>
-                      <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{ev.property}</button>
+                      <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{ev.property}</button>
                       {ev.notes&&<div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{ev.notes}</div>}
                       <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Counts toward profit · For Bookkeepers</div>
                     </div>
@@ -5770,7 +5770,7 @@ function HistoryPage({ data }) {
             );
           }
           return(
-            <div key={`${ev.loanId}-${ev.etype}-${i}`} className="flex items-start gap-3 px-5 py-4 bg-white dark:bg-[#1C1C1E] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+            <div key={`${ev.loanId}-${ev.etype}-${i}`} className="flex items-start gap-3 px-5 py-4 bg-white dark:bg-[#1C1F2B] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
               <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 ${c.cls}`}>{c.icon}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
@@ -5781,14 +5781,14 @@ function HistoryPage({ data }) {
                       <TypeLabel type={ev.loanType}/>
                       {roll&&<span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 rounded-full px-2 py-0.5">Rollover</span>}
                     </div>
-                    <button onClick={()=>ev.lender&&openPanel?.({type:'lender',name:ev.lender})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left">{hn(ev.lender)}</button>
-                    <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5"><button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className={`${ev.propId?"hover:text-blue-600 dark:hover:text-blue-400 transition-colors":""} text-left`}>{ev.property}</button> · {rateLabel}</div>
+                    <button onClick={()=>ev.lender&&openPanel?.({type:'lender',name:ev.lender})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{hn(ev.lender)}</button>
+                    <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5"><button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className={`${ev.propId?"hover:text-teal-600 dark:hover:text-teal-400 transition-colors":""} text-left`}>{ev.property}</button> · {rateLabel}</div>
                     {roll&&ev.pp>0&&<div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">Rolled from {h$(ev.pp)}</div>}
                     {ev._group&&(
                       <div className="mt-2 space-y-1 border-t border-black/[0.05] dark:border-white/[0.05] pt-1.5">
                         {ev._group.map(g=>(
                           <div key={g.loanId} className="flex items-center justify-between gap-2 text-[11px] text-slate-400 dark:text-zinc-500">
-                            <button onClick={()=>g.propId&&openPanel?.({type:'property',id:g.propId})} className={`${g.propId?"hover:text-blue-600 dark:hover:text-blue-400 transition-colors":""} text-left truncate`}>{g.property}</button>
+                            <button onClick={()=>g.propId&&openPanel?.({type:'property',id:g.propId})} className={`${g.propId?"hover:text-teal-600 dark:hover:text-teal-400 transition-colors":""} text-left truncate`}>{g.property}</button>
                             <span className="tabular-nums shrink-0">{h$(g.amount)}</span>
                           </div>
                         ))}
@@ -5838,7 +5838,7 @@ function HistoryPage({ data }) {
       {filtered.length>0&&(()=>{
         const principalNet=filtered.reduce((s,e)=>(e.etype==="saleSummary"||e.etype==="overageCheck")?s:s+(e.nc||0),0);
         return(
-          <div className="mt-3 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none px-5 py-4 flex items-center justify-between">
+          <div className="mt-3 rounded-2xl bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none px-5 py-4 flex items-center justify-between">
             <div>
               <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Net Outstanding{lf!=="all"?` — ${lf}`:""}</div>
               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Sum of principal in/out for events shown above</div>
@@ -5922,8 +5922,8 @@ function RehabPriorityPage({ data, update }) {
       </div>
 
       {/* Project fully funded toggle */}
-      <label className={`flex items-center gap-3 px-4 py-3 mb-4 rounded-2xl cursor-pointer transition-colors ${projectFull?"bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800":"bg-white dark:bg-[#1C1C1E] shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border border-transparent"}`}>
-        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${projectFull?"bg-blue-600 border-blue-600":"border-slate-300 dark:border-zinc-600"}`}
+      <label className={`flex items-center gap-3 px-4 py-3 mb-4 rounded-2xl cursor-pointer transition-colors ${projectFull?"bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800":"bg-white dark:bg-[#1C1F2B] shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none border border-transparent"}`}>
+        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${projectFull?"bg-teal-600 border-teal-600":"border-slate-300 dark:border-zinc-600"}`}
           onClick={()=>setProjectFull(p=>!p)}>
           {projectFull&&<svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
         </div>
@@ -5934,7 +5934,7 @@ function RehabPriorityPage({ data, update }) {
       </label>
 
       {/* Average delay input + cost impact */}
-      <div className={`px-4 py-3 mb-4 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none`}>
+      <div className={`px-4 py-3 mb-4 rounded-2xl bg-white dark:bg-[#1C1F2B] shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none`}>
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <div className="text-sm font-semibold text-slate-800 dark:text-zinc-100 mb-0.5">Average days behind schedule</div>
@@ -5980,7 +5980,7 @@ function RehabPriorityPage({ data, update }) {
           const gapPct=needed>0?Math.min(100-fundedPct,Math.round(gap/needed*100)):0;
           const dailyBurn=Math.round(totalBurn/30.4);
           return(
-            <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+            <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
               <div className="px-5 py-4">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-start gap-3">
@@ -6007,7 +6007,7 @@ function RehabPriorityPage({ data, update }) {
                   <div className="mb-2">
                     <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden mb-1 relative">
                       <div className="absolute left-0 top-0 h-full bg-emerald-500 dark:bg-emerald-500 rounded-full transition-all" style={{width:`${fundedPct}%`}}/>
-                      {projectFull&&gapPct>0&&<div className="absolute top-0 h-full bg-blue-300 dark:bg-blue-600 rounded-r-full transition-all" style={{left:`${fundedPct}%`,width:`${gapPct}%`}}/>}
+                      {projectFull&&gapPct>0&&<div className="absolute top-0 h-full bg-teal-300 dark:bg-teal-600 rounded-r-full transition-all" style={{left:`${fundedPct}%`,width:`${gapPct}%`}}/>}
                     </div>
                     <div className="flex justify-between text-[10px]">
                       <span className={`tabular-nums font-medium ${gap>0?"text-red-500 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{h$(funded)} funded{gap>0?` · ${h$(gap)} short`:` · ✓ Full`}</span>
@@ -6053,12 +6053,12 @@ function RehabPriorityPage({ data, update }) {
                       );
                     })}
                     {projectFull&&projBurn>0&&(
-                      <div className="flex items-center justify-between text-[11px] border-t border-dashed border-blue-200 dark:border-blue-800 pt-1 mt-1">
+                      <div className="flex items-center justify-between text-[11px] border-t border-dashed border-teal-200 dark:border-teal-800 pt-1 mt-1">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-bold text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded px-1.5 py-0.5">projected</span>
-                          <span className="text-blue-500 dark:text-blue-400">{h$(gap)} gap @ {PROJ_RATE}%/yr</span>
+                          <span className="text-[10px] font-bold text-teal-500 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 rounded px-1.5 py-0.5">projected</span>
+                          <span className="text-teal-500 dark:text-teal-400">{h$(gap)} gap @ {PROJ_RATE}%/yr</span>
                         </div>
-                        <span className="font-semibold tabular-nums text-blue-500 dark:text-blue-400">+{h$(projBurn)}/mo</span>
+                        <span className="font-semibold tabular-nums text-teal-500 dark:text-teal-400">+{h$(projBurn)}/mo</span>
                       </div>
                     )}
                   </div>
@@ -6143,19 +6143,19 @@ function CloseLenderModal({ data, update, onClose }) {
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">
               <span>Loans to Close</span>
               <button onClick={()=>setSelectedIds(allSelected?[]:lenderLoans.map(l=>l.id))}
-                className="text-blue-600 dark:text-blue-400 font-semibold text-[11px] normal-case tracking-normal">
+                className="text-teal-600 dark:text-teal-400 font-semibold text-[11px] normal-case tracking-normal">
                 {allSelected?'Deselect all':'Select all'}
               </button>
             </div>
             <div className="space-y-1.5 max-h-56 overflow-y-auto">
               {lenderLoans.map(l=>(
                 <button key={l.id} onClick={()=>toggle(l.id)}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${selectedIds.includes(l.id)?'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700':'bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700'}`}>
+                  className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${selectedIds.includes(l.id)?'bg-teal-50 dark:bg-teal-900/20 border-teal-300 dark:border-teal-700':'bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700'}`}>
                   <div className="min-w-0">
                     <div className="text-[12px] font-semibold text-slate-800 dark:text-zinc-200 truncate">{l.propAddress||'Unassigned'}</div>
                     <div className="text-[11px] text-slate-500 dark:text-zinc-400">{$$p(l.principal)} · started {l.startDate}</div>
                   </div>
-                  <div className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedIds.includes(l.id)?'bg-blue-500 border-blue-500':'border-slate-300 dark:border-zinc-600'}`}>
+                  <div className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedIds.includes(l.id)?'bg-teal-500 border-teal-500':'border-slate-300 dark:border-zinc-600'}`}>
                     {selectedIds.includes(l.id)&&<span className="text-white text-[10px] leading-none">✓</span>}
                   </div>
                 </button>
@@ -6169,11 +6169,11 @@ function CloseLenderModal({ data, update, onClose }) {
               </div>
               <div className="flex gap-2 mb-2">
                 <button type="button" onClick={()=>setInterestMode('split')}
-                  className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-all ${interestMode==='split'?'bg-blue-600 text-white':'bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700'}`}>
+                  className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-all ${interestMode==='split'?'bg-teal-600 text-white':'bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700'}`}>
                   Keep Split
                 </button>
                 <button type="button" onClick={()=>setInterestMode('consolidate')}
-                  className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-all ${interestMode==='consolidate'?'bg-blue-600 text-white':'bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700'}`}>
+                  className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-all ${interestMode==='consolidate'?'bg-teal-600 text-white':'bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700'}`}>
                   Put on One Property
                 </button>
               </div>
@@ -6181,7 +6181,7 @@ function CloseLenderModal({ data, update, onClose }) {
                 <div className="space-y-1.5">
                   {selectedFixedLoans.map(l=>(
                     <button key={l.id} type="button" onClick={()=>setConsolidateLoanId(l.id)}
-                      className={`w-full text-left px-3 py-2 rounded-lg border text-xs flex items-center justify-between transition-all ${consolidateLoanId===l.id?'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700':'bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700'}`}>
+                      className={`w-full text-left px-3 py-2 rounded-lg border text-xs flex items-center justify-between transition-all ${consolidateLoanId===l.id?'bg-teal-50 dark:bg-teal-900/20 border-teal-300 dark:border-teal-700':'bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700'}`}>
                       <span className="font-medium text-slate-800 dark:text-zinc-200">{l.propAddress||'Unassigned'}</span>
                       <span className="text-slate-400 dark:text-zinc-500 tabular-nums">currently {$$p(l.interestRate||0)}</span>
                     </button>
@@ -6221,12 +6221,12 @@ function ClosePropertyPickerModal({ properties, order, onPick, onClose }) {
         : <>
             <p className="text-xs text-slate-400 dark:text-zinc-500 mb-2">Select the property to mark as sold:</p>
             <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search properties…" autoFocus
-              className="w-full mb-3 px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+              className="w-full mb-3 px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-teal-500"/>
             <div className="space-y-1.5 mb-3 max-h-96 overflow-y-auto">
               {filtered.length===0&&<div className="text-xs text-slate-400 dark:text-zinc-500 text-center py-3">No matches</div>}
               {filtered.map(p=>(
                 <button key={p.id} onClick={()=>onPick(p)}
-                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 border border-slate-200 dark:border-zinc-700 hover:border-teal-300 dark:hover:border-teal-700 transition-all">
                   <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200">🏠 {p.address}</span>
                 </button>
               ))}
@@ -6255,12 +6255,12 @@ function OverageCheckPropertyPickerModal({ properties, onPick, onClose }) {
         : <>
             <p className="text-xs text-slate-400 dark:text-zinc-500 mb-2">Which property is this check for? For insurance/tax/overcharge money found after the fact — if a lender is instead refunding part of an overage as part of a closing, enter that on Mark Sold / Edit Closing instead.</p>
             <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search properties…" autoFocus
-              className="w-full mb-3 px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+              className="w-full mb-3 px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-teal-500"/>
             <div className="space-y-1.5 mb-3 max-h-96 overflow-y-auto">
               {filtered.length===0&&<div className="text-xs text-slate-400 dark:text-zinc-500 text-center py-3">No matches</div>}
               {filtered.map(p=>(
                 <button key={p.id} onClick={()=>onPick(p)}
-                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex items-center justify-between gap-2">
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 border border-slate-200 dark:border-zinc-700 hover:border-teal-300 dark:hover:border-teal-700 transition-all flex items-center justify-between gap-2">
                   <span className="font-medium text-[13px] text-slate-800 dark:text-zinc-200 truncate">🏠 {p.address}</span>
                   {p.dateSold
                     ? <span className="text-[11px] text-slate-400 dark:text-zinc-500 shrink-0">Sold {p.dateSold}</span>
@@ -6364,14 +6364,14 @@ function ManageLendersPage({ data }) {
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Portal Access</h2>
       </div>
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4">
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4">
         <div className="font-bold text-[14px] text-slate-800 dark:text-zinc-100 mb-1">Grant Portal Access</div>
         <div className="text-[12px] text-slate-400 dark:text-zinc-500 mb-4">Give a lender their own login to see only their loans.</div>
         <form onSubmit={handleCreate} className="space-y-3">
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Lender Name</label>
             <select value={form.lenderName} onChange={e => setForm(f => ({...f, lenderName: e.target.value}))} required
-              className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
               <option value="">— select lender —</option>
               {allNames.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -6379,13 +6379,13 @@ function ManageLendersPage({ data }) {
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Email</label>
             <input type="email" value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} required placeholder="their@email.com"
-              className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+              className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
           </div>
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Password</label>
             <div className="relative">
               <input type={showPassword?"text":"password"} value={form.password} onChange={e => setForm(f => ({...f, password: e.target.value}))} required placeholder="temporary password"
-                className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 pr-16 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 pr-16 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
               <button type="button" onClick={()=>setShowPassword(s=>!s)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 px-2 py-1">
                 {showPassword?"Hide":"Show"}
@@ -6395,7 +6395,7 @@ function ManageLendersPage({ data }) {
           {err && <p className="text-red-500 text-xs font-medium">{err}</p>}
           {ok  && <p className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">{ok}</p>}
           <button type="submit" disabled={saving}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-2.5 text-sm font-semibold transition-all disabled:opacity-50">
+            className="w-full bg-teal-600 hover:bg-teal-700 text-white rounded-xl py-2.5 text-sm font-semibold transition-all disabled:opacity-50">
             {saving ? 'Creating…' : 'Create Login'}
           </button>
         </form>
@@ -6412,7 +6412,7 @@ function ManageLendersPage({ data }) {
         ) : (
           <div className="space-y-2">
             {lenders.map(l => (
-              <div key={l.id} className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] px-4 py-3 flex items-center justify-between gap-3">
+              <div key={l.id} className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] px-4 py-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-200 truncate">{l.lender_name}</div>
                   <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{l.email}</div>
@@ -6545,7 +6545,7 @@ function DrawsPage({ data }) {
           placeholder="Search by address…" className={SEARCH_CLS}/>
       </div>
       {/* Summary bar */}
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3 flex items-center justify-between">
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3 flex items-center justify-between">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Available Draws</div>
           <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">{h$(totalAvailableAll)}</div>
@@ -6558,7 +6558,7 @@ function DrawsPage({ data }) {
 
       {/* ── Condensed: sortable-look table, one row per property ── */}
       {viewMode==="condensed"&&(
-        <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
+        <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -6570,7 +6570,7 @@ function DrawsPage({ data }) {
                   <th className="py-2.5 px-4 text-right">Status</th>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+              <tbody className="bg-white dark:bg-[#1C1F2B] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
                 {rows.map(r=>{
                   const {pct_drawn,urgencyColor,eventLabel}=rowMeta(r);
                   return (
@@ -6598,7 +6598,7 @@ function DrawsPage({ data }) {
           const { prop, drawLoans, totalCommitted, totalDrawn, totalAvailable, eligible } = r;
           const {pct_drawn,urgencyColor,eventLabel,eventSub}=rowMeta(r);
           return (
-            <div key={prop.id} className={`bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${!eligible?"opacity-60":""}`}>
+            <div key={prop.id} className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${!eligible?"opacity-60":""}`}>
               {/* Property header */}
               <div className="px-3.5 pt-2.5 pb-2 border-b border-slate-100 dark:border-zinc-800">
                 <div className="flex items-start justify-between gap-2">
@@ -6664,7 +6664,7 @@ function DrawsPage({ data }) {
           const { prop, drawLoans, totalCommitted, totalDrawn, totalAvailable, eligible } = r;
           const {pct_drawn,urgencyColor,eventLabel,eventSub}=rowMeta(r);
           return (
-            <div key={prop.id} className={`bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${!eligible?"opacity-60":""}`}>
+            <div key={prop.id} className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${!eligible?"opacity-60":""}`}>
               {/* Property header */}
               <div className="px-4 pt-4 pb-3 border-b border-slate-100 dark:border-zinc-800">
                 <div className="flex items-start justify-between gap-2">
@@ -6781,7 +6781,7 @@ const WhiteboardCardVisual = ({ card, h$, liens, availText, onEdit, onRemove, na
         <div className="min-w-0 flex-1">
           {isProp
             ? <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'property',id:card.propId});}}
-                className="font-semibold text-[13px] text-blue-600 dark:text-blue-400 hover:underline truncate text-left block w-full">{card.address}</button>
+                className="font-semibold text-[13px] text-teal-600 dark:text-teal-400 hover:underline truncate text-left block w-full">{card.address}</button>
             : <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-100 truncate">{card.address}</div>
           }
 
@@ -6806,7 +6806,7 @@ const WhiteboardCardVisual = ({ card, h$, liens, availText, onEdit, onRemove, na
             </div>
           ) : onEdit ? (
             <button onClick={e=>{e.stopPropagation();onEdit(card);}}
-              className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">
+              className="text-[11px] font-semibold text-teal-500 dark:text-teal-400 hover:underline mt-0.5">
               + {isIn?"Add expected amount":"Add amount needed"}
             </button>
           ) : (
@@ -6818,7 +6818,7 @@ const WhiteboardCardVisual = ({ card, h$, liens, availText, onEdit, onRemove, na
         </div>
         {(onEdit||onRemove)&&(
           <div className="flex flex-col gap-1 shrink-0">
-            {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-[11px]">✏️</button>}
+            {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">✏️</button>}
             {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
           </div>
         )}
@@ -6845,7 +6845,7 @@ const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, n
   const short = balance<0;
   return (
     <div ref={setNodeRef}
-      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":short?"bg-red-50/70 dark:bg-red-900/10":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"} ${weekStart?"ml-2":""}`}>
+      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-teal-50 dark:bg-teal-900/20 ring-2 ring-teal-300 dark:ring-teal-700":short?"bg-red-50/70 dark:bg-red-900/10":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"} ${weekStart?"ml-2":""}`}>
       <div className="px-1 pb-2 mb-2 border-b border-slate-200 dark:border-zinc-700">
         <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
         {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
@@ -6923,16 +6923,16 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
             {propId?(
               <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-3">
                 <span className="text-sm font-semibold text-slate-800 dark:text-zinc-100 truncate">{address}</span>
-                <button type="button" onClick={()=>{setPropId("");setAddress("");}} className="text-xs font-semibold text-blue-500 hover:underline shrink-0 ml-2">Change</button>
+                <button type="button" onClick={()=>{setPropId("");setAddress("");}} className="text-xs font-semibold text-teal-500 hover:underline shrink-0 ml-2">Change</button>
               </div>
             ):(
               <>
                 <input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)} placeholder="Search properties…"
-                  className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-2.5 text-sm mb-2 text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                  className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-2.5 text-sm mb-2 text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500"/>
                 <div className="max-h-48 overflow-y-auto space-y-1">
                   {filtered.map(p=>(
                     <button key={p.id} type="button" onClick={()=>{setPropId(p.id);setAddress(p.address);}}
-                      className="w-full text-left px-3 py-2 rounded-lg text-sm bg-slate-50 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-slate-800 dark:text-zinc-100 transition-colors truncate">
+                      className="w-full text-left px-3 py-2 rounded-lg text-sm bg-slate-50 dark:bg-zinc-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 text-slate-800 dark:text-zinc-100 transition-colors truncate">
                       {p.address}
                     </button>
                   ))}
@@ -7007,7 +7007,7 @@ const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
     <div className="flex items-center gap-1.5 mb-0.5">
       <span className="text-[10px]">🏦</span>
       <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'loan',loanId:card.loanId,propId:card.propId});}}
-        className="font-semibold text-[12px] text-slate-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline truncate text-left">
+        className="font-semibold text-[12px] text-slate-600 dark:text-zinc-300 hover:text-teal-600 dark:hover:text-teal-400 hover:underline truncate text-left">
         {card.lenderName||"Unknown"}
       </button>
     </div>
@@ -7033,16 +7033,16 @@ const WhiteboardBillCard = ({ card, h$, canMoveUp, canMoveDown, onMove, onEdit, 
           {(card.amount||0)>0 ? (
             <div className="text-lg font-black tabular-nums mt-0.5 text-red-600 dark:text-red-400">−{h$(card.amount)}</div>
           ) : onEdit ? (
-            <button onClick={e=>{e.stopPropagation();onEdit(card);}} className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 hover:underline mt-0.5">+ Add amount</button>
+            <button onClick={e=>{e.stopPropagation();onEdit(card);}} className="text-[11px] font-semibold text-teal-500 dark:text-teal-400 hover:underline mt-0.5">+ Add amount</button>
           ) : (
             <div className="text-[11px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
           )}
           <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">since {wbFmtDate(card.addedAt||TODAY)}</div>
         </div>
         <div className="flex flex-col gap-1 shrink-0 items-center">
-          <button disabled={!canMoveUp} onClick={e=>{e.stopPropagation();onMove(card.id,-1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[11px]">▲</button>
-          <button disabled={!canMoveDown} onClick={e=>{e.stopPropagation();onMove(card.id,1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 disabled:opacity-20 text-[11px]">▼</button>
-          {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-[11px]">✏️</button>}
+          <button disabled={!canMoveUp} onClick={e=>{e.stopPropagation();onMove(card.id,-1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 disabled:opacity-20 text-[11px]">▲</button>
+          <button disabled={!canMoveDown} onClick={e=>{e.stopPropagation();onMove(card.id,1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 disabled:opacity-20 text-[11px]">▼</button>
+          {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">✏️</button>}
           {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
         </div>
       </div>
@@ -7056,7 +7056,7 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
   const {setNodeRef,isOver} = useDroppable({id:"duenow"});
   if (!bills.length) return null;
   return (
-    <div ref={setNodeRef} className={`shrink-0 w-56 rounded-2xl p-2 transition-colors ${isOver?"bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300 dark:ring-blue-700":"bg-amber-50/70 dark:bg-amber-900/10"}`}>
+    <div ref={setNodeRef} className={`shrink-0 w-56 rounded-2xl p-2 transition-colors ${isOver?"bg-teal-50 dark:bg-teal-900/20 ring-2 ring-teal-300 dark:ring-teal-700":"bg-amber-50/70 dark:bg-amber-900/10"}`}>
       <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">🧾 Due Now</div>
@@ -7189,7 +7189,7 @@ function WhiteboardPage({ data, update }) {
       </div>
 
       <div className="flex gap-3 mb-4 flex-wrap">
-        <div className="flex-1 min-w-[140px] bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+        <div className="flex-1 min-w-[140px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
           <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Starting Balance</div>
           <div className="flex items-baseline gap-0.5">
             <span className="text-lg font-black text-slate-700 dark:text-zinc-200">$</span>
@@ -7200,11 +7200,11 @@ function WhiteboardPage({ data, update }) {
           </div>
         </div>
         {(cards.length>0||autoCards.length>0)&&(<>
-          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
             <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(totalIn)}</div>
           </div>
-          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
             <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(totalOut)}</div>
           </div>
@@ -7274,7 +7274,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   if (!prop) return (
     <div className="flex flex-col items-center justify-center py-20 gap-3 px-5">
       <div className="text-slate-400 dark:text-zinc-500 text-sm">Property not found</div>
-      <button onClick={onBack} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">← Back</button>
+      <button onClick={onBack} className="text-sm text-teal-600 dark:text-teal-400 hover:underline">← Back</button>
     </div>
   );
 
@@ -7356,7 +7356,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
     <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
       {/* Back + header */}
       <div className="mb-5">
-        <button onClick={onBack} className="flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-3">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 transition-colors mb-3">
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
           Back
         </button>
@@ -7382,7 +7382,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
               </button>
             )}
             <button onClick={()=>setEditing(e=>!e)}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-teal-600 dark:hover:text-teal-400 hover:border-teal-300 dark:hover:border-teal-700 shadow-sm transition-all">
               {editing?"✕ Cancel":"✏️ Edit"}
             </button>
           </div>
@@ -7397,8 +7397,8 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
         }} onClose={()=>setEditing(false)}/>
       )}
       {editing && !prop.dateSold && (
-        <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-4">Edit Property Details</div>
+        <div className="mb-6 bg-white dark:bg-[#1C1F2B] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-teal-500 dark:text-teal-400 mb-4">Edit Property Details</div>
           <PropertyForm init={prop} lenders={data.lenders||[]} onSave={f=>{
             update(d=>{
               const {lenders,unassigned,propLoanAdds}=routeLoanDrafts(d,f.loanDrafts,propId);
@@ -7427,10 +7427,10 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
           {[
             ["Purchase Price", h$(prop.purchasePrice||0), ""],
             ["Rehab Budget", h$(prop.rehabBudget||0), ""],
-            ["Funded", h$(funded), "text-blue-600 dark:text-blue-400"],
+            ["Funded", h$(funded), "text-teal-600 dark:text-teal-400"],
             ["Shortage", h$(shortage), shortage>0?"text-red-500 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"],
           ].map(([label, val, color]) => (
-            <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+            <div key={label} className="bg-white dark:bg-[#1C1F2B] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
               <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
               <div className={`text-lg font-bold tabular-nums ${color || "text-slate-900 dark:text-zinc-100"}`}>{val}</div>
             </div>
@@ -7444,7 +7444,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
             ["Money Costs", h$(cd.moneyCosts||0), ""],
             ["Profit", hs(effectiveProfit(prop)), effectiveProfit(prop)>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"],
           ].map(([label, val, color]) => (
-            <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+            <div key={label} className="bg-white dark:bg-[#1C1F2B] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
               <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
               <div className={`text-lg font-bold tabular-nums ${color || "text-slate-900 dark:text-zinc-100"}`}>{val}</div>
             </div>
@@ -7454,7 +7454,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
 
       {/* Overage checks — insurance/tax/overcharge refunds that can show up any time, on a
           property still owned or one already closed. */}
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
         {(prop.closingData?.overageRefund||0)>0&&(prop.overageChecks||[]).length>0&&(
           <div className="px-5 py-2.5 bg-amber-50 dark:bg-amber-900/10 border-b border-amber-100 dark:border-amber-900/30 text-[11px] text-amber-700 dark:text-amber-400">
             ⚠ This property also has a {h$(prop.closingData.overageRefund)} lender overage refund recorded at closing — double-check none of the checks below are the same money counted twice.
@@ -7478,7 +7478,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
               <div className="shrink-0 flex items-center gap-2">
                 <span className="font-bold tabular-nums text-emerald-600 dark:text-emerald-400">+{h$(c.amount)}</span>
                 <button onClick={()=>setEditingOverage(c)}
-                  className="w-6 h-6 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs" title="Edit">✏️</button>
+                  className="w-6 h-6 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all text-xs" title="Edit">✏️</button>
               </div>
             </div>
           ))}
@@ -7501,11 +7501,11 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
       {/* Active loans — header (with Add Loan) always shows, even with none yet, so a loan
           can start on this property without leaving the page for a separate screen. */}
       {!prop.dateSold && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+        <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-3">
             <SectionHead title="Active Loans" count={active.length}/>
             <button onClick={()=>setAddingLoan(true)}
-              className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors">+ Add Loan</button>
+              className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white transition-colors">+ Add Loan</button>
           </div>
           {active.length===0 && (
             <div className="px-5 py-6 text-center text-sm text-slate-400 dark:text-zinc-500">No active loans on this property yet</div>
@@ -7520,12 +7520,12 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                 <div key={l.id} className="px-5 py-4">
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <button onClick={() => navigate({type:'loan', loanId:l.id, propId:prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-sm text-left">
+                      <button onClick={() => navigate({type:'loan', loanId:l.id, propId:prop.id})} className="font-semibold text-teal-600 dark:text-teal-400 hover:underline text-sm text-left">
                         {l.lenderName || "Unknown Lender"}
                       </button>
                       <TypeLabel type={l.loanType}/>
                     </div>
-                    {l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 whitespace-nowrap transition-colors">Move →</button>}
+                    {l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 shrink-0 whitespace-nowrap transition-colors">Move →</button>}
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
                     {[
@@ -7543,13 +7543,13 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                     ))}
                   </div>
                   {l.drawFacility && (
-                    <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-100 dark:border-blue-900/40">
+                    <div className="mt-3 p-3 bg-teal-50 dark:bg-teal-950/30 rounded-xl border border-teal-100 dark:border-teal-900/40">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Draw Facility</span>
+                        <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-widest">Draw Facility</span>
                       </div>
                       <div className="grid grid-cols-3 gap-3 text-xs text-center mb-2">
-                        {[["Committed", h$(l.drawFacility.committed||0),"text-blue-700 dark:text-blue-300"],["Drawn",h$(drawn),"text-amber-600 dark:text-amber-400"],["Available",h$(drawRemaining(l)),"text-emerald-600 dark:text-emerald-400"]].map(([lbl,val,c])=>(
-                          <div key={lbl}><div className="text-[9px] text-blue-400 dark:text-blue-500 uppercase mb-0.5">{lbl}</div><div className={`font-bold tabular-nums ${c}`}>{val}</div></div>
+                        {[["Committed", h$(l.drawFacility.committed||0),"text-teal-700 dark:text-teal-300"],["Drawn",h$(drawn),"text-amber-600 dark:text-amber-400"],["Available",h$(drawRemaining(l)),"text-emerald-600 dark:text-emerald-400"]].map(([lbl,val,c])=>(
+                          <div key={lbl}><div className="text-[9px] text-teal-400 dark:text-teal-500 uppercase mb-0.5">{lbl}</div><div className={`font-bold tabular-nums ${c}`}>{val}</div></div>
                         ))}
                       </div>
                       {draws.length > 0 && (
@@ -7573,7 +7573,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
 
       {/* Loan history */}
       {closed.length > 0 && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+        <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
             <SectionHead title="Loan History" count={closed.length}/>
           </div>
@@ -7592,7 +7592,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
               {closed.map(l => (
                 <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
                   <td className="px-5 py-3">
-                    <button onClick={() => navigate({type:'loan', loanId:l.id, propId:prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">{l.lenderName||"Unknown"}</button>
+                    <button onClick={() => navigate({type:'loan', loanId:l.id, propId:prop.id})} className="font-semibold text-teal-600 dark:text-teal-400 hover:underline text-left">{l.lenderName||"Unknown"}</button>
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700 dark:text-zinc-200">{h$(l.principal)}</td>
                   <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{hr(l)}</td>
@@ -7608,7 +7608,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
 
       {/* Closing data lender payoffs */}
       {cd?.lenderPayoffs?.length > 0 && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+        <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
             <SectionHead title="Payoffs at Close"/>
           </div>
@@ -7626,7 +7626,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                 <tr key={i} className="hover:bg-slate-50 dark:hover:bg-zinc-900/40 transition-colors">
                   <td className="px-5 py-3">
                     {lp.loanId
-                      ? <button onClick={() => navigate({type:'loan', loanId:lp.loanId, propId:prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left">{lp.lenderName||"Unknown"}</button>
+                      ? <button onClick={() => navigate({type:'loan', loanId:lp.loanId, propId:prop.id})} className="font-semibold text-teal-600 dark:text-teal-400 hover:underline text-left">{lp.lenderName||"Unknown"}</button>
                       : <span className="font-semibold text-slate-700 dark:text-zinc-200">{lp.lenderName||"Unknown"}</span>
                     }
                   </td>
@@ -7817,7 +7817,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   return (
     <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
       <div className="mb-5">
-        <button onClick={onBack} className="flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-3">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 transition-colors mb-3">
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
           Back
         </button>
@@ -7829,14 +7829,14 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
               {active.length} active loan{active.length!==1?"s":""} · {hist.length} closed
             </p>
           </div>
-          <button onClick={()=>{setEditName(name);setEditing(e=>!e);}} className="shrink-0 mt-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
+          <button onClick={()=>{setEditName(name);setEditing(e=>!e);}} className="shrink-0 mt-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-teal-600 dark:hover:text-teal-400 hover:border-teal-300 dark:hover:border-teal-700 shadow-sm transition-all">
             {editing?"✕ Cancel":"✏️ Edit"}
           </button>
         </div>
       </div>
 
       {editing&&(
-        <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
+        <div className="mb-6 bg-white dark:bg-[#1C1F2B] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
           <div className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 mb-4">Edit Lender</div>
           <div className="flex flex-col gap-3">
             <Inp label="Lender Name" value={editName} onChange={e=>setEditName(e.target.value)}/>
@@ -7864,7 +7864,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
 
       {/* Payment Settings — how this lender's interest is actually billed, applied to every loan from them */}
       {editing && (
-      <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
+      <div className="mb-6 bg-white dark:bg-[#1C1F2B] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
         <div className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 mb-1">Payment Settings</div>
         <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-4">How {name}'s monthly interest payments are actually billed — applies to every loan from them, on every property.</p>
         <div className="space-y-3">
@@ -7874,7 +7874,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
               <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Interest from closing through the end of that month is charged at closing, not rolled into a later payment. Billing always resumes in arrears — the 1st pays for the month that just ended.</div>
             </div>
             <div onClick={()=>setPsForm(f=>({...f,prorateStubAtClosing:!f.prorateStubAtClosing}))}
-              className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer shrink-0 ${psForm.prorateStubAtClosing?"bg-blue-500":"bg-slate-200 dark:bg-zinc-600"}`}>
+              className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer shrink-0 ${psForm.prorateStubAtClosing?"bg-teal-500":"bg-slate-200 dark:bg-zinc-600"}`}>
               <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${psForm.prorateStubAtClosing?"translate-x-5":""}`}/>
             </div>
           </label>
@@ -7900,7 +7900,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
               </div>
             </div>
             <div onClick={()=>setPsForm(f=>({...f,graceMonth:!f.graceMonth}))}
-              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${psForm.graceMonth?"bg-blue-500":"bg-slate-200 dark:bg-zinc-600"}`}>
+              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${psForm.graceMonth?"bg-teal-500":"bg-slate-200 dark:bg-zinc-600"}`}>
               <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${psForm.graceMonth?"translate-x-5":""}`}/>
             </div>
           </label>
@@ -7930,7 +7930,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
           ["Interest (Active)", h$(totInt), "text-emerald-600 dark:text-emerald-400"],
           ["Lifetime Paid Out", h$(lifetimePaidOut), "text-emerald-700 dark:text-emerald-300"],
         ].map(([label, val, color]) => (
-          <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div key={label} className="bg-white dark:bg-[#1C1F2B] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
             <div className={`text-lg font-bold tabular-nums ${color}`}>{val}</div>
           </div>
@@ -7939,7 +7939,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
 
       {/* Account info */}
       {account && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 p-5">
+        <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 p-5">
           <SectionHead title="Account Info"/>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
             {account.email && <div><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold mb-0.5">Email</div><div className="font-medium text-slate-800 dark:text-zinc-200">{account.email}</div></div>}
@@ -7952,7 +7952,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
 
       {/* History — for taxes */}
       {sortedYears.length > 0 && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+        <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
             <SectionHead title="📊 History (for Taxes)"/>
           </div>
@@ -7988,7 +7988,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
                         <td className="pl-9 pr-5 py-2.5" colSpan={3}>
                           <div className="flex items-center justify-between gap-3 flex-wrap">
                             <button onClick={()=>navigate({type:'loan',loanId:l.id,propId:l.prop?.id||null,startEditing:false})}
-                              className="font-medium text-blue-600 dark:text-blue-400 hover:underline text-left shrink-0">
+                              className="font-medium text-teal-600 dark:text-teal-400 hover:underline text-left shrink-0">
                               {l.prop?l.prop.address:"Unassigned"}
                             </button>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-zinc-400 tabular-nums">
@@ -8023,7 +8023,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
 
       {/* Active loans */}
       {active.length > 0 && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+        <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
             <SectionHead title="Active Loans" count={active.length}/>
           </div>
@@ -8036,14 +8036,14 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       {l.prop
-                        ? <button onClick={() => navigate({type:'property', id:l.prop.id})} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-sm text-left">{l.prop.address}</button>
+                        ? <button onClick={() => navigate({type:'property', id:l.prop.id})} className="font-semibold text-teal-600 dark:text-teal-400 hover:underline text-sm text-left">{l.prop.address}</button>
                         : <span className="font-semibold text-slate-500 dark:text-zinc-400 text-sm">Unassigned</span>
                       }
                       <TypeLabel type={l.loanType}/>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      {l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap transition-colors">Move →</button>}
-                      <button onClick={() => navigate({type:'loan', loanId:l.id, propId:l.prop?.id||null, startEditing:false})} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap transition-colors">
+                      {l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 whitespace-nowrap transition-colors">Move →</button>}
+                      <button onClick={() => navigate({type:'loan', loanId:l.id, propId:l.prop?.id||null, startEditing:false})} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 whitespace-nowrap transition-colors">
                         View →
                       </button>
                     </div>
@@ -8117,7 +8117,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
   if (!loan) return (
     <div className="flex flex-col items-center justify-center py-20 gap-3 px-5">
       <div className="text-slate-400 dark:text-zinc-500 text-sm">Loan not found</div>
-      <button onClick={onBack} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">← Back</button>
+      <button onClick={onBack} className="text-sm text-teal-600 dark:text-teal-400 hover:underline">← Back</button>
     </div>
   );
 
@@ -8240,21 +8240,21 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
   return (
     <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
       <div className="mb-5">
-        <button onClick={onBack} className="flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-3">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 transition-colors mb-3">
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
           Back
         </button>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-2">Loan</div>
+            <div className="text-[11px] font-bold uppercase tracking-widest text-teal-500 dark:text-teal-400 mb-2">Loan</div>
             <button onClick={() => navigate({type:'lender', name:loan.lenderName})}
-              className="text-2xl font-bold text-slate-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left leading-tight">
+              className="text-2xl font-bold text-slate-900 dark:text-zinc-100 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left leading-tight">
               {loan.lenderName || "Unknown Lender"}
             </button>
             {prop ? (
               <div className="flex items-center gap-1.5 mt-1.5">
                 <span className="text-[13px] text-slate-400 dark:text-zinc-500">at</span>
-                <button onClick={() => navigate({type:'property', id:prop.id})} className="text-[15px] font-semibold text-slate-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors text-left">
+                <button onClick={() => navigate({type:'property', id:prop.id})} className="text-[15px] font-semibold text-slate-600 dark:text-zinc-300 hover:text-teal-600 dark:hover:text-teal-400 hover:underline transition-colors text-left">
                   {prop.address}
                 </button>
               </div>
@@ -8270,7 +8270,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
           </div>
           {update && (
             <div className="shrink-0 mt-1">
-              <button onClick={editing?()=>{setEditing(false);setDeleteConfirm(false);}:openEdit} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm transition-all">
+              <button onClick={editing?()=>{setEditing(false);setDeleteConfirm(false);}:openEdit} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-teal-600 dark:hover:text-teal-400 hover:border-teal-300 dark:hover:border-teal-700 shadow-sm transition-all">
                 {editing?"✕ Cancel":"✏️ Edit"}
               </button>
             </div>
@@ -8281,8 +8281,8 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       {closeModal&&<CloseLoanModal loan={loan} onConfirm={closeLoan} onClose={()=>setCloseModal(false)}/>}
 
       {editing&&ef&&(
-        <div className="mb-6 bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-4">Edit Loan Terms</div>
+        <div className="mb-6 bg-white dark:bg-[#1C1F2B] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-teal-500 dark:text-teal-400 mb-4">Edit Loan Terms</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Lockable locked={efLocked.principal} onToggle={()=>toggleEfLock("principal")}>
               <Inp label="Principal ($)" value={ef.principal} onChange={v=>setEf(f=>({...f,principal:v}))} money/>
@@ -8373,7 +8373,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
               <label className="flex items-center gap-3 cursor-pointer mb-1">
                 <input type="checkbox" checked={!!ef.drawFacility}
                   onChange={e=>setEf(f=>({...f,drawFacility:e.target.checked?{committed:"",draws:[]}:null}))}
-                  className="w-4 h-4 rounded border-slate-300 dark:border-zinc-600 accent-blue-600 cursor-pointer"/>
+                  className="w-4 h-4 rounded border-slate-300 dark:border-zinc-600 accent-teal-600 cursor-pointer"/>
                 <div>
                   <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Rehab Draw Facility</div>
                   <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Lender committed rehab funding, drawn in stages</div>
@@ -8430,11 +8430,11 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
           ["Principal", h$(loan.principal), "text-slate-900 dark:text-zinc-100"],
-          ["Balance", h$(bal), "text-blue-600 dark:text-blue-400"],
+          ["Balance", h$(bal), "text-teal-600 dark:text-teal-400"],
           ["Interest Earned", h$(earned), "text-emerald-600 dark:text-emerald-400"],
           ["Days Active", String(daysBetween(loan.startDate, loan.endDate||TODAY)), ""],
         ].map(([label, val, color]) => (
-          <div key={label} className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div key={label} className="bg-white dark:bg-[#1C1F2B] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">{label}</div>
             <div className={`text-lg font-bold tabular-nums ${color || "text-slate-900 dark:text-zinc-100"}`}>{val}</div>
           </div>
@@ -8442,7 +8442,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       </div>
 
       {/* Detail table */}
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
         <div className="divide-y divide-slate-50 dark:divide-zinc-800">
           {[
             ["Type", loan.loanType === "hard" ? "Hard Money" : "Private Money"],
@@ -8468,13 +8468,13 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       <div className="flex gap-3 mb-6">
         {loan.lenderName && (
           <button onClick={() => navigate({type:'lender', name:loan.lenderName})}
-            className="flex-1 py-3 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.06)] text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
+            className="flex-1 py-3 rounded-2xl bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.06)] text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
             View Lender →
           </button>
         )}
         {prop && (
           <button onClick={() => navigate({type:'property', id:prop.id})}
-            className="flex-1 py-3 rounded-2xl bg-white dark:bg-[#1C1C1E] shadow-[0_2px_12px_rgba(0,0,0,0.06)] text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
+            className="flex-1 py-3 rounded-2xl bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.06)] text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
             View Property →
           </button>
         )}
@@ -8482,7 +8482,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
 
       {/* Draw history */}
       {draws.length > 0 && (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Draw History ({draws.length})</div>
           </div>
@@ -8766,7 +8766,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const sortedFunds = [...unassignedFunds].sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
 
   const NAV_COLORS = {
-    blue:   "text-blue-600 dark:text-blue-400",
+    blue:   "text-teal-600 dark:text-teal-400",
     indigo: "text-indigo-600 dark:text-indigo-400",
     amber:  "text-amber-600 dark:text-amber-400",
     slate:  "text-slate-700 dark:text-zinc-200",
@@ -8808,7 +8808,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
   ];
   const renderKpiTile = ({ label, value, sub, color, icon, tab, breakdown }) => (
     <button onClick={() => onNavigateTab(tab)}
-      className="w-full h-full bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group border border-slate-100 dark:border-zinc-800">
+      className="w-full h-full bg-white dark:bg-[#1C1F2B] rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group border border-slate-100 dark:border-zinc-800">
       <div className="flex items-start justify-between mb-2">
         <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 leading-tight pr-1">{label}</div>
         <span className="text-base shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">{icon}</span>
@@ -8896,7 +8896,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
     ),
 
     upcomingDue: dueSchedule.length === 0 ? null : (
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
         <button onClick={() => setDueDatesOpen(o => !o)}
           className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
           <div className="text-[10px] font-bold uppercase tracking-widest text-orange-500 dark:text-orange-400">⏰ Upcoming Due Dates</div>
@@ -8941,7 +8941,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
 
     hardMoneyDue: hardMonthly === 0 ? null : (
       <button onClick={() => onNavigateTab("AllLoans:hard")}
-        className="w-full bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 flex items-center justify-between hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
+        className="w-full bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 flex items-center justify-between hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5 active:scale-[0.98] transition-all text-left group">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-1">💸 Hard Money — Due 1st of Month</div>
           <div className="text-xs text-slate-400 dark:text-zinc-500">{hardMonthlyLoans.length} loan{hardMonthlyLoans.length!==1?"s":""} · tap to view →</div>
@@ -8954,7 +8954,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
     ),
 
     monthlyHolding: topBurning.length === 0 ? null : (
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
         <div className="px-5 py-4 flex items-start justify-between gap-3">
           <button onClick={() => onNavigateTab("RehabPriority")} className="text-left group">
             <div className="text-[10px] font-bold uppercase tracking-widest text-orange-500 dark:text-orange-400 flex items-center gap-1">
@@ -8980,7 +8980,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <button onClick={() => openPanel({ type: 'property', id: prop.id })}
-                    className="font-semibold text-sm text-slate-800 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left truncate block w-full">
+                    className="font-semibold text-sm text-slate-800 dark:text-zinc-200 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left truncate block w-full">
                     {prop.address}
                   </button>
                   <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -8997,7 +8997,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
     ),
 
     drawsDetail: drawsAvailableList.length === 0 ? null : (
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
         <div className="px-5 py-4 flex items-center justify-between">
           <button onClick={() => onNavigateTab("Draws")} className="text-left group">
             <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400">🏗️ Draws Available by Property</div>
@@ -9026,7 +9026,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
     ),
 
     lenderConcentration: topLenders.length === 0 ? null : (
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
         <button onClick={() => setLendersOpen(o => !o)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
           <div className="text-left">
             <div className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400">👥 Top Lenders by Balance</div>
@@ -9049,7 +9049,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
     ),
 
     recentClosings: recentClosings.length === 0 ? null : (
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
         <button onClick={() => setClosingsOpen(o => !o)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
           <div className="text-left">
             <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400">🏁 Recently Closed</div>
@@ -9085,11 +9085,11 @@ function DashboardPage({ data, update, onNavigateTab }) {
       {/* Header */}
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
-          <div className="text-[11px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-1">Nexus Homes</div>
+          <div className="text-[11px] font-bold uppercase tracking-widest text-teal-500 dark:text-teal-400 mb-1">Nexus Homes</div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">Funding Center</h1>
         </div>
         <button onClick={() => setEditMode(e => !e)}
-          className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${editMode ? "bg-blue-600 text-white" : "bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-blue-600 dark:hover:text-blue-400"}`}>
+          className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${editMode ? "bg-teal-600 text-white" : "bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-teal-600 dark:hover:text-teal-400"}`}>
           {editMode ? "Done" : "Customize"}
         </button>
       </div>
@@ -9114,7 +9114,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
                             <span {...handleProps} className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-zinc-600 text-sm leading-none shrink-0">⠿</span>
                             <span className="truncate">{def.label}</span>
                           </div>
-                          <button onClick={() => toggleCardHidden(id)} className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline shrink-0 ml-2">
+                          <button onClick={() => toggleCardHidden(id)} className="text-[10px] font-bold text-teal-600 dark:text-teal-400 hover:underline shrink-0 ml-2">
                             {isHidden ? "Show" : "Hide"}
                           </button>
                         </div>
@@ -9201,7 +9201,7 @@ const IcoApps=()=><svg viewBox="0 0 20 20" fill="currentColor" className="w-[15p
 const SideBtn=({icon,label,active,onClick,tooltip,badge})=>(
   <div className="relative group">
     <button onClick={onClick}
-      className={`relative flex items-center justify-center w-full p-2.5 rounded-xl transition-all ${active?"bg-blue-600 shadow-sm":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+      className={`relative flex items-center justify-center w-full p-2.5 rounded-xl transition-all ${active?"bg-teal-600 shadow-sm":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
       <span className={`shrink-0 ${active?"text-white":"text-slate-400 dark:text-zinc-500"}`}>{icon}</span>
       {badge>0&&<span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[#F2F2F7] dark:ring-black"/>}
     </button>
@@ -9542,9 +9542,9 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   },[globalSearch,data]);
 
   if(loading) return (
-    <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex items-center justify-center">
+    <div className="min-h-screen bg-[#F2F2F7] dark:bg-[#14161F] flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 rounded-full border-2 border-slate-200 dark:border-zinc-700 border-t-blue-500 animate-spin"/>
+        <div className="w-8 h-8 rounded-full border-2 border-slate-200 dark:border-zinc-700 border-t-teal-500 animate-spin"/>
         <div className="text-slate-400 dark:text-zinc-500 text-sm font-medium">Loading…</div>
       </div>
     </div>
@@ -9553,13 +9553,13 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   return (
     <PrivacyContext.Provider value={privacyMode}>
     <PanelContext.Provider value={navigate}>
-    <div className="min-h-screen bg-[#F2F2F7] dark:bg-black flex transition-colors duration-300">
+    <div className="min-h-screen bg-[#F2F2F7] dark:bg-[#14161F] flex transition-colors duration-300">
 
       {/* ── Left Sidebar (desktop only) ── */}
-      <div className="hidden sm:flex fixed left-0 top-0 bottom-0 w-14 bg-[#F2F2F7] dark:bg-black border-r border-black/[0.05] dark:border-white/[0.04] flex-col z-40">
+      <div className="hidden sm:flex fixed left-0 top-0 bottom-0 w-14 bg-[#F2F2F7] dark:bg-[#14161F] border-r border-black/[0.05] dark:border-white/[0.04] flex-col z-40">
         {/* Logo / Dashboard */}
         <button onClick={()=>{setNavStack([]);setPanelStack([]);setTab("Dashboard");}} title="Dashboard"
-          className={`mx-auto mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] flex items-center justify-center active:scale-95 transition-all shrink-0 ${tab==="Dashboard"&&navStack.length===0?"bg-gradient-to-br from-blue-600 to-blue-700 shadow-lg shadow-blue-500/30 ring-2 ring-blue-400/40":"bg-gradient-to-br from-blue-500 to-blue-700 shadow-md shadow-blue-500/30"}`}>
+          className={`mx-auto mt-3.5 mb-2.5 w-9 h-9 rounded-[11px] flex items-center justify-center active:scale-95 transition-all shrink-0 ${tab==="Dashboard"&&navStack.length===0?"bg-gradient-to-br from-teal-600 to-teal-700 shadow-lg shadow-teal-500/30 ring-2 ring-teal-400/40":"bg-gradient-to-br from-teal-500 to-teal-700 shadow-md shadow-teal-500/30"}`}>
           <span className="text-white font-black text-lg leading-none tracking-tight">$</span>
         </button>
         <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] mx-2 mb-1.5"/>
@@ -9575,7 +9575,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               Windows, an iPad) where hover never fires. */}
           <div ref={rehabMenuRef} className="relative" onMouseEnter={openRehabHover} onMouseLeave={closeRehabHoverDelayed}>
             <button onClick={()=>setRehabOpen(o=>!o)} title="Renovation"
-              className={`relative flex items-center justify-center w-full p-2.5 rounded-xl transition-all cursor-pointer ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+              className={`relative flex items-center justify-center w-full p-2.5 rounded-xl transition-all cursor-pointer ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"bg-teal-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
               <span className={`shrink-0 ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}><IcoWrench/></span>
             </button>
             {(rehabHover||rehabOpen)&&(
@@ -9583,7 +9583,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Renovation</div>
                 {[{id:"RehabPriority",ico:<IcoClipboard/>,l:"Rehab Priority"},{id:"Draws",ico:<IcoGrid/>,l:"Draw Tracker"},{id:"PropDash",ico:<IcoBar/>,l:"Prop Dashboard"}].map(({id,ico,l})=>(
                   <button key={id} onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setRehabHover(false);setRehabOpen(false);}}
-                    className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id&&navStack.length===0?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+                    className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors ${tab===id&&navStack.length===0?"bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
                     <span className="text-slate-400 dark:text-zinc-500 shrink-0">{ico}</span>{l}
                   </button>
                 ))}
@@ -9605,7 +9605,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
         <div className="px-1.5 pb-3 relative" ref={settingsRef}>
           <div className="relative group">
             <button onClick={()=>setSettingsOpen(o=>!o)}
-              className={`flex items-center justify-center w-full p-2.5 rounded-xl transition-all ${settingsOpen?"bg-blue-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
+              className={`flex items-center justify-center w-full p-2.5 rounded-xl transition-all ${settingsOpen?"bg-teal-600":"hover:bg-black/5 dark:hover:bg-white/10"}`}>
               <span className={`shrink-0 ${settingsOpen?"text-white":"text-slate-400 dark:text-zinc-500"}`}><IcoCog/></span>
             </button>
             {!settingsOpen&&<div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-zinc-900 dark:bg-zinc-700 text-white text-xs font-semibold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-100 z-50 shadow-lg">
@@ -9619,7 +9619,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               <button onClick={()=>setPrivacyMode(p=>!p)}
                 className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
                 <span>Demo Mode</span>
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${privacyMode?"bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400":"bg-slate-100 dark:bg-zinc-700 text-slate-400 dark:text-zinc-500"}`}>{privacyMode?"ON":"OFF"}</span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${privacyMode?"bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400":"bg-slate-100 dark:bg-zinc-700 text-slate-400 dark:text-zinc-500"}`}>{privacyMode?"ON":"OFF"}</span>
               </button>
               <button onClick={onToggleDark}
                 className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
@@ -9644,10 +9644,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
       {mobileNavOpen && (
         <>
           <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] sm:hidden" onClick={()=>setMobileNavOpen(false)}/>
-          <div className="fixed left-0 top-0 bottom-0 z-50 w-72 max-w-[85vw] bg-white dark:bg-[#1C1C1E] shadow-2xl flex flex-col sm:hidden overflow-y-auto">
+          <div className="fixed left-0 top-0 bottom-0 z-50 w-72 max-w-[85vw] bg-white dark:bg-[#1C1F2B] shadow-2xl flex flex-col sm:hidden overflow-y-auto">
             <div className="flex items-center justify-between px-4 py-4 border-b border-slate-100 dark:border-zinc-800 shrink-0">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-blue-500 to-blue-700 shadow-md shadow-blue-500/30 flex items-center justify-center shrink-0">
+                <div className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-teal-500 to-teal-700 shadow-md shadow-teal-500/30 flex items-center justify-center shrink-0">
                   <span className="text-white font-black text-sm leading-none">$</span>
                 </div>
                 <span className="font-bold text-slate-900 dark:text-zinc-100 text-sm">Nexus Homes</span>
@@ -9664,7 +9664,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               ].map(({id,icon,label,match,badge})=>(
                 <button key={id}
                   onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setMobileNavOpen(false);}}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-blue-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-teal-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
                   <span className={`relative shrink-0 ${match(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}>
                     {icon}
                     {badge>0&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500"/>}
@@ -9675,7 +9675,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
 
               {/* Renovation group — expands in place instead of three separate rows */}
               <button onClick={()=>setMobileRenovOpen(o=>!o)}
-                className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0&&!mobileRenovOpen?"bg-blue-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
+                className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0&&!mobileRenovOpen?"bg-teal-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
                 <span className="flex items-center gap-3">
                   <span className={`shrink-0 ${["RehabPriority","Draws","PropDash"].includes(tab)&&navStack.length===0&&!mobileRenovOpen?"text-white":"text-slate-400 dark:text-zinc-500"}`}>
                     <IcoWrench/>
@@ -9691,7 +9691,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               ].map(({id,icon,label,match})=>(
                 <button key={id}
                   onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setMobileNavOpen(false);}}
-                  className={`w-full flex items-center gap-3 pl-9 pr-3 py-2 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300":"text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
+                  className={`w-full flex items-center gap-3 pl-9 pr-3 py-2 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300":"text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
                   <span className="shrink-0 text-slate-400 dark:text-zinc-500">{icon}</span>
                   {label}
                 </button>
@@ -9703,7 +9703,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               ].map(({id,icon,label,match,badge})=>(
                 <button key={id}
                   onClick={()=>{setNavStack([]);setPanelStack([]);setTab(id);setMobileNavOpen(false);}}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-blue-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${match(tab)&&navStack.length===0?"bg-teal-600 text-white":"text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"}`}>
                   <span className={`relative shrink-0 ${match(tab)&&navStack.length===0?"text-white":"text-slate-400 dark:text-zinc-500"}`}>
                     {icon}
                     {badge>0&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500"/>}
@@ -9716,7 +9716,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               <button onClick={()=>setPrivacyMode(p=>!p)}
                 className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
                 <span>Demo Mode</span>
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${privacyMode?"bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400":"bg-slate-100 dark:bg-zinc-700 text-slate-400 dark:text-zinc-500"}`}>{privacyMode?"ON":"OFF"}</span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${privacyMode?"bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400":"bg-slate-100 dark:bg-zinc-700 text-slate-400 dark:text-zinc-500"}`}>{privacyMode?"ON":"OFF"}</span>
               </button>
               <button onClick={onToggleDark}
                 className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
@@ -9771,7 +9771,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                     } else if(e.key==='Escape'){setGlobalSearch('');setGlobalSelIdx(-1);searchInputRef.current?.blur();}
                   }}
                   placeholder="Search properties, lenders, notes, amounts… (/)"
-                  className="w-full pl-8 pr-3 py-1.5 rounded-full text-sm bg-black/[0.06] dark:bg-white/[0.08] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 border-0"/>
+                  className="w-full pl-8 pr-3 py-1.5 rounded-full text-sm bg-black/[0.06] dark:bg-white/[0.08] text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 border-0"/>
               </div>
               {globalSearch.length===0&&searchFocused&&recentlyViewed.length>0&&(
                 <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
@@ -9793,7 +9793,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                     ?<div className="px-4 py-3 text-sm text-slate-400 dark:text-zinc-500">No results</div>
                     :globalResults.map((r,i)=>{
                       const badge={
-                        lender:['Lender','bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'],
+                        lender:['Lender','bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'],
                         note:['Note','bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'],
                         amount:['Amount','bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'],
                         overage:['Overage','bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'],
@@ -9846,8 +9846,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             </div>
             <div ref={fabRef} className="relative shrink-0">
               <button onClick={()=>setFabOpen(o=>!o)}
-                className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all border ${fabOpen?"bg-blue-600 border-blue-600 text-white":"border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:border-blue-600 hover:text-white dark:hover:text-white"}`}>
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
+                className={`flex items-center gap-1.5 pl-2 pr-3 sm:pr-3.5 py-1.5 rounded-full text-sm font-semibold text-white transition-all border ${fabOpen?"bg-teal-500 border-teal-400":"bg-teal-600 border-teal-500 hover:bg-teal-500"}`}>
+                <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 shrink-0"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
+                </span>
                 <span className="hidden sm:inline">Actions</span>
               </button>
               {fabOpen&&(
@@ -9884,10 +9886,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
             {/* Records sub-nav */}
             {["Closed","History"].includes(tab)&&(
-              <div className="flex mb-4 bg-white dark:bg-[#1C1C1E] rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-zinc-800 self-start w-fit">
+              <div className="flex mb-4 bg-white dark:bg-[#1C1F2B] rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-zinc-800 self-start w-fit">
                 {[["Closed","Closed Deals"],["History","History"]].map(([id,l])=>(
                   <button key={id} onClick={()=>setTab(id)}
-                    className={`px-4 py-2 text-sm font-semibold transition-all ${tab===id?"bg-blue-600 text-white":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"}`}>
+                    className={`px-4 py-2 text-sm font-semibold transition-all ${tab===id?"bg-teal-600 text-white":"text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"}`}>
                     {l}
                   </button>
                 ))}
@@ -9914,12 +9916,12 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           {/* Backdrop — click to dismiss */}
           <div className="fixed inset-0 z-40 bg-black/30 dark:bg-black/50 backdrop-blur-[2px]" onClick={()=>setPanelStack([])}/>
           {/* Panel */}
-          <div className="fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-[#F2F2F7] dark:bg-[#0A0A0A] shadow-2xl" style={{width:'min(700px,82vw)'}}>
+          <div className="fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-[#F2F2F7] dark:bg-[#10121A] shadow-2xl" style={{width:'min(700px,82vw)'}}>
             {/* Panel chrome */}
             <div className="flex items-center gap-3 px-4 py-2.5 border-b border-black/[0.06] dark:border-white/[0.05] bg-white/70 dark:bg-black/70 backdrop-blur-xl shrink-0">
               {panelStack.length>1&&(
                 <button onClick={()=>setPanelStack(s=>s.slice(0,-1))}
-                  className="flex items-center gap-1 text-xs font-semibold text-slate-500 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                  className="flex items-center gap-1 text-xs font-semibold text-slate-500 dark:text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
                   <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
                   Back
                 </button>
@@ -9927,7 +9929,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               <div className="flex-1"/>
               <button
                 onClick={()=>{const e=panelStack[panelStack.length-1];setPanelStack([]);setNavStack([e]);}}
-                className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors">
+                className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition-colors">
                 View Full Page
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"/><path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"/></svg>
               </button>

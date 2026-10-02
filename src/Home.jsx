@@ -7,7 +7,7 @@ import { CSS } from "@dnd-kit/utilities";
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 const COLORS = {
-  blue:   "from-blue-400 to-blue-600",
+  blue:   "from-teal-400 to-teal-600",
   green:  "from-emerald-400 to-emerald-600",
   violet: "from-violet-400 to-violet-600",
   amber:  "from-amber-400 to-amber-600",
@@ -121,7 +121,7 @@ function LinkModal({ init, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-md" onClick={onClose}>
-      <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.25)] w-full max-w-sm" onClick={e=>e.stopPropagation()}>
+      <div className="bg-white/95 dark:bg-[#1C1F2B]/95 backdrop-blur-2xl rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.25)] w-full max-w-sm" onClick={e=>e.stopPropagation()}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.06]">
           <h2 className="font-semibold text-slate-900 dark:text-zinc-100 text-base tracking-[-0.2px]">{init ? "Edit App" : "Add App"}</h2>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-500 dark:text-zinc-400 hover:bg-black/10 dark:hover:bg-white/15 transition-all text-xl leading-none">&times;</button>
@@ -137,36 +137,36 @@ function LinkModal({ init, onSave, onClose }) {
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Label</label>
             <input value={label} onChange={e=>setLabel(e.target.value)} autoFocus placeholder="Closing Tracker Sheet"
-              className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+              className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">URL</label>
             <input value={url} onChange={e=>{setUrl(e.target.value); setLogoFailed(false);}} placeholder="docs.google.com/..."
-              className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+              className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
           </div>
           <label className="flex items-center gap-2 text-[13px] font-medium text-slate-600 dark:text-zinc-300 select-none">
-            <input type="checkbox" checked={useLogo} onChange={e=>setUseLogo(e.target.checked)} className="w-4 h-4 accent-blue-600"/>
+            <input type="checkbox" checked={useLogo} onChange={e=>setUseLogo(e.target.checked)} className="w-4 h-4 accent-teal-600"/>
             Use the site's icon automatically
           </label>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Icon{useLogo && " (fallback)"}</label>
               <input value={icon} onChange={e=>setIcon(e.target.value)} placeholder="📊" maxLength={4}
-                className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-center text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+                className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-center text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Color</label>
               <div className="flex gap-1.5 items-center h-[46px]">
                 {Object.entries(COLORS).map(([k,grad])=>(
                   <button type="button" key={k} onClick={()=>setColor(k)}
-                    className={`w-7 h-7 rounded-full bg-gradient-to-br ${grad} transition-all ${color===k?"ring-2 ring-offset-2 ring-slate-900 dark:ring-white dark:ring-offset-[#1C1C1E]":""}`}/>
+                    className={`w-7 h-7 rounded-full bg-gradient-to-br ${grad} transition-all ${color===k?"ring-2 ring-offset-2 ring-slate-900 dark:ring-white dark:ring-offset-[#1C1F2B]":""}`}/>
                 ))}
               </div>
             </div>
           </div>
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={onClose} className="flex-1 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 rounded-xl py-2.5 text-sm font-semibold transition-all">Cancel</button>
-            <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-2.5 text-sm font-semibold transition-all shadow-sm shadow-blue-500/30">Save</button>
+            <button type="submit" className="flex-1 bg-teal-600 hover:bg-teal-700 text-white rounded-xl py-2.5 text-sm font-semibold transition-all shadow-sm shadow-teal-500/30">Save</button>
           </div>
         </form>
       </div>
@@ -188,7 +188,7 @@ function NewFolderModal({ links, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-md" onClick={onClose}>
-      <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.25)] w-full max-w-sm max-h-[85vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+      <div className="bg-white/95 dark:bg-[#1C1F2B]/95 backdrop-blur-2xl rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.25)] w-full max-w-sm max-h-[85vh] flex flex-col" onClick={e=>e.stopPropagation()}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.06]">
           <h2 className="font-semibold text-slate-900 dark:text-zinc-100 text-base tracking-[-0.2px]">New Folder</h2>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-500 dark:text-zinc-400 hover:bg-black/10 dark:hover:bg-white/15 transition-all text-xl leading-none">&times;</button>
@@ -197,7 +197,7 @@ function NewFolderModal({ links, onSave, onClose }) {
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Name</label>
             <input value={name} onChange={e=>setName(e.target.value)} autoFocus placeholder="Spreadsheets"
-              className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"/>
+              className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Apps to include</label>
@@ -207,7 +207,7 @@ function NewFolderModal({ links, onSave, onClose }) {
               <div className="flex flex-col gap-1 max-h-52 overflow-y-auto">
                 {links.map(link => (
                   <label key={link.id} className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer">
-                    <input type="checkbox" checked={selected.includes(link.id)} onChange={()=>toggle(link.id)} className="w-4 h-4 accent-blue-600"/>
+                    <input type="checkbox" checked={selected.includes(link.id)} onChange={()=>toggle(link.id)} className="w-4 h-4 accent-teal-600"/>
                     <span className="text-lg leading-none">{link.icon}</span>
                     <span className="text-sm text-slate-700 dark:text-zinc-200">{link.label}</span>
                   </label>
@@ -217,7 +217,7 @@ function NewFolderModal({ links, onSave, onClose }) {
           </div>
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={onClose} className="flex-1 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 rounded-xl py-2.5 text-sm font-semibold transition-all">Cancel</button>
-            <button type="submit" disabled={!name.trim()||selected.length===0} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl py-2.5 text-sm font-semibold transition-all shadow-sm shadow-blue-500/30">Create</button>
+            <button type="submit" disabled={!name.trim()||selected.length===0} className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-xl py-2.5 text-sm font-semibold transition-all shadow-sm shadow-teal-500/30">Create</button>
           </div>
         </form>
       </div>
@@ -230,7 +230,7 @@ function FolderSheet({ folder, members, availableLinks, editMode, onClose, onOpe
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-md" onClick={onClose}>
-      <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.25)] w-full max-w-sm max-h-[85vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+      <div className="bg-white/95 dark:bg-[#1C1F2B]/95 backdrop-blur-2xl rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.25)] w-full max-w-sm max-h-[85vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.06]">
           {editMode ? (
             <input value={name} onChange={e=>setName(e.target.value)}
@@ -264,7 +264,7 @@ function FolderSheet({ folder, members, availableLinks, editMode, onClose, onOpe
                       className="flex items-center gap-2.5 text-left px-3 py-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all">
                       <span className="text-lg leading-none">{link.icon}</span>
                       <span className="text-sm text-slate-700 dark:text-zinc-200">{link.label}</span>
-                      <span className="ml-auto text-blue-600 dark:text-blue-400 text-lg leading-none">+</span>
+                      <span className="ml-auto text-teal-600 dark:text-teal-400 text-lg leading-none">+</span>
                     </button>
                   ))}
                 </div>
@@ -408,18 +408,18 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
   const liveFolder = modal?.type === "folder" ? folders.find(f=>f.id===modal.folder.id) : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#E8ECF4] to-[#DDE3ED] dark:from-black dark:to-[#0A0A0C] transition-colors duration-300">
-      <div className="bg-white/70 dark:bg-[#1C1C1E]/80 backdrop-blur-2xl border-b border-black/[0.06] dark:border-white/[0.06] sticky top-0 z-40">
+    <div className="min-h-screen bg-gradient-to-b from-[#E8ECF4] to-[#DDE3ED] dark:from-[#14161F] dark:to-[#0E1016] transition-colors duration-300">
+      <div className="bg-white/70 dark:bg-[#1C1F2B]/80 backdrop-blur-2xl border-b border-black/[0.06] dark:border-white/[0.06] sticky top-0 z-40">
         <div className="px-5 py-3.5 max-w-3xl mx-auto flex items-center gap-3">
           <div className="font-semibold text-[17px] text-slate-900 dark:text-white leading-none tracking-[-0.3px]">Nexus Homes</div>
           <div className="ml-auto flex items-center gap-2.5">
-            <button onClick={()=>setEditMode(e=>!e)} className="text-[12px] font-semibold text-blue-600 dark:text-blue-400 hover:opacity-75 transition-opacity">{editMode?"Done":"Edit"}</button>
+            <button onClick={()=>setEditMode(e=>!e)} className="text-[12px] font-semibold text-teal-600 dark:text-teal-400 hover:opacity-75 transition-opacity">{editMode?"Done":"Edit"}</button>
             <button onClick={onToggleDark}
               className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/15 transition-all"
               title={dark?"Switch to light":"Switch to dark"}>
               <span className="text-[15px] leading-none">{dark?"☀️":"🌙"}</span>
             </button>
-            <button onClick={onSignOut} className="text-[12px] font-semibold text-blue-600 dark:text-blue-400 hover:opacity-75 transition-opacity">Sign out</button>
+            <button onClick={onSignOut} className="text-[12px] font-semibold text-teal-600 dark:text-teal-400 hover:opacity-75 transition-opacity">Sign out</button>
           </div>
         </div>
       </div>
@@ -434,7 +434,7 @@ export default function Home({ onOpenTracker, onSignOut, dark, onToggleDark }) {
                 {orderedItems.map((item, i) => (
                   <SortableTile key={item.key} id={item.key} editMode={editMode}>
                     {item.type === "money" && (
-                      <AppIcon label="Money Tracker" emoji="💰" gradient="from-blue-500 to-blue-700"
+                      <AppIcon label="Money Tracker" emoji="💰" gradient="from-teal-500 to-teal-700"
                         jiggle={editMode} delay={(i%5)*70} onClick={editMode ? undefined : onOpenTracker}/>
                     )}
                     {item.type === "folder" && (
