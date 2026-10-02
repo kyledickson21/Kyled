@@ -87,7 +87,16 @@ update(d => ({...d, properties: [{newField: value}]}))
                                      // monthly (e.g. lender's equity-line rate); the rest
                                      // (interestRate - splitMonthlyRate) accrues to closing
           specialTerms: "",
-          drawFacility: null | {committed: 0, draws: [{id, date, amount}]}
+          drawFacility: null | {committed: 0, draws: [{id, date, amount}]},
+          lockedToProperty: false,   // private-only subtype — "Fixed to Property": can still be
+                                     // moved, but PlaceSplitModal gates the move behind confirming
+                                     // the promissory note/mortgage was updated (see needsNoteConfirm)
+          promissoryNoteUrl: null,   // link to the signed note/mortgage (Drive, etc.) — required
+                                     // in spirit, not enforced at save time: a Fixed-to-Property
+                                     // loan missing this shows a red "Needs Note" flag (LockBadge)
+                                     // everywhere it's listed, plus the Dashboard's "Promissory
+                                     // Notes Needed" card, until a link is added. See
+                                     // needsPromissoryNote() near fmtRate.
         }
       ]
     }
@@ -207,6 +216,7 @@ const update = fn => {
 <DateInp label="..." value={str} onChange={fn} helpText?="..."/>
 <Chip color="green|red|blue|gray|purple">label</Chip>
 <TypeBadge type="private|hard" sm?/>
+<LockBadge loan={loan}/>   {/* Fixed-to-Property private loans only: 🔒 Fixed, or a red Needs Note flag */}
 <Inp label="..." value={str} onChange={fn} money? percent? .../>
 <Sel label="..." value={str} onChange={fn} options={[[value,label], ...]}/>   {/* array of tuples, not {value,label} objects */}
 <MoneyField value={str} onChange={fn} placeholder? .../>   {/* bare $ input, no label — used inside custom layouts */}

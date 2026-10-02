@@ -149,6 +149,11 @@ const fmtRate = (l) => {
   return (l.interestRate||0) + "%/yr";
 };
 
+// A "Fixed to Property" private loan is secured by a promissory note/mortgage against a
+// specific property. It still nags for that paperwork until a link is on file — but only
+// while the loan is active; a closed/rolled loan's paperwork is moot.
+const needsPromissoryNote = loan => loan.loanType==="private" && loan.lockedToProperty && !loan.promissoryNoteUrl && !loan.endDate;
+
 // ─── Privacy context ──────────────────────────────────────────────────────────
 const PrivacyContext = createContext(false);
 const usePrivacy = () => useContext(PrivacyContext);
@@ -454,6 +459,25 @@ const TypeLabel = ({type}) => (
   </span>
 );
 
+// Shown next to TypeBadge/TypeLabel for Fixed-to-Property private loans — a violet 🔒 chip
+// once the promissory note/mortgage link is on file, or a red "needs note" flag (with a
+// HoverTip explaining why) until it is.
+const LockBadge = ({loan}) => {
+  if(!loan||loan.loanType!=="private"||!loan.lockedToProperty) return null;
+  if(needsPromissoryNote(loan)) return (
+    <HoverTip tip="Fixed to this property, but no promissory note / mortgage link is on file yet">
+      <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-full font-semibold text-[10px] px-2 py-0.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0"/>Needs Note
+      </span>
+    </HoverTip>
+  );
+  return (
+    <span title="Fixed to Property — promissory note on file" className="inline-flex items-center gap-1 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 rounded-full font-semibold text-[10px] px-2 py-0.5">
+      🔒 Fixed
+    </span>
+  );
+};
+
 const Chip = ({children,color}) => {
   const cls={
     green: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800",
@@ -622,6 +646,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
     startDate:TODAY, interestType:"percentage", interestRate:"", specialTerms:"", endDate:"", dueDate:"",
     destination:"unassigned",
     paymentType:"closing", monthlyPayment:"", drawFacility:null, splitMonthlyRate:"",
+    lockedToProperty:false, promissoryNoteUrl:"",
     ...(init??{}),
     paymentType: init?.paymentType || (init?.loanType==="hard" ? "monthly_rate" : "closing"),
     monthlyPayment: String(init?.monthlyPayment||""),
@@ -985,6 +1010,29 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
                 <Inp label="Amount ($)" money value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
                 <Btn onClick={addDraw} sm color="navy" full>+ Record Draw</Btn>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+      {currentLoanType==="private"&&(
+        <div className="mt-2 mb-1 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
+          <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 mb-1">Private Loan Type</div>
+          <div className="flex bg-white dark:bg-zinc-900 rounded-lg p-0.5 mb-2 border border-slate-200 dark:border-zinc-700 w-fit">
+            <button type="button" onClick={()=>sf(p=>({...p,lockedToProperty:false}))}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${!f.lockedToProperty?"bg-slate-100 dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400"}`}>Regular</button>
+            <button type="button" onClick={()=>sf(p=>({...p,lockedToProperty:true}))}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${f.lockedToProperty?"bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 shadow-sm":"text-slate-500 dark:text-zinc-400"}`}>Fixed to Property</button>
+          </div>
+          <div className="text-[11px] text-slate-400 dark:text-zinc-500">
+            {f.lockedToProperty
+              ? "Secured by a promissory note / mortgage against the specific property — can still be moved, but moving requires confirming the paperwork was updated first."
+              : "Can be freely placed, split, or moved between properties, same as today."}
+          </div>
+          {f.lockedToProperty&&(
+            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-zinc-700">
+              <Inp label="Promissory Note / Mortgage Link" value={f.promissoryNoteUrl||""} onChange={s("promissoryNoteUrl")}
+                placeholder="https://drive.google.com/…"
+                helpText="Link to wherever the signed note/mortgage is kept. Can add this later — until it's here, this loan shows a needs-attention flag."/>
             </div>
           )}
         </div>
@@ -1470,6 +1518,34 @@ function PlaceSplitModal({ loan, currentPropId=null, properties, onConfirm, onCl
     return p?propConflict(loan.startDate,parseFloat(r.amount)||0,p):null;
   };
   const splitValid=splits.every(r=>r.propId&&parseFloat(r.amount)>0&&!rowConflict(r))&&Math.abs(remaining)<0.01;
+
+  // Fixed-to-Property private money is secured by a promissory note/mortgage against the
+  // specific property it's on — still moveable, but only after confirming that paperwork
+  // gets updated to reflect the new property, so it doesn't just quietly drift out of sync.
+  const needsNoteConfirm = currentPropId!==null && loan.loanType==="private" && loan.lockedToProperty;
+  const [noteConfirmed, setNoteConfirmed] = useState(false);
+  const [noteChecked, setNoteChecked] = useState(false);
+  if (needsNoteConfirm && !noteConfirmed) return (
+    <Modal title={`Move — ${loan.lenderName}`} onClose={onClose}>
+      <div className="mb-4 p-4 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/20">
+        <div className="font-bold text-violet-800 dark:text-violet-300 mb-1">⚠️ Fixed to Property</div>
+        <div className="text-sm text-violet-700 dark:text-violet-400">
+          {loan.lenderName}'s {$$p(loanAmt)} is secured by a promissory note / mortgage against its current
+          property. Moving it to a different property means that paperwork needs to be updated to match —
+          otherwise the note is pointing at the wrong collateral.
+        </div>
+      </div>
+      <label className="flex items-start gap-2.5 mb-4 cursor-pointer">
+        <input type="checkbox" checked={noteChecked} onChange={e=>setNoteChecked(e.target.checked)}
+          className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-zinc-600 accent-violet-600 cursor-pointer shrink-0"/>
+        <span className="text-sm text-slate-700 dark:text-zinc-300">I've updated (or will immediately update) the promissory note / mortgage to reflect this move.</span>
+      </label>
+      <div className="flex gap-2">
+        <Btn onClick={onClose} color="ghost" full>Cancel</Btn>
+        <Btn onClick={()=>setNoteConfirmed(true)} color="purple" full disabled={!noteChecked}>Continue</Btn>
+      </div>
+    </Modal>
+  );
 
   if(!hasViableDest&&!showUnassigned) return (
     <Modal title={`${currentPropId?"Move":"Place"} — ${loan.lenderName}`} onClose={onClose}>
@@ -2780,6 +2856,8 @@ const loanFields = f => ({
   drawFacility:f.drawFacility?{committed:parseFloat(f.drawFacility.committed)||0,draws:f.drawFacility.draws||[]}:null,
   specialTerms:f.specialTerms||"", endDate:f.endDate||null,
   dueDate:f.dueDate||null,
+  lockedToProperty:f.loanType==="private"?!!f.lockedToProperty:false,
+  promissoryNoteUrl:f.loanType==="private"&&f.lockedToProperty?(f.promissoryNoteUrl||null):null,
 });
 // When a loan is split across destinations, a FIXED-dollar interest term (a flat total
 // fee, or a flat monthly payment) has to be prorated by each piece's share of the
@@ -3655,6 +3733,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap mb-1">
                                 <button onClick={()=>openPanel?.({type:'loan',loanId:loan.id,propId:prop.id})} className="font-semibold text-slate-900 dark:text-zinc-100 text-[13px] hover:text-teal-600 dark:hover:text-teal-400 text-left transition-colors">{hn(loan.lenderName)}</button>
+                                <LockBadge loan={loan}/>
                                 {loan.endDate&&<Chip color="gray">Closed {loan.endDate}</Chip>}
                               </div>
                               <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
@@ -4130,7 +4209,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800 dark:text-zinc-200">{h$(l.principal)}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-teal-600 dark:text-teal-400">{h$(bal)}</td>
-                    <td className="px-3 py-3"><TypeLabel type={l.loanType}/></td>
+                    <td className="px-3 py-3"><div className="flex items-center gap-1.5"><TypeLabel type={l.loanType}/><LockBadge loan={l}/></div></td>
                     <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{hr(l)}</td>
                     <td className="px-3 py-3 text-right text-slate-500 dark:text-zinc-400">{l.startDate||"—"}</td>
                     <td className="px-4 py-3 text-right">
@@ -7524,6 +7603,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                         {l.lenderName || "Unknown Lender"}
                       </button>
                       <TypeLabel type={l.loanType}/>
+                      <LockBadge loan={l}/>
                     </div>
                     {l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 shrink-0 whitespace-nowrap transition-colors">Move →</button>}
                   </div>
@@ -8040,6 +8120,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
                         : <span className="font-semibold text-slate-500 dark:text-zinc-400 text-sm">Unassigned</span>
                       }
                       <TypeLabel type={l.loanType}/>
+                      <LockBadge loan={l}/>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       {l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 whitespace-nowrap transition-colors">Move →</button>}
@@ -8140,6 +8221,8 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       splitMonthlyRate: String(loan.splitMonthlyRate??""),
       specialTerms: loan.specialTerms||"",
       drawFacility: loan.drawFacility||null,
+      lockedToProperty: !!loan.lockedToProperty,
+      promissoryNoteUrl: loan.promissoryNoteUrl||"",
     });
     // This is always an existing loan, so every field already holds a real, presumably
     // correct value — start it locked (the same "already-correct data starts protected"
@@ -8207,6 +8290,8 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       splitMonthlyRate: ef.paymentType==="monthly_rate_split"?(ef.splitMonthlyRate!==""?parseFloat(ef.splitMonthlyRate)||0:loan.splitMonthlyRate||0):null,
       specialTerms: ef.specialTerms,
       drawFacility: ef.drawFacility?{committed:parseFloat(ef.drawFacility.committed)||0,draws:ef.drawFacility.draws||[]}:null,
+      lockedToProperty: loan.loanType==="private"?!!ef.lockedToProperty:false,
+      promissoryNoteUrl: loan.loanType==="private"&&ef.lockedToProperty?(ef.promissoryNoteUrl||null):null,
     };
     const applyPatch = l => l.id===loanId?{...l,...patch}:l;
     update(d=>({
@@ -8266,6 +8351,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
                 {loan.endDate ? `Closed ${loan.endDate}` : "Active"}
               </span>
               <TypeLabel type={loan.loanType}/>
+              <LockBadge loan={loan}/>
             </div>
           </div>
           {update && (
@@ -8277,6 +8363,16 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
           )}
         </div>
       </div>
+
+      {!editing&&needsPromissoryNote(loan)&&(
+        <div className="mb-5 p-4 rounded-2xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 flex items-start justify-between gap-3">
+          <div>
+            <div className="font-bold text-red-700 dark:text-red-400 text-sm mb-0.5">🔴 Needs a Promissory Note</div>
+            <div className="text-xs text-red-600/80 dark:text-red-400/80">This loan is Fixed to Property, but no promissory note / mortgage link is on file yet.</div>
+          </div>
+          {update&&<button onClick={openEdit} className="shrink-0 text-xs font-bold text-red-700 dark:text-red-400 hover:underline whitespace-nowrap">+ Add Link</button>}
+        </div>
+      )}
 
       {closeModal&&<CloseLoanModal loan={loan} onConfirm={closeLoan} onClose={()=>setCloseModal(false)}/>}
 
@@ -8411,6 +8507,29 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
               )}
             </div>
           )}
+          {loan.loanType==="private"&&(
+            <div className="mt-3 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
+              <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 mb-1">Private Loan Type</div>
+              <div className="flex bg-white dark:bg-zinc-900 rounded-lg p-0.5 mb-2 border border-slate-200 dark:border-zinc-700 w-fit">
+                <button type="button" onClick={()=>setEf(f=>({...f,lockedToProperty:false}))}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${!ef.lockedToProperty?"bg-slate-100 dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-500 dark:text-zinc-400"}`}>Regular</button>
+                <button type="button" onClick={()=>setEf(f=>({...f,lockedToProperty:true}))}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${ef.lockedToProperty?"bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 shadow-sm":"text-slate-500 dark:text-zinc-400"}`}>Fixed to Property</button>
+              </div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500">
+                {ef.lockedToProperty
+                  ? "Secured by a promissory note / mortgage against the specific property — still moveable, but moving requires confirming the paperwork was updated first."
+                  : "Can be freely placed, split, or moved between properties, same as today."}
+              </div>
+              {ef.lockedToProperty&&(
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-zinc-700">
+                  <Inp label="Promissory Note / Mortgage Link" value={ef.promissoryNoteUrl||""} onChange={v=>setEf(f=>({...f,promissoryNoteUrl:v}))}
+                    placeholder="https://drive.google.com/…"
+                    helpText="Link to wherever the signed note/mortgage is kept. Until this is here, this loan shows a needs-attention flag."/>
+                </div>
+              )}
+            </div>
+          )}
           {efBlockMsg&&<p className="text-[11px] text-red-500 dark:text-red-400 mb-2">{efBlockMsg}</p>}
           {!efAllConfirmed&&<p className="text-[11px] text-red-500 dark:text-red-400 mb-2">Tap ✓ Confirm on every field above before this can be saved.</p>}
           <div className="flex gap-2 mt-4">
@@ -8541,6 +8660,7 @@ const DASHBOARD_CARD_DEFS = [
   { id:"drawsDetail", label:"Draws Available by Property", wide:true },
   { id:"lenderConcentration", label:"Top Lenders by Balance", wide:true },
   { id:"recentClosings", label:"Recently Closed", wide:true },
+  { id:"promissoryNotesNeeded", label:"Promissory Notes Needed", wide:true },
 ];
 const DEFAULT_DASHBOARD_ORDER = DASHBOARD_CARD_DEFS.map(c=>c.id);
 
@@ -8586,6 +8706,12 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const unassignedFunds = (data.unassigned || []).filter(l => !l.endDate);
   const allActiveLoans = activePropsData.flatMap(p => p.loans.filter(l => !l.endDate));
   const allActivePlusUnassigned = [...allActiveLoans, ...unassignedFunds];
+
+  // Fixed-to-Property private loans missing their promissory note / mortgage link.
+  const loansNeedingNotes = [
+    ...activePropsData.flatMap(p => p.loans.filter(needsPromissoryNote).map(l => ({ loan: l, propId: p.id, propAddress: p.address }))),
+    ...unassignedFunds.filter(needsPromissoryNote).map(l => ({ loan: l, propId: null, propAddress: null })),
+  ];
 
   // Loans with a fixed maturity date (not just "due whenever the property sells")
   const loansDueSoon = [
@@ -9074,6 +9200,29 @@ function DashboardPage({ data, update, onNavigateTab }) {
             })}
           </div>
         )}
+      </div>
+    ),
+    promissoryNotesNeeded: loansNeedingNotes.length === 0 ? null : (
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden border border-red-100 dark:border-red-900/40">
+        <div className="w-full px-5 py-4 flex items-center justify-between">
+          <div className="text-left">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400">🔴 Promissory Notes Needed</div>
+            <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Fixed-to-Property loans missing their note/mortgage link</div>
+          </div>
+          <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums shrink-0">{loansNeedingNotes.length}</div>
+        </div>
+        <div className="divide-y divide-slate-50 dark:divide-zinc-800 border-t border-slate-100 dark:border-zinc-800">
+          {loansNeedingNotes.map(({loan: l, propId, propAddress}) => (
+            <button key={l.id} onClick={() => openPanel({ type: 'loan', loanId: l.id, propId })}
+              className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors text-left">
+              <div className="min-w-0">
+                <div className="font-semibold text-sm text-slate-800 dark:text-zinc-200 truncate">{l.lenderName}</div>
+                <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{propAddress||"Unassigned"}</div>
+              </div>
+              <div className="text-sm font-bold text-slate-700 dark:text-zinc-200 tabular-nums shrink-0">{h$(l.principal||0)}</div>
+            </button>
+          ))}
+        </div>
       </div>
     ),
   };
