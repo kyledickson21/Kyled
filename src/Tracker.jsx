@@ -8770,12 +8770,28 @@ function DashboardPage({ data, update, onNavigateTab }) {
   const allActiveLoans = activePropsData.flatMap(p => p.loans.filter(l => !l.endDate));
   const allActivePlusUnassigned = [...allActiveLoans, ...unassignedFunds];
 
-  // Loans with a fixed maturity date (not just "due whenever the property sells")
+  // Loans with a fixed maturity date (not just "due whenever the property sells"), capped
+  // to what's actually "upcoming" — 2 calendar months out — rather than every future due
+  // date regardless of how far off. Already-overdue ones (negative days) still show.
+  const [dueHorizonY, dueHorizonM, dueHorizonD] = TODAY.split("-").map(Number);
+  const dueHorizonDays = Math.floor((new Date(dueHorizonY, dueHorizonM - 1 + 2, dueHorizonD) - new Date(TODAY)) / 864e5);
   const loansDueSoon = [
     ...activePropsData.flatMap(p => p.loans.filter(l => !l.endDate && l.dueDate).map(l => ({ loan: l, propAddress: p.address, propId: p.id }))),
     ...unassignedFunds.filter(l => l.dueDate).map(l => ({ loan: l, propAddress: null, propId: null })),
   ].map(x => ({ ...x, days: Math.floor((new Date(x.loan.dueDate) - new Date(TODAY)) / 864e5) }))
+   .filter(x => x.days <= dueHorizonDays)
    .sort((a, b) => a.days - b.days);
+  // Same lender + same due date, split across multiple properties — combine into a single
+  // row with the combined amount instead of listing that due date once per property.
+  const loansDueSoonGrouped = Object.values(
+    loansDueSoon.reduce((acc, x) => {
+      const key = `${x.loan.lenderName}|${x.loan.dueDate}`;
+      if (!acc[key]) acc[key] = { lenderName: x.loan.lenderName, dueDate: x.loan.dueDate, days: x.days, amount: 0, items: [] };
+      acc[key].amount += x.loan.principal || 0;
+      acc[key].items.push(x);
+      return acc;
+    }, {})
+  );
 
   const unassignedTotal = unassignedFunds.reduce((s, l) => s + (l.principal || 0), 0);
   const activeLendersCount = [...new Set(allActivePlusUnassigned.map(l => l.lenderName).filter(Boolean))].length;
@@ -8810,14 +8826,28 @@ function DashboardPage({ data, update, onNavigateTab }) {
       month: nextFirstDate.toLocaleDateString("en-US", { month: "short" }), day: nextFirstDate.getDate(),
       onClick: () => onNavigateTab("AllLoans:hard"),
     }] : []),
-    ...loansDueSoon.map(({ loan, propAddress, propId, days }) => {
-      const [dy, dm, dd] = loan.dueDate.split("-").map(Number);
+    ...loansDueSoonGrouped.map(({ lenderName, dueDate, days, amount, items }) => {
+      const [dy, dm, dd] = dueDate.split("-").map(Number);
       const dt = new Date(dy, dm - 1, dd);
+      const combined = items.length > 1;
       return {
-        id: loan.id, label: loan.lenderName, sub: propAddress || "Unassigned",
-        amount: loan.principal, days,
+        id: `due-${lenderName}-${dueDate}`, label: lenderName,
+        sub: combined ? (
+          <HoverTip wide tip={
+            <div className="flex flex-col gap-0.5">
+              {items.map(it => (
+                <div key={it.loan.id} className="flex justify-between gap-3">
+                  <span>{it.propAddress || "Unassigned"}</span><span className="font-semibold tabular-nums">{h$(it.loan.principal || 0)}</span>
+                </div>
+              ))}
+            </div>
+          }><span className="underline decoration-dotted underline-offset-2">{items.length} properties combined</span></HoverTip>
+        ) : (items[0].propAddress || "Unassigned"),
+        amount, days,
         month: dt.toLocaleDateString("en-US", { month: "short" }), day: dt.getDate(),
-        onClick: () => openPanel({ type: "loan", loanId: loan.id, propId }),
+        onClick: combined
+          ? () => openPanel({ type: "lender", name: lenderName })
+          : () => openPanel({ type: "loan", loanId: items[0].loan.id, propId: items[0].propId }),
       };
     }),
   ].sort((a, b) => a.days - b.days);
