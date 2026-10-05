@@ -185,6 +185,13 @@ const firstStubAmount = loan => {
   return Math.round((loan.principal||0)*rate/100*(days/360)*100)/100;
 };
 
+// Every split loan's very first payment needs to be collected by hand, whether or not it's
+// actually prorated — autopay can't already be live the moment a loan originates, so even a
+// loan that happens to start on the 1st (a clean, non-prorated first month) still needs that
+// one payment handled manually before the recurring autopay takes over. Falls back to the
+// regular flat monthly amount when firstStubAmount finds no proration to compute.
+const firstPaymentAmount = loan => firstStubAmount(loan) ?? monthlyLoanPayment(loan);
+
 // Apply a patch to a loan wherever it lives — on a property or still unassigned — by id.
 // Spreads the patch onto the existing loan so no other field is ever dropped (see the
 // CLAUDE.md data-safety rule: never destructively overwrite existing fields).
@@ -240,9 +247,12 @@ const getOpenTasks = data => {
   ];
   // Split loans (part paid monthly, part rolled to closing — the only shape where "set up
   // a steady autopay" is genuinely a manual, easy-to-forget step) need two one-off
-  // confirmations that happen outside the app, at the bank: paying the prorated first-month
-  // stub by hand (it's never the same amount as the recurring autopay), and setting up the
-  // recurring autopay itself. Deliberately NOT every isAutopayEligible loan — a hard-money
+  // confirmations that happen outside the app, at the bank: paying the first month by hand,
+  // since autopay can't already be live the moment a loan originates — whether that first
+  // payment is a genuinely prorated stub (see firstStubAmount) or, for a loan that happens
+  // to start on the 1st, just the regular flat amount a cycle early (see firstPaymentAmount)
+  // — and setting up the recurring autopay itself. Deliberately NOT every isAutopayEligible
+  // loan — a hard-money
   // lender on a flat monthly amount (e.g. hard money's own servicer auto-debits) has nothing
   // for Kyle to personally set up, so it shouldn't nag here. One lender can hold several
   // split loans across different properties from the same original placement; those combine
@@ -262,11 +272,11 @@ const getOpenTasks = data => {
   });
   const stubTasks = [], autopayTasks = [];
   Object.entries(splitLoansByLender).forEach(([lenderName,entries])=>{
-    const stubEntries = entries.filter(({loan})=>firstStubAmount(loan)!=null && !loan.stubPaymentConfirmed);
+    const stubEntries = entries.filter(({loan})=>!loan.stubPaymentConfirmed);
     if (stubEntries.length) {
       stubTasks.push({
         lenderName, loanIds: stubEntries.map(({loan})=>loan.id),
-        amount: stubEntries.reduce((s,{loan})=>s+firstStubAmount(loan),0),
+        amount: stubEntries.reduce((s,{loan})=>s+firstPaymentAmount(loan),0),
         properties: [...new Set(stubEntries.map(({propAddress})=>propAddress||"Unassigned"))],
       });
     }
@@ -706,8 +716,8 @@ const TasksCard = ({ data, update, openPanel, onPlaceFund }) => {
         {stubTasks.map(({lenderName,loanIds,amount,properties}) => (
           <CheckableTaskRow key={`stub-${lenderName}`}
             icoBg="bg-teal-50 dark:bg-teal-900/30" icon="🧾"
-            title={`Pay prorated first month — ${lenderName}`}
-            subtitle={`${h$(amount)} combined one-time, outside autopay · ${properties.length===1?properties[0]:`${properties.length} properties`}`}
+            title={`Pay first month by hand — ${lenderName}`}
+            subtitle={`${h$(amount)} combined one-time, before autopay starts · ${properties.length===1?properties[0]:`${properties.length} properties`}`}
             onOpen={() => openPanel({type:'lender', name:lenderName})}
             onCheck={() => update(d => loanIds.reduce((acc,id) => updateLoanById(acc, id, {stubPaymentConfirmed:true}), d))}/>
         ))}

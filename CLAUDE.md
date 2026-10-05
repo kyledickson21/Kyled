@@ -96,12 +96,16 @@ update(d => ({...d, properties: [{newField: value}]}))
                                      // loan missing this shows a red "Needs Note" flag (LockBadge)
                                      // everywhere it's listed, plus a Tasks-widget row, until a
                                      // link is added. See needsPromissoryNote() near fmtRate.
-          stubPaymentConfirmed: false, // monthly_rate_split only — one-time ack that the prorated
-                                     // first monthly payment (see firstStubAmount) was paid by
-                                     // hand outside autopay. Tasks-widget rows for this combine
-                                     // every split loan a lender holds (across properties) into
-                                     // one task with one $ total — Kyle sets up one autopay per
-                                     // lender, not one per property — so checking it off sets this
+          stubPaymentConfirmed: false, // monthly_rate_split only — one-time ack that the loan's
+                                     // very first monthly payment was paid by hand, since autopay
+                                     // can't already be live the moment a loan originates — the
+                                     // amount is a genuine prorated stub when the start date isn't
+                                     // the 1st (see firstStubAmount), or just the regular flat
+                                     // amount a cycle early otherwise (see firstPaymentAmount).
+                                     // Tasks-widget rows for this combine every split loan a
+                                     // lender holds (across properties) into one task with one $
+                                     // total — Kyle sets up one autopay per lender, not one per
+                                     // property — so checking it off sets this
                                      // on every loan in that group at once.
           autopayConfirmedAmount: null, // monthly_rate_split only — $/mo Kyle has confirmed is set
                                      // up as autopay at the lender's bank, tracked per loan but
