@@ -54,7 +54,10 @@ const defaultLenderPaymentSettings = loanType => ({
   firstFullMonthAtClosing: false,   // on top of the stub, ALSO prepay the next full calendar
                                      // month at closing (only meaningful with the stub above)
   dayCountBasis: loanType==="hard" ? 360 : 365,
-  monthlyMethod: "perDiem",         // "perDiem" (actual days that month) or "flat" (rate/12 every time)
+  // Private lenders default to an even $ amount every month (rate÷12, same figure whether
+  // the month has 28 or 31 days) so a monthly or split-rate loan's payment can be set up as
+  // a fixed autopay. Hard money keeps the actual-days-that-month default.
+  monthlyMethod: loanType==="hard" ? "perDiem" : "flat", // "perDiem" (actual days that month) or "flat" (rate/12 every time)
   drawFee: 0,                       // flat $ fee added for each draw captured in a payment
 });
 const resolveLenderSettings = (data, lenderName, loanType) => {
@@ -7888,6 +7891,20 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const active = allLoans.filter(l => !l.endDate);
   const hist = allLoans.filter(l => l.endDate).sort((a,b) => (b.endDate||"").localeCompare(a.endDate||""));
 
+  // Loans whose monthly cash payment is a guaranteed-even $ amount — a fixed-dollar loan
+  // always is, a rate-based monthly/split loan only is when this lender is billed "Flat"
+  // (rate÷12 every time) rather than per-diem, where the real amount shifts with days-in-month.
+  // Surfaced as a single autopay-ready total; per-diem loans are deliberately left out since
+  // quoting one fixed number for them would be wrong more months than not.
+  const flatMethod = resolveLenderSettings(data, name, currentLoanType).monthlyMethod === "flat";
+  const autopayLoans = active.filter(l => {
+    const pt = l.paymentType||"closing";
+    if (pt==="monthly_fixed") return true;
+    if (pt==="monthly_rate"||pt==="monthly_rate_split") return flatMethod;
+    return false;
+  });
+  const autopayTotal = autopayLoans.reduce((s,l) => s + monthlyLoanPayment(l), 0);
+
   const handleMoveConfirm = (loanWithProp, result) => {
     const { prop, ...loan } = loanWithProp; // strip the UI-only `prop` augmentation before persisting
     const srcPropId = prop?.id || null;
@@ -8131,6 +8148,33 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
           </div>
         ))}
       </div>
+
+      {/* Autopay — only shown when at least one active loan has a guaranteed-even monthly $ amount */}
+      {autopayTotal>0.01 && (
+        <div className="mb-4 rounded-2xl bg-teal-50/70 dark:bg-teal-950/15 border border-teal-200 dark:border-teal-900/40 px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-teal-600 dark:text-teal-400 mb-1">💳 Set Up Autopay</div>
+            <div className="text-sm text-slate-600 dark:text-zinc-300">
+              Same amount due every month across {autopayLoans.length} loan{autopayLoans.length!==1?"s":""} — safe to automate.
+            </div>
+            {autopayLoans.length>1 && (
+              <div className="mt-2 space-y-0.5">
+                {autopayLoans.map(l => (
+                  <button key={l.id} onClick={()=>navigate({type:'loan',loanId:l.id,propId:l.prop?.id||null,startEditing:false})}
+                    className="flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors w-full text-left">
+                    <span className="truncate">{l.prop?.address || "Unassigned"}</span>
+                    <span className="tabular-nums shrink-0">{h$(monthlyLoanPayment(l))}/mo</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-2xl font-bold text-teal-700 dark:text-teal-300 tabular-nums">{h$(autopayTotal)}</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500">per month, every month</div>
+          </div>
+        </div>
+      )}
 
       {/* Money Trail — this lender's full history, same computation/grouping/rows as Records → Money Trail filtered to their name */}
       <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
