@@ -5423,21 +5423,10 @@ const SortHd=({col,label,sort,onSort})=>{
   return<button onClick={()=>onSort(col)} className={`text-left text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded transition-colors ${active?"text-teal-600 dark:text-teal-400":"text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>{label}{active?(sort.dir==="desc"?" ↓":" ↑"):""}</button>;
 };
 
-function HistoryPage({ data }) {
-  const prv=usePrivacy();
-  const openPanel=usePanel();
-  const h$=v=>prv?maskMoney($$p(v)):$$p(v);
-  const hs=v=>prv?maskMoney($$ps(v)):$$ps(v);
-  const hn=n=>n??"";
-  const [view,setView]=usePersistedState("nx-histView","trail");
-  const [lf,setLf]=usePersistedState("nx-histLender","all");
-  const [tf,setTf]=usePersistedState("nx-histType","all");
-  const [propSearch,setPropSearch]=useState("");
-  const [ledgerSort,setLedgerSort]=usePersistedState("nx-ledgerSort",{col:"endDate",dir:"desc"});
-  // Rebuilding the whole event ledger (every loan start/close/rollover/overage check plus
-  // every recurring monthly payment, for every property) is real work — memoize it against
-  // `data` so typing in the lender/type/search filters below doesn't redo it on every key.
-  const events=useMemo(()=>{
+// Full cross-portfolio event ledger (every loan start/close/rollover/overage check plus
+// every recurring monthly payment) — shared by HistoryPage (Records → Money Trail) and
+// LenderDetailPage's per-lender trail dropdown, so the two views can never drift apart.
+function computeHistoryEvents(data) {
   const raw=[];
   data.properties.forEach(prop=>{
     prop.loans.forEach(loan=>{
@@ -5646,7 +5635,246 @@ function HistoryPage({ data }) {
       runningTotalThisProperty:outstandingByProp[`${ev.lender}||${ev.propId??"unassigned"}`]};
   });
   return mapped;
-  },[data]);
+}
+
+// Combine same-day, same-lender, same-type events (e.g. one loan split across several
+// properties all starting/closing the same day) into a single row, listing every
+// property underneath instead of repeating a near-identical row per piece.
+function groupTrailEvents(filtered) {
+  const groups=new Map();
+  filtered.forEach(ev=>{
+    // Hard money stays scoped per-property even when grouping (its running total is
+    // per-house, not pooled), so it only groups with same-day/type events on the SAME
+    // property. Private money can still combine across properties (e.g. one loan split
+    // several ways the same day).
+    const key = (ev.etype==="saleSummary"||ev.etype==="overageCheck") ? `solo-${ev.loanId}`
+      : ev.loanType==="hard" ? `${ev.lender}||${ev.date}||${ev.etype}||${ev.propId??"unassigned"}`
+      : `${ev.lender}||${ev.date}||${ev.etype}`;
+    if(!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(ev);
+  });
+  return [...groups.entries()].map(([key,group])=>{
+    if(group.length===1) return group[0];
+    const first=group[0];
+    const last=group[group.length-1];
+    const sameRate = group.every(e=>e.rate===first.rate&&e.interestType===first.interestType);
+    const sameProp = group.every(e=>e.propId===first.propId);
+    return {
+      ...first,
+      _group: group,
+      amount: group.reduce((s,e)=>s+(e.amount||0),0),
+      nc: group.reduce((s,e)=>s+(e.nc||0),0),
+      principal: group.reduce((s,e)=>s+(e.principal||0),0),
+      interest: group.reduce((s,e)=>s+(e.interest||0),0),
+      pp: group.reduce((s,e)=>s+(e.pp||0),0),
+      rate: sameRate ? first.rate : null,
+      property: sameProp ? first.property : `${group.length} properties`,
+      propId: sameProp ? first.propId : null,
+      runningTotal: last.runningTotal,
+      runningTotalThisProperty: last.runningTotalThisProperty,
+      loanId: `group-${key}`,
+    };
+  });
+}
+const TRAIL_IN_CLS="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400";
+const TRAIL_OUT_CLS="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400";
+const TRAIL_CFG={
+  start:       {label:"Loan Started",  icon:"↙", cls:TRAIL_IN_CLS},
+  closed:      {label:"Paid Back",     icon:"↗", cls:TRAIL_OUT_CLS},
+  sold:        {label:"Paid Back",     icon:"↗", cls:TRAIL_OUT_CLS},
+  saleSummary: {label:"Sale Closed",   icon:"↙", cls:TRAIL_IN_CLS},
+  rolled:      {label:"Rolled",        icon:"↙", cls:TRAIL_IN_CLS},
+  hardPayment: {label:"Interest Payment",icon:"↗",cls:TRAIL_OUT_CLS},
+  overageCheck:{label:"Overage Check", icon:"💰", cls:TRAIL_IN_CLS},
+};
+const TRAIL_ROLL_LABEL={rollFull:"Rolled Full",rollPrincipal:"Principal Rolled",payInterest:"Interest Paid — Rolled",waiveInterest:"Interest Waived — Rolled",custom:"Partial Roll"};
+
+// Single row in the Money Trail list — shared by HistoryPage and LenderDetailPage's
+// per-lender trail dropdown so both render identically off the same event shape.
+function TrailEventRow({ ev, openPanel, h$, hn }) {
+  const c=TRAIL_CFG[ev.etype]??TRAIL_CFG.closed;const pos=ev.nc>=0;const roll=ev.etype==="start"&&ev.pp>0;
+  const rateLabel=ev.rate==null?"mixed rates":ev.interestType==="fixed"?"$"+Math.round(ev.rate).toLocaleString()+" fixed":ev.rate+"%/yr";
+  if(ev.etype==="saleSummary"){
+    const cd=ev.closingData;
+    const lenderPrincipals=(cd.lenderPayoffs||[]).reduce((s,lp)=>s+(lp.principalPayoff||0),0);
+    const nexusFunded=Math.max(0,(cd.totalCosts||0)-lenderPrincipals);
+    const wireLenders=(cd.lenderPayoffs||[]).filter(lp=>(lp.wireAmount||0)>0.01);
+    const profitAtClose=(cd.profit||0)-(cd.overageRefund||0);
+    return(
+      <div className="bg-teal-50/70 dark:bg-teal-950/15 border-l-4 border-teal-400 dark:border-teal-500 px-5 py-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 ${TRAIL_IN_CLS}`}>↙</span>
+          <div>
+            <div className="font-bold text-teal-900 dark:text-teal-100">Sale Closed — <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="hover:underline text-left">{ev.property}</button></div>
+            <div className="text-xs text-teal-500 dark:text-teal-400">{ev.date} · For Bookkeepers</div>
+          </div>
+          <div className="ml-auto text-right">
+            <div className="text-[10px] text-teal-400 dark:text-teal-500 uppercase font-semibold">Wire Received</div>
+            <div className="font-bold text-xl text-teal-700 dark:text-teal-300 tabular-nums">{h$(cd.wire)}</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 text-xs">
+          <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
+            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Total Disbursed</div>
+            {cd.cashToClose>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Cash to Close</span><span className="tabular-nums">{h$(cd.cashToClose)}</span></div>}
+            {cd.rehab>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Rehab</span><span className="tabular-nums">{h$(cd.rehab)}</span></div>}
+            {cd.moneyCosts>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Money Costs</span><span className="tabular-nums">{h$(cd.moneyCosts)}</span></div>}
+            {cd.misc>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Misc / Holding</span><span className="tabular-nums">{h$(cd.misc)}</span></div>}
+            <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{h$(cd.totalCosts)}</span></div>
+          </div>
+          <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
+            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Funded By</div>
+            {(cd.lenderPayoffs||[]).map(lp=>(
+              <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
+                <span className="truncate mr-1">{lp.lenderName}{lp.type==="waiveInterest"&&<span className="text-amber-500 dark:text-amber-400 ml-1 text-[10px]">(waived int.)</span>}{lp.type==="alreadyPaid"&&<span className="text-orange-500 dark:text-orange-400 ml-1 text-[10px]">(paid early)</span>}</span>
+                <span className="tabular-nums shrink-0">{h$(lp.principalPayoff)}</span>
+              </div>
+            ))}
+            {nexusFunded>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Self-Funding</span><span className="tabular-nums">{h$(nexusFunded)}</span></div>}
+            <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{h$(cd.totalCosts)}</span></div>
+          </div>
+          <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
+            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Wire Breakdown</div>
+            {wireLenders.map(lp=>(
+              <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
+                <span className="truncate mr-1">{lp.lenderName}</span>
+                <span className="tabular-nums shrink-0">{h$(lp.wireAmount)}</span>
+              </div>
+            ))}
+            {(cd.selfFunded||0)>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Self-Funding</span><span className="tabular-nums">{h$(cd.selfFunded)}</span></div>}
+            <div className="flex justify-between font-semibold text-emerald-600 dark:text-emerald-400">
+              <span>Profit</span>
+              <span className="tabular-nums">{h$(profitAtClose)}</span>
+            </div>
+            {(cd.overageRefund||0)>0.01&&(
+              <div className="flex justify-between text-amber-600 dark:text-amber-400 text-[10px]">
+                <span>+ Overage refund <span className="opacity-70">(post-close)</span></span>
+                <span className="tabular-nums">{h$(cd.overageRefund)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-teal-700 dark:text-teal-300 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{h$(cd.wire)}</span></div>
+          </div>
+        </div>
+        {ev.overageChecks.length>0&&(
+          <div className="mt-3 pt-3 border-t border-teal-100 dark:border-teal-900/40">
+            <div className="text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-widest mb-2">Overage Checks — Received After Closing</div>
+            <div className="space-y-1 text-xs">
+              {ev.overageChecks.map(c=>(
+                <div key={c.id} className="flex justify-between text-slate-600 dark:text-zinc-300">
+                  <span>{overageSourceLabel(c.source)} <span className="text-slate-400 dark:text-zinc-500">· {c.date}</span></span>
+                  <span className="tabular-nums font-medium text-emerald-600 dark:text-emerald-400">+{h$(c.amount)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  if(ev.etype==="overageCheck"){
+    return(
+      <div className="flex items-start gap-3 px-5 py-4 bg-amber-50/60 dark:bg-amber-950/10 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors">
+        <span className="w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">💰</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                <span className="font-mono text-[10px] text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 rounded-md px-1.5 py-0.5">{ev.date}</span>
+                <span className="text-[10px] font-semibold uppercase bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full px-2 py-0.5">Overage Check — {overageSourceLabel(ev.source)}</span>
+              </div>
+              <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{ev.property}</button>
+              {ev.notes&&<div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{ev.notes}</div>}
+              <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Counts toward profit · For Bookkeepers</div>
+            </div>
+            <div className="text-right shrink-0 min-w-[90px]">
+              <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">+{h$(ev.amount)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return(
+    <div className="flex items-start gap-3 px-5 py-4 bg-white dark:bg-[#1C1F2B] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 ${c.cls}`}>{c.icon}</div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-1.5 flex-wrap mb-1">
+              <span className="font-mono text-[10px] text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 rounded-md px-1.5 py-0.5">{ev.date}</span>
+              <span className={`text-[10px] font-semibold uppercase ${c.cls} rounded-full px-2 py-0.5`}>{ev.etype==="rolled"?(TRAIL_ROLL_LABEL[ev.disposition]||"Rolled"):c.label}</span>
+              <TypeLabel type={ev.loanType}/>
+              {roll&&<span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 rounded-full px-2 py-0.5">Rollover</span>}
+            </div>
+            <button onClick={()=>ev.lender&&openPanel?.({type:'lender',name:ev.lender})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{hn(ev.lender)}</button>
+            <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5"><button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className={`${ev.propId?"hover:text-teal-600 dark:hover:text-teal-400 transition-colors":""} text-left`}>{ev.property}</button> · {rateLabel}</div>
+            {roll&&ev.pp>0&&<div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">Rolled from {h$(ev.pp)}</div>}
+            {ev._group&&(
+              <div className="mt-2 space-y-1 border-t border-black/[0.05] dark:border-white/[0.05] pt-1.5">
+                {ev._group.map(g=>(
+                  <div key={g.loanId} className="flex items-center justify-between gap-2 text-[11px] text-slate-400 dark:text-zinc-500">
+                    <button onClick={()=>g.propId&&openPanel?.({type:'property',id:g.propId})} className={`${g.propId?"hover:text-teal-600 dark:hover:text-teal-400 transition-colors":""} text-left truncate`}>{g.property}</button>
+                    <span className="tabular-nums shrink-0">{h$(g.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="text-right shrink-0 min-w-[110px]">
+            {ev.etype==="start"?(
+              <>
+                <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">+{h$(ev.amount)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">Principal {h$(ev.amount)}</div>
+              </>
+            ):ev.etype==="rolled"?(
+              <>
+                <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{h$(ev.amount)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">
+                  Principal {h$(ev.principal)}
+                  {ev.disposition==="waiveInterest"?" · Interest waived":(ev.interest||0)>0.01?` · Interest ${h$(ev.interest)}`:""}
+                </div>
+              </>
+            ):ev.etype==="hardPayment"?(
+              <>
+                <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{h$(ev.amount)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">Interest {h$(ev.amount)}</div>
+              </>
+            ):(
+              <>
+                <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{h$(ev.amount)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">
+                  Principal {h$(ev.principal)}
+                  {ev.disposition==="waiveInterest"?" · Interest waived":(ev.interest||0)>0.01?` · Interest ${h$(ev.interest)}`:""}
+                </div>
+              </>
+            )}
+            {ev.etype!=="saleSummary"&&(
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1.5 pt-1.5 border-t border-black/[0.05] dark:border-white/[0.05] tabular-nums">
+                {ev.loanType==="hard"?"This house":"New total"}: {h$(ev.loanType==="hard"?ev.runningTotalThisProperty:ev.runningTotal)}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HistoryPage({ data }) {
+  const prv=usePrivacy();
+  const openPanel=usePanel();
+  const h$=v=>prv?maskMoney($$p(v)):$$p(v);
+  const hs=v=>prv?maskMoney($$ps(v)):$$ps(v);
+  const hn=n=>n??"";
+  const [view,setView]=usePersistedState("nx-histView","trail");
+  const [lf,setLf]=usePersistedState("nx-histLender","all");
+  const [tf,setTf]=usePersistedState("nx-histType","all");
+  const [propSearch,setPropSearch]=useState("");
+  const [ledgerSort,setLedgerSort]=usePersistedState("nx-ledgerSort",{col:"endDate",dir:"desc"});
+  // Rebuilding the whole event ledger (every loan start/close/rollover/overage check plus
+  // every recurring monthly payment, for every property) is real work — memoize it against
+  // `data` so typing in the lender/type/search filters below doesn't redo it on every key.
+  const events=useMemo(()=>computeHistoryEvents(data),[data]);
   const allL=[...new Set(events.map(e=>e.lender))].sort();
   const filtered=events.filter(e=>{
     if(lf!=="all"&&e.lender!==lf)return false;
@@ -5655,57 +5883,8 @@ function HistoryPage({ data }) {
     const q=propSearch.toLowerCase();
     return[e.property,e.lender,e.date,e.etype,e.loanType,e.disposition,e.interestType,e.source,e.notes].filter(Boolean).join(" ").toLowerCase().includes(q);
   });
-  // Combine same-day, same-lender, same-type events (e.g. one loan split across several
-  // properties all starting/closing the same day) into a single row, listing every
-  // property underneath instead of repeating a near-identical row per piece.
-  const groupedTrail = (() => {
-    const groups=new Map();
-    filtered.forEach(ev=>{
-      // Hard money stays scoped per-property even when grouping (its running total is
-      // per-house, not pooled), so it only groups with same-day/type events on the SAME
-      // property. Private money can still combine across properties (e.g. one loan split
-      // several ways the same day).
-      const key = (ev.etype==="saleSummary"||ev.etype==="overageCheck") ? `solo-${ev.loanId}`
-        : ev.loanType==="hard" ? `${ev.lender}||${ev.date}||${ev.etype}||${ev.propId??"unassigned"}`
-        : `${ev.lender}||${ev.date}||${ev.etype}`;
-      if(!groups.has(key)) groups.set(key,[]);
-      groups.get(key).push(ev);
-    });
-    return [...groups.entries()].map(([key,group])=>{
-      if(group.length===1) return group[0];
-      const first=group[0];
-      const last=group[group.length-1];
-      const sameRate = group.every(e=>e.rate===first.rate&&e.interestType===first.interestType);
-      const sameProp = group.every(e=>e.propId===first.propId);
-      return {
-        ...first,
-        _group: group,
-        amount: group.reduce((s,e)=>s+(e.amount||0),0),
-        nc: group.reduce((s,e)=>s+(e.nc||0),0),
-        principal: group.reduce((s,e)=>s+(e.principal||0),0),
-        interest: group.reduce((s,e)=>s+(e.interest||0),0),
-        pp: group.reduce((s,e)=>s+(e.pp||0),0),
-        rate: sameRate ? first.rate : null,
-        property: sameProp ? first.property : `${group.length} properties`,
-        propId: sameProp ? first.propId : null,
-        runningTotal: last.runningTotal,
-        runningTotalThisProperty: last.runningTotalThisProperty,
-        loanId: `group-${key}`,
-      };
-    });
-  })();
-  const inCls="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400";
-  const outCls="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400";
-  const cfg={
-    start:       {label:"Loan Started",  icon:"↙", cls:inCls},
-    closed:      {label:"Paid Back",     icon:"↗", cls:outCls},
-    sold:        {label:"Paid Back",     icon:"↗", cls:outCls},
-    saleSummary: {label:"Sale Closed",   icon:"↙", cls:inCls},
-    rolled:      {label:"Rolled",        icon:"↙", cls:inCls},
-    hardPayment: {label:"Interest Payment",icon:"↗",cls:outCls},
-    overageCheck:{label:"Overage Check", icon:"💰", cls:inCls},
-  };
-  const rollLabel={rollFull:"Rolled Full",rollPrincipal:"Principal Rolled",payInterest:"Interest Paid — Rolled",waiveInterest:"Interest Waived — Rolled",custom:"Partial Roll"};
+  const groupedTrail = groupTrailEvents(filtered);
+  const rollLabel=TRAIL_ROLL_LABEL;
   const rollingTypes=["rollFull","rollPrincipal","payInterest","waiveInterest","custom"];
   const closedLoans=[];
   data.properties.forEach(prop=>{
@@ -5835,174 +6014,9 @@ function HistoryPage({ data }) {
       {view==="trail"&&<>
       {!groupedTrail.length&&<div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">📋</div><p className="font-semibold">No transactions yet</p></div>}
       <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none divide-y divide-black/[0.05] dark:divide-white/[0.05]">
-        {[...groupedTrail].reverse().map((ev,i)=>{
-          const c=cfg[ev.etype]??cfg.closed;const pos=ev.nc>=0;const roll=ev.etype==="start"&&ev.pp>0;
-          const rateLabel=ev.rate==null?"mixed rates":ev.interestType==="fixed"?"$"+Math.round(ev.rate).toLocaleString()+" fixed":ev.rate+"%/yr";
-          if(ev.etype==="saleSummary"){
-            const cd=ev.closingData;
-            const lenderPrincipals=(cd.lenderPayoffs||[]).reduce((s,lp)=>s+(lp.principalPayoff||0),0);
-            const nexusFunded=Math.max(0,(cd.totalCosts||0)-lenderPrincipals);
-            const wireLenders=(cd.lenderPayoffs||[]).filter(lp=>(lp.wireAmount||0)>0.01);
-            const profitAtClose=(cd.profit||0)-(cd.overageRefund||0);
-            return(
-              <div key={ev.loanId} className="bg-teal-50/70 dark:bg-teal-950/15 border-l-4 border-teal-400 dark:border-teal-500 px-5 py-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 ${inCls}`}>↙</span>
-                  <div>
-                    <div className="font-bold text-teal-900 dark:text-teal-100">Sale Closed — <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="hover:underline text-left">{ev.property}</button></div>
-                    <div className="text-xs text-teal-500 dark:text-teal-400">{ev.date} · For Bookkeepers</div>
-                  </div>
-                  <div className="ml-auto text-right">
-                    <div className="text-[10px] text-teal-400 dark:text-teal-500 uppercase font-semibold">Wire Received</div>
-                    <div className="font-bold text-xl text-teal-700 dark:text-teal-300 tabular-nums">{h$(cd.wire)}</div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3 text-xs">
-                  <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
-                    <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Total Disbursed</div>
-                    {cd.cashToClose>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Cash to Close</span><span className="tabular-nums">{h$(cd.cashToClose)}</span></div>}
-                    {cd.rehab>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Rehab</span><span className="tabular-nums">{h$(cd.rehab)}</span></div>}
-                    {cd.moneyCosts>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Money Costs</span><span className="tabular-nums">{h$(cd.moneyCosts)}</span></div>}
-                    {cd.misc>0&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Misc / Holding</span><span className="tabular-nums">{h$(cd.misc)}</span></div>}
-                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{h$(cd.totalCosts)}</span></div>
-                  </div>
-                  <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
-                    <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Funded By</div>
-                    {(cd.lenderPayoffs||[]).map(lp=>(
-                      <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
-                        <span className="truncate mr-1">{lp.lenderName}{lp.type==="waiveInterest"&&<span className="text-amber-500 dark:text-amber-400 ml-1 text-[10px]">(waived int.)</span>}{lp.type==="alreadyPaid"&&<span className="text-orange-500 dark:text-orange-400 ml-1 text-[10px]">(paid early)</span>}</span>
-                        <span className="tabular-nums shrink-0">{h$(lp.principalPayoff)}</span>
-                      </div>
-                    ))}
-                    {nexusFunded>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Self-Funding</span><span className="tabular-nums">{h$(nexusFunded)}</span></div>}
-                    <div className="flex justify-between font-bold text-slate-900 dark:text-zinc-100 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>Total</span><span className="tabular-nums">{h$(cd.totalCosts)}</span></div>
-                  </div>
-                  <div className="bg-black/[0.02] dark:bg-white/[0.04] rounded-xl p-3 space-y-1.5">
-                    <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Wire Breakdown</div>
-                    {wireLenders.map(lp=>(
-                      <div key={lp.loanId} className="flex justify-between text-slate-600 dark:text-zinc-300">
-                        <span className="truncate mr-1">{lp.lenderName}</span>
-                        <span className="tabular-nums shrink-0">{h$(lp.wireAmount)}</span>
-                      </div>
-                    ))}
-                    {(cd.selfFunded||0)>0.01&&<div className="flex justify-between text-slate-600 dark:text-zinc-300"><span>Nexus Self-Funding</span><span className="tabular-nums">{h$(cd.selfFunded)}</span></div>}
-                    <div className="flex justify-between font-semibold text-emerald-600 dark:text-emerald-400">
-                      <span>Profit</span>
-                      <span className="tabular-nums">{h$(profitAtClose)}</span>
-                    </div>
-                    {(cd.overageRefund||0)>0.01&&(
-                      <div className="flex justify-between text-amber-600 dark:text-amber-400 text-[10px]">
-                        <span>+ Overage refund <span className="opacity-70">(post-close)</span></span>
-                        <span className="tabular-nums">{h$(cd.overageRefund)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between font-bold text-teal-700 dark:text-teal-300 border-t border-black/[0.06] dark:border-white/[0.06] pt-1.5 mt-0.5"><span>= Wire</span><span className="tabular-nums">{h$(cd.wire)}</span></div>
-                  </div>
-                </div>
-                {ev.overageChecks.length>0&&(
-                  <div className="mt-3 pt-3 border-t border-teal-100 dark:border-teal-900/40">
-                    <div className="text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-widest mb-2">Overage Checks — Received After Closing</div>
-                    <div className="space-y-1 text-xs">
-                      {ev.overageChecks.map(c=>(
-                        <div key={c.id} className="flex justify-between text-slate-600 dark:text-zinc-300">
-                          <span>{overageSourceLabel(c.source)} <span className="text-slate-400 dark:text-zinc-500">· {c.date}</span></span>
-                          <span className="tabular-nums font-medium text-emerald-600 dark:text-emerald-400">+{h$(c.amount)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          }
-          if(ev.etype==="overageCheck"){
-            return(
-              <div key={ev.loanId} className="flex items-start gap-3 px-5 py-4 bg-amber-50/60 dark:bg-amber-950/10 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors">
-                <span className="w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">💰</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                        <span className="font-mono text-[10px] text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 rounded-md px-1.5 py-0.5">{ev.date}</span>
-                        <span className="text-[10px] font-semibold uppercase bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full px-2 py-0.5">Overage Check — {overageSourceLabel(ev.source)}</span>
-                      </div>
-                      <button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{ev.property}</button>
-                      {ev.notes&&<div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{ev.notes}</div>}
-                      <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Counts toward profit · For Bookkeepers</div>
-                    </div>
-                    <div className="text-right shrink-0 min-w-[90px]">
-                      <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">+{h$(ev.amount)}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-          return(
-            <div key={`${ev.loanId}-${ev.etype}-${i}`} className="flex items-start gap-3 px-5 py-4 bg-white dark:bg-[#1C1F2B] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 ${c.cls}`}>{c.icon}</div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                      <span className="font-mono text-[10px] text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 rounded-md px-1.5 py-0.5">{ev.date}</span>
-                      <span className={`text-[10px] font-semibold uppercase ${c.cls} rounded-full px-2 py-0.5`}>{ev.etype==="rolled"?(rollLabel[ev.disposition]||"Rolled"):c.label}</span>
-                      <TypeLabel type={ev.loanType}/>
-                      {roll&&<span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 rounded-full px-2 py-0.5">Rollover</span>}
-                    </div>
-                    <button onClick={()=>ev.lender&&openPanel?.({type:'lender',name:ev.lender})} className="font-bold text-slate-900 dark:text-zinc-100 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{hn(ev.lender)}</button>
-                    <div className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5"><button onClick={()=>ev.propId&&openPanel?.({type:'property',id:ev.propId})} className={`${ev.propId?"hover:text-teal-600 dark:hover:text-teal-400 transition-colors":""} text-left`}>{ev.property}</button> · {rateLabel}</div>
-                    {roll&&ev.pp>0&&<div className="text-xs text-violet-500 dark:text-violet-400 mt-0.5 tabular-nums">Rolled from {h$(ev.pp)}</div>}
-                    {ev._group&&(
-                      <div className="mt-2 space-y-1 border-t border-black/[0.05] dark:border-white/[0.05] pt-1.5">
-                        {ev._group.map(g=>(
-                          <div key={g.loanId} className="flex items-center justify-between gap-2 text-[11px] text-slate-400 dark:text-zinc-500">
-                            <button onClick={()=>g.propId&&openPanel?.({type:'property',id:g.propId})} className={`${g.propId?"hover:text-teal-600 dark:hover:text-teal-400 transition-colors":""} text-left truncate`}>{g.property}</button>
-                            <span className="tabular-nums shrink-0">{h$(g.amount)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-right shrink-0 min-w-[110px]">
-                    {ev.etype==="start"?(
-                      <>
-                        <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">+{h$(ev.amount)}</div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">Principal {h$(ev.amount)}</div>
-                      </>
-                    ):ev.etype==="rolled"?(
-                      <>
-                        <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{h$(ev.amount)}</div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">
-                          Principal {h$(ev.principal)}
-                          {ev.disposition==="waiveInterest"?" · Interest waived":(ev.interest||0)>0.01?` · Interest ${h$(ev.interest)}`:""}
-                        </div>
-                      </>
-                    ):ev.etype==="hardPayment"?(
-                      <>
-                        <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{h$(ev.amount)}</div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">Interest {h$(ev.amount)}</div>
-                      </>
-                    ):(
-                      <>
-                        <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{h$(ev.amount)}</div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">
-                          Principal {h$(ev.principal)}
-                          {ev.disposition==="waiveInterest"?" · Interest waived":(ev.interest||0)>0.01?` · Interest ${h$(ev.interest)}`:""}
-                        </div>
-                      </>
-                    )}
-                    {ev.etype!=="saleSummary"&&(
-                      <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1.5 pt-1.5 border-t border-black/[0.05] dark:border-white/[0.05] tabular-nums">
-                        {ev.loanType==="hard"?"This house":"New total"}: {h$(ev.loanType==="hard"?ev.runningTotalThisProperty:ev.runningTotal)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {[...groupedTrail].reverse().map((ev,i)=>(
+          <TrailEventRow key={`${ev.loanId}-${ev.etype}-${i}`} ev={ev} openPanel={openPanel} h$={h$} hn={hn}/>
+        ))}
       </div>
       {filtered.length>0&&(()=>{
         const principalNet=filtered.reduce((s,e)=>(e.etype==="saleSummary"||e.etype==="overageCheck")?s:s+(e.nc||0),0);
@@ -7833,10 +7847,13 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
 function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
+  const hs = v => prv ? maskMoney($$ps(v)) : $$ps(v);
+  const hn = n => n ?? "";
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
   const [editing, setEditing] = useState(false);
   const [expandedYears, setExpandedYears] = useState({});
   const [moveLoan, setMoveLoan] = useState(null);
+  const [trailOpen, setTrailOpen] = useState(false);
   const [editName, setEditName] = useState(name);
   const [editType, setEditType] = useState(() => {
     const loans = [
@@ -7984,6 +8001,14 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
 
   const account = (data.lenderAccounts||[]).find(a => a.name === name || a.lenderName === name);
 
+  // Full money-trail history, scoped to just this lender — identical computation and
+  // grouping to the Records → Money Trail tab filtered to the same name, since both
+  // pull from the same shared computeHistoryEvents/groupTrailEvents helpers.
+  const allHistoryEvents = useMemo(() => computeHistoryEvents(data), [data]);
+  const lenderTrailFiltered = allHistoryEvents.filter(e => e.lender === name);
+  const lenderGroupedTrail = groupTrailEvents(lenderTrailFiltered);
+  const trailNet = lenderTrailFiltered.reduce((s,e) => (e.etype==="saleSummary"||e.etype==="overageCheck") ? s : s+(e.nc||0), 0);
+
   return (
     <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
       <div className="mb-5">
@@ -8105,6 +8130,38 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
             <div className={`text-lg font-bold tabular-nums ${color}`}>{val}</div>
           </div>
         ))}
+      </div>
+
+      {/* Money Trail — this lender's full history, same computation/grouping/rows as Records → Money Trail filtered to their name */}
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
+        <button onClick={() => setTrailOpen(o => !o)}
+          className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400">📋 Money Trail</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xs text-slate-400 dark:text-zinc-500">{lenderGroupedTrail.length} event{lenderGroupedTrail.length!==1?"s":""}</div>
+            <span className="text-slate-300 dark:text-zinc-600 text-xs">{trailOpen ? "▲" : "▼"}</span>
+          </div>
+        </button>
+        {trailOpen && (
+          <div className="border-t border-slate-100 dark:border-zinc-800">
+            {!lenderGroupedTrail.length
+              ? <div className="text-center py-10 text-slate-400 dark:text-zinc-500 text-sm">No transactions yet</div>
+              : <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+                  {[...lenderGroupedTrail].reverse().map((ev,i) => (
+                    <TrailEventRow key={`${ev.loanId}-${ev.etype}-${i}`} ev={ev} openPanel={navigate} h$={h$} hn={hn}/>
+                  ))}
+                </div>}
+            {lenderGroupedTrail.length>0 && (
+              <div className="px-5 py-3.5 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Net Outstanding</div>
+                  <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Sum of principal in/out for events shown above</div>
+                </div>
+                <div className={`text-xl font-bold tabular-nums ${trailNet>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{hs(trailNet)}</div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Account info */}
