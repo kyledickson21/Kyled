@@ -96,16 +96,25 @@ update(d => ({...d, properties: [{newField: value}]}))
                                      // loan missing this shows a red "Needs Note" flag (LockBadge)
                                      // everywhere it's listed, plus a Tasks-widget row, until a
                                      // link is added. See needsPromissoryNote() near fmtRate.
-          stubPaymentConfirmed: false, // one-time ack that the prorated first monthly payment
-                                     // (see firstStubAmount) was paid by hand outside autopay —
-                                     // surfaced as a Tasks-widget row until checked off
-          autopayConfirmedAmount: null, // $/mo Kyle has confirmed is set up as autopay at the
-                                     // lender's bank, for a Flat-billed monthly/split/fixed loan
-                                     // (see isAutopayEligible). null = never set up. If it stops
-                                     // matching the loan's current monthlyLoanPayment() — principal
-                                     // paid down, rate changed, etc. — the Tasks widget reopens
+          stubPaymentConfirmed: false, // monthly_rate_split only — one-time ack that the prorated
+                                     // first monthly payment (see firstStubAmount) was paid by
+                                     // hand outside autopay. Tasks-widget rows for this combine
+                                     // every split loan a lender holds (across properties) into
+                                     // one task with one $ total — Kyle sets up one autopay per
+                                     // lender, not one per property — so checking it off sets this
+                                     // on every loan in that group at once.
+          autopayConfirmedAmount: null, // monthly_rate_split only — $/mo Kyle has confirmed is set
+                                     // up as autopay at the lender's bank, tracked per loan but
+                                     // compared/combined per lender (see getOpenTasks). null = never
+                                     // set up. If the lender's combined total no longer matches
+                                     // what's actually owed each month (principal paid down, rate
+                                     // changed, a property added/closed) the Tasks widget reopens
                                      // this as an "update autopay amount" task rather than leaving
-                                     // it silently stale.
+                                     // it silently stale. Deliberately NOT shown for every
+                                     // isAutopayEligible loan — only the split-payment structure
+                                     // is manual/easy-to-forget enough to need this nagging (a
+                                     // plain hard-money fixed-$ loan like Kiavi has nothing for
+                                     // Kyle to personally set up and is excluded).
         }
       ]
     }

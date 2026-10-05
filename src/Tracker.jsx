@@ -238,26 +238,46 @@ const getOpenTasks = data => {
     ...activePropsData.flatMap(p=>p.loans.filter(needsPromissoryNote).map(l=>({loan:l,propId:p.id,propAddress:p.address}))),
     ...unassignedFunds.filter(needsPromissoryNote).map(l=>({loan:l,propId:null,propAddress:null})),
   ];
-  // Autopay loans (see isAutopayEligible) need two one-off confirmations that happen
-  // outside the app, at the bank: paying the prorated first-month stub by hand (since it's
-  // never the same amount as the recurring autopay), and setting up the recurring autopay
-  // itself. Both are tracked per loan (stubPaymentConfirmed / autopayConfirmedAmount) so
-  // they only show up once, EXCEPT autopay re-opens itself — as a fresh task, not still
-  // "done" — the moment the confirmed amount no longer matches what's actually owed each
-  // month (principal paid down, rate changed, etc.), since the standing bank payment would
-  // otherwise quietly fall out of sync with the loan.
-  const allActiveLoans = [
-    ...activePropsData.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>({loan:l,propId:p.id,propAddress:p.address}))),
-    ...unassignedFunds.map(l=>({loan:l,propId:null,propAddress:null})),
-  ];
+  // Split loans (part paid monthly, part rolled to closing — the only shape where "set up
+  // a steady autopay" is genuinely a manual, easy-to-forget step) need two one-off
+  // confirmations that happen outside the app, at the bank: paying the prorated first-month
+  // stub by hand (it's never the same amount as the recurring autopay), and setting up the
+  // recurring autopay itself. Deliberately NOT every isAutopayEligible loan — a hard-money
+  // lender on a flat monthly amount (e.g. hard money's own servicer auto-debits) has nothing
+  // for Kyle to personally set up, so it shouldn't nag here. One lender can hold several
+  // split loans across different properties from the same original placement; those combine
+  // into a single task with one combined $ total, since Kyle sets up one autopay per lender,
+  // not one per property. Both confirmations are tracked per loan (stubPaymentConfirmed /
+  // autopayConfirmedAmount) so the combined task only shows up once, EXCEPT autopay reopens
+  // itself — as a fresh task, not still "done" — the moment the confirmed total no longer
+  // matches what's actually owed each month (principal paid down, rate changed, a property
+  // added/closed, etc.), since the standing bank payment would otherwise quietly fall out of
+  // sync with the loans.
+  const splitLoansByLender = {};
+  activePropsData.forEach(p=>p.loans.filter(l=>!l.endDate&&l.paymentType==="monthly_rate_split").forEach(loan=>{
+    (splitLoansByLender[loan.lenderName] ||= []).push({loan,propId:p.id,propAddress:p.address});
+  }));
+  unassignedFunds.filter(l=>l.paymentType==="monthly_rate_split").forEach(loan=>{
+    (splitLoansByLender[loan.lenderName] ||= []).push({loan,propId:null,propAddress:null});
+  });
   const stubTasks = [], autopayTasks = [];
-  allActiveLoans.forEach(({loan,propId,propAddress})=>{
-    if (!isAutopayEligible(loan,data)) return;
-    const stub = firstStubAmount(loan);
-    if (stub!=null && !loan.stubPaymentConfirmed) stubTasks.push({loan,propId,propAddress,amount:stub});
-    const current = monthlyLoanPayment(loan);
-    if (current>0 && (loan.autopayConfirmedAmount==null || Math.round(loan.autopayConfirmedAmount)!==current)) {
-      autopayTasks.push({loan,propId,propAddress,amount:current,isUpdate:loan.autopayConfirmedAmount!=null});
+  Object.entries(splitLoansByLender).forEach(([lenderName,entries])=>{
+    const stubEntries = entries.filter(({loan})=>firstStubAmount(loan)!=null && !loan.stubPaymentConfirmed);
+    if (stubEntries.length) {
+      stubTasks.push({
+        lenderName, loanIds: stubEntries.map(({loan})=>loan.id),
+        amount: stubEntries.reduce((s,{loan})=>s+firstStubAmount(loan),0),
+        properties: [...new Set(stubEntries.map(({propAddress})=>propAddress||"Unassigned"))],
+      });
+    }
+    const current = entries.reduce((s,{loan})=>s+monthlyLoanPayment(loan),0);
+    const confirmed = entries.reduce((s,{loan})=>s+(loan.autopayConfirmedAmount||0),0);
+    const neverConfirmed = entries.some(({loan})=>loan.autopayConfirmedAmount==null);
+    if (current>0 && (neverConfirmed || Math.round(confirmed)!==current)) {
+      autopayTasks.push({
+        lenderName, loanIds: entries.map(({loan})=>loan.id), amount: current, isUpdate: !neverConfirmed,
+        properties: [...new Set(entries.map(({propAddress})=>propAddress||"Unassigned"))],
+      });
     }
   });
   return { noteTasks, assignTasks: unassignedFunds, stubTasks, autopayTasks };
@@ -683,21 +703,26 @@ const TasksCard = ({ data, update, openPanel, onPlaceFund }) => {
             <span className="text-slate-300 dark:text-zinc-600 text-xs shrink-0">→</span>
           </button>
         ))}
-        {stubTasks.map(({loan,propId,propAddress,amount}) => (
-          <CheckableTaskRow key={`stub-${loan.id}`}
+        {stubTasks.map(({lenderName,loanIds,amount,properties}) => (
+          <CheckableTaskRow key={`stub-${lenderName}`}
             icoBg="bg-teal-50 dark:bg-teal-900/30" icon="🧾"
-            title={`Pay prorated first month — ${loan.lenderName}`}
-            subtitle={`${propAddress||"Unassigned"} · ${h$(amount)} one-time, outside autopay`}
-            onOpen={() => openPanel({type:'loan', loanId:loan.id, propId})}
-            onCheck={() => update(d => updateLoanById(d, loan.id, {stubPaymentConfirmed:true}))}/>
+            title={`Pay prorated first month — ${lenderName}`}
+            subtitle={`${h$(amount)} combined one-time, outside autopay · ${properties.length===1?properties[0]:`${properties.length} properties`}`}
+            onOpen={() => openPanel({type:'lender', name:lenderName})}
+            onCheck={() => update(d => loanIds.reduce((acc,id) => updateLoanById(acc, id, {stubPaymentConfirmed:true}), d))}/>
         ))}
-        {autopayTasks.map(({loan,propId,propAddress,amount,isUpdate}) => (
-          <CheckableTaskRow key={`autopay-${loan.id}`}
+        {autopayTasks.map(({lenderName,loanIds,amount,isUpdate,properties}) => (
+          <CheckableTaskRow key={`autopay-${lenderName}`}
             icoBg="bg-teal-50 dark:bg-teal-900/30" icon="💳"
-            title={isUpdate ? `Update autopay amount — ${loan.lenderName}` : `Set up autopay — ${loan.lenderName}`}
-            subtitle={`${propAddress||"Unassigned"} · ${h$(amount)}/mo${isUpdate?" (changed)":""}`}
-            onOpen={() => openPanel({type:'loan', loanId:loan.id, propId})}
-            onCheck={() => update(d => updateLoanById(d, loan.id, {autopayConfirmedAmount:amount}))}/>
+            title={isUpdate ? `Update autopay amount — ${lenderName}` : `Set up autopay — ${lenderName}`}
+            subtitle={`${h$(amount)}/mo combined${isUpdate?" (changed)":""} · ${properties.length===1?properties[0]:`${properties.length} properties`}`}
+            onOpen={() => openPanel({type:'lender', name:lenderName})}
+            onCheck={() => update(d => loanIds.reduce((acc,id) => {
+              // Look up each loan fresh in `acc` so its own confirmed amount matches its own
+              // current monthly payment, not a stale render-time snapshot.
+              const loan = acc.properties.flatMap(p=>p.loans).concat(acc.unassigned||[]).find(l=>l.id===id);
+              return loan ? updateLoanById(acc, id, {autopayConfirmedAmount: monthlyLoanPayment(loan)}) : acc;
+            }, d))}/>
         ))}
       </div>
     </div>
