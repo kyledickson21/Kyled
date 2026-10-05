@@ -157,6 +157,43 @@ const monthlyLoanPayment = loan => {
   return 0;
 };
 
+// Whether a loan's monthly cash payment is a guaranteed-even $ amount — a fixed-$ loan
+// always is; a rate-based monthly/split loan only is when its lender bills "Flat" rather
+// than per-diem (see resolveLenderSettings). Shared by LenderDetailPage's autopay card and
+// the Tasks widget so both agree on which loans are autopay-eligible.
+const isAutopayEligible = (loan, data) => {
+  const pt = loan.paymentType||"closing";
+  if (pt==="monthly_fixed") return true;
+  if (pt==="monthly_rate"||pt==="monthly_rate_split") return resolveLenderSettings(data, loan.lenderName, loan.loanType).monthlyMethod==="flat";
+  return false;
+};
+
+// The prorated first monthly payment for a Flat-billed monthly/split loan whose start date
+// doesn't land on the 1st — null when there's no stub to prorate. Mirrors the real billing
+// schedule's first-period logic (see calcMonthlyPaidPortion / addHardPayments) so the Tasks
+// widget's one-time "pay the manual prorated amount" reminder matches what's actually owed.
+const firstStubAmount = loan => {
+  const pt = loan.paymentType||"closing";
+  if ((pt!=="monthly_rate"&&pt!=="monthly_rate_split")||!loan.startDate) return null;
+  const rate = pt==="monthly_rate_split" ? (loan.splitMonthlyRate||0) : (loan.interestRate||0);
+  const [sy,sm] = loan.startDate.split('-').map(Number);
+  let cy=sy, cm=sm+1; if(cm>12){cm=1;cy+=1;}
+  const dateStr = `${cy}-${String(cm).padStart(2,'0')}-01`;
+  let py=cy, pm=cm-1; if(pm<1){pm=12;py-=1;}
+  if (loan.startDate===`${py}-${String(pm).padStart(2,'0')}-01`) return null; // starts on the 1st — no stub
+  const days = daysBetween(loan.startDate,dateStr);
+  return Math.round((loan.principal||0)*rate/100*(days/360)*100)/100;
+};
+
+// Apply a patch to a loan wherever it lives — on a property or still unassigned — by id.
+// Spreads the patch onto the existing loan so no other field is ever dropped (see the
+// CLAUDE.md data-safety rule: never destructively overwrite existing fields).
+const updateLoanById = (d, loanId, patch) => ({
+  ...d,
+  properties: d.properties.map(p => ({...p, loans: p.loans.map(l => l.id===loanId ? {...l,...patch} : l)})),
+  unassigned: (d.unassigned||[]).map(l => l.id===loanId ? {...l,...patch} : l),
+});
+
 const drawRemaining = loan => {
   if (!loan?.drawFacility) return 0;
   const drawn=(loan.drawFacility.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
@@ -201,7 +238,29 @@ const getOpenTasks = data => {
     ...activePropsData.flatMap(p=>p.loans.filter(needsPromissoryNote).map(l=>({loan:l,propId:p.id,propAddress:p.address}))),
     ...unassignedFunds.filter(needsPromissoryNote).map(l=>({loan:l,propId:null,propAddress:null})),
   ];
-  return { noteTasks, assignTasks: unassignedFunds };
+  // Autopay loans (see isAutopayEligible) need two one-off confirmations that happen
+  // outside the app, at the bank: paying the prorated first-month stub by hand (since it's
+  // never the same amount as the recurring autopay), and setting up the recurring autopay
+  // itself. Both are tracked per loan (stubPaymentConfirmed / autopayConfirmedAmount) so
+  // they only show up once, EXCEPT autopay re-opens itself — as a fresh task, not still
+  // "done" — the moment the confirmed amount no longer matches what's actually owed each
+  // month (principal paid down, rate changed, etc.), since the standing bank payment would
+  // otherwise quietly fall out of sync with the loan.
+  const allActiveLoans = [
+    ...activePropsData.flatMap(p=>p.loans.filter(l=>!l.endDate).map(l=>({loan:l,propId:p.id,propAddress:p.address}))),
+    ...unassignedFunds.map(l=>({loan:l,propId:null,propAddress:null})),
+  ];
+  const stubTasks = [], autopayTasks = [];
+  allActiveLoans.forEach(({loan,propId,propAddress})=>{
+    if (!isAutopayEligible(loan,data)) return;
+    const stub = firstStubAmount(loan);
+    if (stub!=null && !loan.stubPaymentConfirmed) stubTasks.push({loan,propId,propAddress,amount:stub});
+    const current = monthlyLoanPayment(loan);
+    if (current>0 && (loan.autopayConfirmedAmount==null || Math.round(loan.autopayConfirmedAmount)!==current)) {
+      autopayTasks.push({loan,propId,propAddress,amount:current,isUpdate:loan.autopayConfirmedAmount!=null});
+    }
+  });
+  return { noteTasks, assignTasks: unassignedFunds, stubTasks, autopayTasks };
 };
 
 // ─── Privacy context ──────────────────────────────────────────────────────────
@@ -539,11 +598,29 @@ const IcoStatArrow = () => (
   </svg>
 );
 
-const TasksCard = ({ data, openPanel, onPlaceFund }) => {
+// A manual, outside-the-app confirmation task (pay the stub, set up autopay) — the row
+// still jumps to the loan on click like every other task, but also carries its own
+// checkmark button that marks it done directly, since there's no in-app flow to land on.
+const CheckableTaskRow = ({ icoBg, icon, title, subtitle, onOpen, onCheck }) => (
+  <div className="w-full flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/40 transition-colors">
+    <button onClick={onOpen} className="flex-1 min-w-0 px-5 py-3.5 flex items-center gap-3 text-left">
+      <span className={`w-8 h-8 rounded-full ${icoBg} flex items-center justify-center text-base shrink-0`}>{icon}</span>
+      <div className="min-w-0">
+        <div className="font-semibold text-sm text-slate-800 dark:text-zinc-200 truncate">{title}</div>
+        <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{subtitle}</div>
+      </div>
+    </button>
+    <button onClick={e=>{e.stopPropagation();onCheck();}} title="Mark as done"
+      className="shrink-0 mr-5 w-7 h-7 rounded-full border-2 border-slate-300 dark:border-zinc-600 text-transparent hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 flex items-center justify-center text-xs font-bold transition-colors">✓</button>
+  </div>
+);
+
+const TasksCard = ({ data, update, openPanel, onPlaceFund }) => {
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
-  const { noteTasks, assignTasks } = getOpenTasks(data);
-  const total = noteTasks.length + assignTasks.length;
+  const { noteTasks, assignTasks, stubTasks, autopayTasks } = getOpenTasks(data);
+  const autopayCount = stubTasks.length + autopayTasks.length;
+  const total = noteTasks.length + assignTasks.length + autopayCount;
   if (total === 0) return null;
   return (
     <div className="mb-4 bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden border border-slate-100 dark:border-zinc-800">
@@ -566,6 +643,15 @@ const TasksCard = ({ data, openPanel, onPlaceFund }) => {
                 <IcoStatArrow/>
               </div>
               <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">Funds to assign</div>
+            </div>
+          )}
+          {autopayCount > 0 && (
+            <div>
+              <div className="flex items-center gap-1 text-teal-600 dark:text-teal-400">
+                <span className="text-3xl font-black tabular-nums leading-none">{autopayCount}</span>
+                <IcoStatArrow/>
+              </div>
+              <div className="text-xs text-slate-400 dark:text-zinc-500 mt-1">Autopay to confirm</div>
             </div>
           )}
         </div>
@@ -596,6 +682,22 @@ const TasksCard = ({ data, openPanel, onPlaceFund }) => {
             </div>
             <span className="text-slate-300 dark:text-zinc-600 text-xs shrink-0">→</span>
           </button>
+        ))}
+        {stubTasks.map(({loan,propId,propAddress,amount}) => (
+          <CheckableTaskRow key={`stub-${loan.id}`}
+            icoBg="bg-teal-50 dark:bg-teal-900/30" icon="🧾"
+            title={`Pay prorated first month — ${loan.lenderName}`}
+            subtitle={`${propAddress||"Unassigned"} · ${h$(amount)} one-time, outside autopay`}
+            onOpen={() => openPanel({type:'loan', loanId:loan.id, propId})}
+            onCheck={() => update(d => updateLoanById(d, loan.id, {stubPaymentConfirmed:true}))}/>
+        ))}
+        {autopayTasks.map(({loan,propId,propAddress,amount,isUpdate}) => (
+          <CheckableTaskRow key={`autopay-${loan.id}`}
+            icoBg="bg-teal-50 dark:bg-teal-900/30" icon="💳"
+            title={isUpdate ? `Update autopay amount — ${loan.lenderName}` : `Set up autopay — ${loan.lenderName}`}
+            subtitle={`${propAddress||"Unassigned"} · ${h$(amount)}/mo${isUpdate?" (changed)":""}`}
+            onOpen={() => openPanel({type:'loan', loanId:loan.id, propId})}
+            onCheck={() => update(d => updateLoanById(d, loan.id, {autopayConfirmedAmount:amount}))}/>
         ))}
       </div>
     </div>
@@ -3442,7 +3544,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   return (
     <div>
       {menuOpen && <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)}/>}
-      <TasksCard data={data} openPanel={openPanel} onPlaceFund={fund=>setModal({type:"place",fund})}/>
+      <TasksCard data={data} update={update} openPanel={openPanel} onPlaceFund={fund=>setModal({type:"place",fund})}/>
       <div className="flex justify-between items-center mb-5">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Properties</h2>
@@ -7935,18 +8037,10 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const active = allLoans.filter(l => !l.endDate);
   const hist = allLoans.filter(l => l.endDate).sort((a,b) => (b.endDate||"").localeCompare(a.endDate||""));
 
-  // Loans whose monthly cash payment is a guaranteed-even $ amount — a fixed-dollar loan
-  // always is, a rate-based monthly/split loan only is when this lender is billed "Flat"
-  // (rate÷12 every time) rather than per-diem, where the real amount shifts with days-in-month.
-  // Surfaced as a single autopay-ready total; per-diem loans are deliberately left out since
+  // Loans whose monthly cash payment is a guaranteed-even $ amount (see isAutopayEligible) —
+  // surfaced as a single autopay-ready total; per-diem loans are deliberately left out since
   // quoting one fixed number for them would be wrong more months than not.
-  const flatMethod = resolveLenderSettings(data, name, currentLoanType).monthlyMethod === "flat";
-  const autopayLoans = active.filter(l => {
-    const pt = l.paymentType||"closing";
-    if (pt==="monthly_fixed") return true;
-    if (pt==="monthly_rate"||pt==="monthly_rate_split") return flatMethod;
-    return false;
-  });
+  const autopayLoans = active.filter(l => isAutopayEligible(l, data));
   const autopayTotal = autopayLoans.reduce((s,l) => s + monthlyLoanPayment(l), 0);
 
   const handleMoveConfirm = (loanWithProp, result) => {
@@ -9487,7 +9581,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
         </button>
       </div>
 
-      <TasksCard data={data} openPanel={openPanel} onPlaceFund={fund=>setModal({type:"place",fund})}/>
+      <TasksCard data={data} update={update} openPanel={openPanel} onPlaceFund={fund=>setModal({type:"place",fund})}/>
 
       <DndContext sensors={dashDragSensors} collisionDetection={closestCenter} onDragEnd={handleDashDragEnd}>
         <SortableContext items={cardOrder} strategy={rectSortingStrategy}>

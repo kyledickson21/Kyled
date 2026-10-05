@@ -94,9 +94,18 @@ update(d => ({...d, properties: [{newField: value}]}))
           promissoryNoteUrl: null,   // link to the signed note/mortgage (Drive, etc.) — required
                                      // in spirit, not enforced at save time: a Fixed-to-Property
                                      // loan missing this shows a red "Needs Note" flag (LockBadge)
-                                     // everywhere it's listed, plus the Dashboard's "Promissory
-                                     // Notes Needed" card, until a link is added. See
-                                     // needsPromissoryNote() near fmtRate.
+                                     // everywhere it's listed, plus a Tasks-widget row, until a
+                                     // link is added. See needsPromissoryNote() near fmtRate.
+          stubPaymentConfirmed: false, // one-time ack that the prorated first monthly payment
+                                     // (see firstStubAmount) was paid by hand outside autopay —
+                                     // surfaced as a Tasks-widget row until checked off
+          autopayConfirmedAmount: null, // $/mo Kyle has confirmed is set up as autopay at the
+                                     // lender's bank, for a Flat-billed monthly/split/fixed loan
+                                     // (see isAutopayEligible). null = never set up. If it stops
+                                     // matching the loan's current monthlyLoanPayment() — principal
+                                     // paid down, rate changed, etc. — the Tasks widget reopens
+                                     // this as an "update autopay amount" task rather than leaving
+                                     // it silently stale.
         }
       ]
     }
