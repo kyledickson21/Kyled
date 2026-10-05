@@ -72,15 +72,30 @@ const calcBalance = (l, asOf=TODAY) => {
   if (l.interestType === "fixed") return l.principal + (l.interestRate || 0);
   const end = l.endDate && l.endDate<=asOf ? l.endDate : asOf;
   if (l.startDate>end) return l.principal;
-  // A split loan (e.g. a lender funding out of their own equity line) only accrues the
-  // portion NOT already being paid out monthly — the other portion (matching, say, their
-  // equity line's own rate) is paid in cash each month and never added to the balance.
-  const rate = pt==="monthly_rate_split" ? Math.max(0,(l.interestRate||0)-(l.splitMonthlyRate||0)) : (l.interestRate||0);
-  return l.principal + l.principal*rate/100*(daysBetween(l.startDate,end)/yearDays(l));
+  if (pt==="monthly_rate_split") {
+    // The two halves of a split loan are billed under different day-count conventions —
+    // the monthly cash is an even flat amount (a 360-day/30-day-month convention), while
+    // everything else in this app accrues on actual days ÷ 365. Treating the closing
+    // portion as its own independent rate (total − monthly rate) accrued on actual/365
+    // lets those conventions drift apart over any span that isn't a clean number of whole
+    // months. Instead: accrue the FULL rate on actual/365 (the true total owed), then
+    // subtract whatever's actually been collected via the real monthly payments — so the
+    // two pieces always add back up to exactly the full rate, with the day-count mismatch
+    // absorbed into the closing payoff rather than silently lost or double-counted.
+    const totalOwed = l.principal*(l.interestRate||0)/100*(daysBetween(l.startDate,end)/yearDays(l));
+    return l.principal + Math.max(0, totalOwed - calcMonthlyPaidPortion(l,asOf));
+  }
+  return l.principal + l.principal*(l.interestRate||0)/100*(daysBetween(l.startDate,end)/yearDays(l));
 };
 
-// How much of a split-rate loan's interest has already been paid out monthly (the portion
-// matching the lender's own cost of funds) as of a given date — 0 for every other type.
+// How much of a split-rate loan's interest has actually been collected in cash via the
+// monthly-paid portion as of a given date — the real flat-billed schedule (see
+// addHardPayments), not a theoretical accrual — 0 for every other loan type. Assumes the
+// default Flat billing method (even $ amount every full month, the first partial month
+// prorated on a 360-day/30-day-month basis); a lender switched to Per-Diem for a split
+// loan is a rare enough combination that this is an estimate for that case, not the
+// literal billed cents, rather than plumbing lender payment settings through every one of
+// this helper's call sites.
 const calcMonthlyPaidPortion = (l, asOf=TODAY) => {
   // A split only means anything against a % rate — a Fixed $ loan has no "portion of the
   // rate" to divide, so treat it as unsplit (this combination shouldn't be creatable from
@@ -88,7 +103,27 @@ const calcMonthlyPaidPortion = (l, asOf=TODAY) => {
   if (!l?.startDate||!l?.principal||l.paymentType!=="monthly_rate_split"||l.interestType==="fixed") return 0;
   const end = l.endDate&&l.endDate<=asOf ? l.endDate : asOf;
   if (l.startDate>end) return 0;
-  return Math.round(l.principal*(l.splitMonthlyRate||0)/100*(daysBetween(l.startDate,end)/yearDays(l))*100)/100;
+  const rate = l.splitMonthlyRate||0;
+  const flatMonthly = l.principal*rate/1200;
+  const [sy,sm] = l.startDate.split('-').map(Number);
+  let cy=sy, cm=sm+1; if(cm>12){cm=1;cy+=1;}
+  let prevDate = l.startDate, total = 0, first = true;
+  while (true) {
+    const dateStr = `${cy}-${String(cm).padStart(2,'0')}-01`;
+    if (dateStr>end) break;
+    if (first) {
+      const [dy,dm] = dateStr.split('-').map(Number);
+      let py=dy, pm=dm-1; if(pm<1){pm=12;py-=1;}
+      const isFullMonth = prevDate===`${py}-${String(pm).padStart(2,'0')}-01`;
+      total += isFullMonth ? flatMonthly : l.principal*rate/100*(daysBetween(prevDate,dateStr)/360);
+      first = false;
+    } else {
+      total += flatMonthly;
+    }
+    prevDate = dateStr;
+    cm+=1; if(cm>12){cm=1;cy+=1;}
+  }
+  return Math.round(total*100)/100;
 };
 
 const calcIntEarned = (l, asOf=TODAY) => {
