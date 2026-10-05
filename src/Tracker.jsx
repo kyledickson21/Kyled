@@ -5568,7 +5568,16 @@ function computeHistoryEvents(data) {
       const days = daysBetween(prevDate,dateStr);
       let amount;
       if (settings.monthlyMethod==="flat") {
-        amount = flatMonthly;
+        // Every period here is a clean calendar month (prevDate = the 1st of the month
+        // right before dateStr) except possibly the very first one — the loan started
+        // mid-month, or (with a grace month) started mid-month before an even longer
+        // deferred gap. Bill that stub for the days actually owed, on the same 360-day/
+        // 30-day-month convention the flat rate itself is built on, instead of charging
+        // a full month's worth for a partial period.
+        const [dy,dm] = dateStr.split('-').map(Number);
+        let py=dy, pm=dm-1; if(pm<1){pm=12;py-=1;}
+        const isFullMonth = prevDate===`${py}-${String(pm).padStart(2,'0')}-01`;
+        amount = isFullMonth ? flatMonthly : (loan.principal||0)*billRate/100*(days/360);
         (loan.drawFacility?.draws||[]).forEach(d=>{
           if (!d.date||d.date>=dateStr||d.date<prevDate) return;
           amount += (d.amount||0)*billRate/1200;
