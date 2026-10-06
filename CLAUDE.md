@@ -15,7 +15,7 @@ A private iOS-style dashboard for Kyle Dickson / Nexus Homes to track private mo
 src/
   Tracker.jsx    ← entire money tracker (9400+ lines, single file)
   Home.jsx       ← iOS-style home screen with app icons and folders
-  App.jsx        ← auth + dark mode + Tracker/Home/LenderPortal view switch
+  App.jsx        ← auth + dark mode + Tracker/Home/LenderPortal/bookkeeper view switch
   LenderPortal.jsx ← read-only portal for lenders with a login (their own loans only)
   supabase.js    ← loadData() / saveData() / subscribeToChanges() + lender-account edge functions
   main.jsx       ← entry point
@@ -220,6 +220,33 @@ const update = fn => {
 // saveQueueRef and use optimistic concurrency (updatedAtRef) — a conflict retries by
 // re-running `fn` against the freshly-loaded data instead of overwriting it.
 ```
+
+## Bookkeeper (Read-Only) Role
+A bookkeeper login sees the real Tracker UI — every tab, full History/Money Trail, all
+properties/lenders/loans — with zero write capability. Unlike LenderPortal (a separate,
+simplified, single-lender UI), this reuses Tracker.jsx itself so bookkeepers see exactly
+what Kyle sees, just locked down.
+- **Routing**: `App.jsx` renders `<Tracker readOnly userEmail={...} .../>` (no `onHome`, so
+  there's no Home screen option) when `session.user.user_metadata?.role === 'bookkeeper'`.
+- **Hard backstop**: `Tracker`'s own `update` function (see State & Update Pattern above)
+  returns immediately when `readOnly` is true, before touching `setData` or Supabase — so no
+  write can ever land from a bookkeeper session, no matter what UI is still reachable.
+- **UI hiding**: `ReadOnlyContext`/`useReadOnly()` (declared next to `PrivacyContext`) is
+  provided once at the top of `Tracker` and read via the hook in every page/card component
+  that has an edit/add/delete/move/drag affordance, to hide it outright rather than leave a
+  dead button. Covers: the global Actions (+) menu, Undo/Redo, "Portal Access" (bookkeeper
+  accounts aren't managed from inside a bookkeeper session), Dashboard's Customize +
+  drag-reorder + TasksCard (Kyle's own to-do checklist), and every per-page Edit/Delete/Move/
+  Reopen/Close/Mark Rental/Add-* button and `DndContext` drag sensor across Properties,
+  PropertyDetailPage, LoanDetailPage, LenderDetailPage, ClosedDealsPage, RehabPriorityPage,
+  and WhiteboardPage. `{update && ...}` alone is NOT a safe read-only gate — `update` is
+  always a truthy function (a no-op under readOnly), so that pattern only hides UI when the
+  prop itself wasn't passed; use `{!readOnly && ...}` (or combine the two) instead.
+- There is currently no in-app "create a bookkeeper account" flow — unlike Portal Access,
+  which calls the `manage-lenders` edge function (deployed outside this repo, source not
+  checked in). A bookkeeper's Supabase Auth user is created manually (Supabase dashboard or
+  CLI) with `user_metadata: { role: "bookkeeper" }`; the app-side routing/lockdown above
+  takes over automatically once that user logs in.
 
 ## UI Design Language
 - iOS/Apple aesthetic: frosted glass headers, squircle icons, SF Pro font stack

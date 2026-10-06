@@ -82,6 +82,13 @@ export default function App() {
   if (session.user.user_metadata?.role === 'lender')
     return <LenderPortal session={session} onSignOut={signOut} dark={dark} onToggleDark={() => setDark(d => !d)} />
 
+  // Bookkeeper: the real Tracker UI (so History/Properties/Lenders/Records all look and
+  // work exactly like the admin view, not a simplified reimplementation) but locked to
+  // read-only — see Tracker's `readOnly` prop. No Home screen for this role; it goes
+  // straight into the app every time.
+  if (session.user.user_metadata?.role === 'bookkeeper')
+    return <Tracker onSignOut={signOut} userEmail={session.user.email} dark={dark} onToggleDark={() => setDark(d => !d)} readOnly />
+
   if (view === 'tracker') return <Tracker onSignOut={signOut} onHome={() => setView('home')} userEmail={session.user.email} dark={dark} onToggleDark={() => setDark(d => !d)} />
 
   return <Home onOpenTracker={() => setView('tracker')} onSignOut={signOut} dark={dark} onToggleDark={() => setDark(d => !d)} />

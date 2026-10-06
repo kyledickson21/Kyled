@@ -299,6 +299,13 @@ const usePrivacy = () => useContext(PrivacyContext);
 // ─── Panel context (entity detail slide-in) ───────────────────────────────────
 const PanelContext = createContext(null);
 const usePanel = () => useContext(PanelContext);
+// ─── Read-only context (bookkeeper sessions) ──────────────────────────────────
+// True for a bookkeeper login — a view-everything, change-nothing account. The real
+// backstop is `update` itself becoming a no-op in Tracker when this is true (so no write
+// can ever reach Supabase no matter what's clickable); this context is only for hiding the
+// action buttons/menus so a locked-out session doesn't look broken when clicked.
+const ReadOnlyContext = createContext(false);
+const useReadOnly = () => useContext(ReadOnlyContext);
 // Replace digits with ∙ (integer) or · (decimal), strip commas, keep K/M suffix
 const maskMoney = s => s.replace(/[\d,]+(\.\d+)?([KM])?/g, (m, dec, sfx) => {
   const intPart = m.slice(0, m.length - (dec||'').length - (sfx||'').length);
@@ -647,11 +654,14 @@ const CheckableTaskRow = ({ icoBg, icon, title, subtitle, onOpen, onCheck }) => 
 
 const TasksCard = ({ data, update, openPanel, onPlaceFund }) => {
   const prv = usePrivacy();
+  const readOnly = useReadOnly();
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const { noteTasks, assignTasks, stubTasks, autopayTasks } = getOpenTasks(data);
   const autopayCount = stubTasks.length + autopayTasks.length;
   const total = noteTasks.length + assignTasks.length + autopayCount;
-  if (total === 0) return null;
+  // This is Kyle's own to-do checklist (confirm a note, assign idle funds, set up autopay) —
+  // not something a bookkeeper session needs or can act on.
+  if (readOnly || total === 0) return null;
   return (
     <div className="mb-4 bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden border border-slate-100 dark:border-zinc-800">
       <div className="px-5 pt-5 pb-4">
@@ -3311,6 +3321,7 @@ const computeInverse = (prev, next) => {
 
 // ─── Properties Page ──────────────────────────────────────────────────────────
 function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
+  const readOnly=useReadOnly();
   const prv=usePrivacy();
   const openPanel=usePanel();
   const h$=v=>prv?maskMoney($$p(v)):$$p(v);
@@ -3650,6 +3661,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                       }`}>{days}d idle</span>
                     </div>
                     <div className="flex gap-1.5 shrink-0 items-center">
+                      {!readOnly && (<>
                       <button onClick={() => setModal({ type: "place", fund: u })}
                         className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>
                       {/* ⋯ menu */}
@@ -3669,6 +3681,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                           </div>
                         )}
                       </div>
+                      </>)}
                     </div>
                   </div>
                 );
@@ -3778,8 +3791,10 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 </td>
                 <td className="py-2.5 px-2 text-right">
                   <div className="flex gap-0.5 justify-end items-center">
+                    {!readOnly && (<>
                     <button onClick={e=>{e.stopPropagation();setModal({type:"editProp",prop});}} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all text-xs">✏️</button>
                     <button onClick={e=>{e.stopPropagation();delProp(prop.id);}} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs">🗑</button>
+                    </>)}
                   </div>
                 </td>
               </>);
@@ -3826,7 +3841,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         // child of <table> — so it wraps the whole card from outside the table, not between
         // <table> and <tbody>, even though only the <tr>s inside are actually sortable.
         return manualMode ? (
-          <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext sensors={readOnly?[]:dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={sorted.map(r=>r.prop.id)} strategy={verticalListSortingStrategy}>
               {table}
             </SortableContext>
@@ -3835,7 +3850,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       })()}
 
       {viewMode==="grid"&&visible.length>0&&(
-        <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext sensors={readOnly?[]:dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={visible.map(p=>p.id)} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {visible.map(prop=>{
@@ -3894,7 +3909,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       )}
 
       {viewMode==="expanded"&&(
-      <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext sensors={readOnly?[]:dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={visible.map(p=>p.id)} strategy={verticalListSortingStrategy}>
       <div className="space-y-3">
         {visible.map((prop,visIdx)=>{
@@ -4014,7 +4029,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                                 <div className="mt-3 p-3 bg-teal-50 dark:bg-teal-950/30 rounded-lg border border-teal-100 dark:border-teal-900/50">
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-widest">Rehab Draw Facility</div>
-                                    {!loan.endDate&&(inlineDraw?.loanId===loan.id
+                                    {!readOnly&&!loan.endDate&&(inlineDraw?.loanId===loan.id
                                       ? <button type="button" onClick={()=>setInlineDraw(null)} className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-slate-300 dark:border-zinc-600 text-slate-500 dark:text-zinc-400 hover:border-red-400 hover:text-red-500 transition-colors">Cancel</button>
                                       : <button type="button" onClick={()=>setInlineDraw({propId:prop.id,loanId:loan.id,date:TODAY,amt:"",dateLocked:false,amtLocked:false})} className="text-[10px] font-semibold px-2.5 py-1 rounded-md bg-teal-600 hover:bg-teal-700 text-white transition-colors">+ Add Draw</button>
                                     )}
@@ -4056,7 +4071,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                               )}
                             </div>
                             <div className="flex gap-1 shrink-0 items-center">
-                              {loan.loanType!=="hard"&&<button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1 transition-colors" title="Move">Move →</button>}
+                              {!readOnly&&loan.loanType!=="hard"&&<button onClick={()=>setModal({type:"moveLoan",propId:prop.id,loan})} className="text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1 transition-colors" title="Move">Move →</button>}
                             </div>
                           </div>
                         </div>
@@ -4285,6 +4300,7 @@ function LenderDashboard({ data }) {
 
 // ─── All Loans Page ────────────────────────────────────────────────────────────
 function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilter }) {
+  const readOnly = useReadOnly();
   const prv = usePrivacy();
   const navigate = usePanel();
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
@@ -4483,7 +4499,7 @@ function AllLoansPage({ data, update, pendingTypeFilter, onClearPendingTypeFilte
                       </span>
                     </td>
                     <td className="px-3 py-3 text-right">
-                      {!l.endDate&&l.loanType!=="hard"&&(
+                      {!readOnly&&!l.endDate&&l.loanType!=="hard"&&(
                         <button onClick={e=>{e.stopPropagation();setMoveLoan(l);}} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 whitespace-nowrap transition-colors">Move →</button>
                       )}
                     </td>
@@ -5264,6 +5280,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
 // Closed Deals card — hoisted out of ClosedDealsPage's render so its identity is stable
 // across renders (was redefined, and thus fully remounted, on every parent re-render).
 const PropCard=({prop,isOpen,h$,hs,hn,hr,onOpenPanel,onToggleRental,onToggleExpand,onEdit,onReopen})=>{
+  const readOnly=useReadOnly();
   const cd=prop.closingData;
   const profit=cd?effectiveProfit(prop):null;
   return(
@@ -5274,11 +5291,15 @@ const PropCard=({prop,isOpen,h$,hs,hn,hr,onOpenPanel,onToggleRental,onToggleExpa
             <button onClick={()=>onOpenPanel({type:'property',propId:prop.id})} className="font-semibold text-slate-900 dark:text-zinc-100 truncate hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{prop.address||"Unnamed"}</button>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className="text-[11px] text-slate-400 dark:text-zinc-500">Sold {prop.dateSold}</span>
-              <button
-                onClick={e=>{e.stopPropagation();onToggleRental(prop.id);}}
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all shrink-0 whitespace-nowrap ${prop.isRental?"bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-700":"bg-slate-50 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 border-slate-200 dark:border-zinc-600 hover:border-purple-300 dark:hover:border-purple-600 hover:text-purple-600 dark:hover:text-purple-400"}`}>
-                {prop.isRental?"● Rental":"○ Mark Rental"}
-              </button>
+              {readOnly ? (
+                prop.isRental && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 whitespace-nowrap bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-700">● Rental</span>
+              ) : (
+                <button
+                  onClick={e=>{e.stopPropagation();onToggleRental(prop.id);}}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all shrink-0 whitespace-nowrap ${prop.isRental?"bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-700":"bg-slate-50 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 border-slate-200 dark:border-zinc-600 hover:border-purple-300 dark:hover:border-purple-600 hover:text-purple-600 dark:hover:text-purple-400"}`}>
+                  {prop.isRental?"● Rental":"○ Mark Rental"}
+                </button>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -5300,10 +5321,12 @@ const PropCard=({prop,isOpen,h$,hs,hn,hr,onOpenPanel,onToggleRental,onToggleExpa
             ):(
               <span className="text-xs text-slate-400 dark:text-zinc-500 italic">No data</span>
             )}
+            {!readOnly && (<>
             <button onClick={()=>onEdit(prop)}
               className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all text-sm" title="Edit closing">✏️</button>
             <button onClick={()=>onReopen(prop)}
               className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all text-sm" title="Reopen property">↺</button>
+            </>)}
             <button onClick={()=>onToggleExpand(prop.id)}
               className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 dark:text-zinc-600 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all text-[10px] font-bold">
               {isOpen?"▲":"▼"}
@@ -5363,6 +5386,7 @@ const PropCard=({prop,isOpen,h$,hs,hn,hr,onOpenPanel,onToggleRental,onToggleExpa
 };
 
 function ClosedDealsPage({ data, update }) {
+  const readOnly=useReadOnly();
   const prv=usePrivacy();
   const openPanel=usePanel();
   const h$=v=>prv?maskMoney($$p(v)):$$p(v);
@@ -5477,6 +5501,7 @@ function ClosedDealsPage({ data, update }) {
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Closed Deals</h2>
         </div>
         <div className="relative">
+          {!readOnly && (<>
           <button onClick={()=>{setShowClosePicker(v=>!v);setCloseSearch("");}}
             className="text-[12px] font-semibold text-white bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-400 rounded-xl px-3.5 py-2 transition-colors whitespace-nowrap shadow-sm">
             + Close a Property
@@ -5515,6 +5540,7 @@ function ClosedDealsPage({ data, update }) {
               </div>
             </div>
           )}
+          </>)}
         </div>
       </div>
 
@@ -6221,6 +6247,7 @@ function HistoryPage({ data }) {
 
 // ─── Rehab Priority ───────────────────────────────────────────────────────────
 function RehabPriorityPage({ data, update }) {
+  const readOnly=useReadOnly();
   const prv=usePrivacy();
   const h$=v=>prv?maskMoney($$p(v)):$$p(v);
   const hr=l=>{ if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
@@ -6407,11 +6434,15 @@ function RehabPriorityPage({ data, update }) {
                             ):(
                               <span className="text-slate-300 dark:text-zinc-600 text-[10px]">flat fee</span>
                             )}
-                            {isPrivate?(
+                            {isPrivate&&!readOnly?(
                               <button onClick={()=>toggleRolling(loan.id)}
                                 className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${rollingLoans.includes(loan.id)?"bg-violet-500 border-violet-500":"border-slate-300 dark:border-zinc-600"}`}>
                                 {rollingLoans.includes(loan.id)&&<svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                               </button>
+                            ):isPrivate&&rollingLoans.includes(loan.id)?(
+                              <div className="w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 bg-violet-500 border-violet-500">
+                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              </div>
                             ):(
                               <div className="w-4"/>
                             )}
@@ -7389,6 +7420,7 @@ const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
 // specific day since there isn't one yet. Also draggable onto a day, same as any other card —
 // once it has a day it leaves this queue and shows up there instead (see cardsFor).
 const WhiteboardBillCard = ({ card, h$, canMoveUp, canMoveDown, onMove, onEdit, onRemove }) => {
+  const readOnly = useReadOnly();
   const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id});
   const style = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
   return (
@@ -7407,8 +7439,10 @@ const WhiteboardBillCard = ({ card, h$, canMoveUp, canMoveDown, onMove, onEdit, 
           <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">since {wbFmtDate(card.addedAt||TODAY)}</div>
         </div>
         <div className="flex flex-col gap-1 shrink-0 items-center">
+          {!readOnly && (<>
           <button disabled={!canMoveUp} onClick={e=>{e.stopPropagation();onMove(card.id,-1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 disabled:opacity-20 text-[11px]">▲</button>
           <button disabled={!canMoveDown} onClick={e=>{e.stopPropagation();onMove(card.id,1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 disabled:opacity-20 text-[11px]">▼</button>
+          </>)}
           {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">✏️</button>}
           {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
         </div>
@@ -7439,6 +7473,7 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
 };
 
 function WhiteboardPage({ data, update }) {
+  const readOnly = useReadOnly();
   const prv = usePrivacy();
   const navigate = usePanel();
   const h$ = v => prv?maskMoney($$p(v)):$$p(v);
@@ -7552,7 +7587,7 @@ function WhiteboardPage({ data, update }) {
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
           <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board, separate from the rest of the tracker — drag cards onto a day to plan upcoming money in and out. Incoming money takes 1 business day to clear, loan payments are pulled in on the 1st automatically, and bills with no due date live in the Due Now queue on the left.</p>
         </div>
-        <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>
+        {!readOnly && <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>}
       </div>
 
       <div className="flex gap-3 mb-4 flex-wrap">
@@ -7560,10 +7595,14 @@ function WhiteboardPage({ data, update }) {
           <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Starting Balance</div>
           <div className="flex items-baseline gap-0.5">
             <span className="text-lg font-black text-slate-700 dark:text-zinc-200">$</span>
-            <input type="text" inputMode="decimal" value={sbInput}
-              onChange={e=>setSbInput(e.target.value)}
-              onBlur={()=>setStartingBalance(parseFloat(sbInput)||0)}
-              className="text-lg font-black tabular-nums bg-transparent w-full focus:outline-none text-slate-700 dark:text-zinc-200 min-w-0"/>
+            {readOnly ? (
+              <span className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{sbInput || "0"}</span>
+            ) : (
+              <input type="text" inputMode="decimal" value={sbInput}
+                onChange={e=>setSbInput(e.target.value)}
+                onBlur={()=>setStartingBalance(parseFloat(sbInput)||0)}
+                className="text-lg font-black tabular-nums bg-transparent w-full focus:outline-none text-slate-700 dark:text-zinc-200 min-w-0"/>
+            )}
           </div>
         </div>
         {(cards.length>0||autoCards.length>0)&&(<>
@@ -7585,11 +7624,11 @@ function WhiteboardPage({ data, update }) {
           <p className="text-xs mt-1 max-w-xs mx-auto">Add a card for a property you're closing on or one you expect to sell, then drag it onto the day it's happening.</p>
         </div>
       ):(
-        <DndContext sensors={dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
+        <DndContext sensors={readOnly?[]:dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
           <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1">
-            <WhiteboardDueNowBox bills={bills} billsTotal={billsTotal} h$={h$} moveBill={moveBill} onEdit={setEditCard} onRemove={removeCard}/>
+            <WhiteboardDueNowBox bills={bills} billsTotal={billsTotal} h$={h$} moveBill={readOnly?undefined:moveBill} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard}/>
             <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
-              {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+              {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard} navigate={navigate}/>)}
             </WhiteboardColumn>
             {dayCols.map((day,i)=>(
               <WhiteboardColumn key={day} id={day} h$={h$}
@@ -7597,7 +7636,7 @@ function WhiteboardPage({ data, update }) {
                 sub={i===0?wbFmtDate(day):wbWeekday(day)}
                 isToday={i===0} weekStart={i>0&&i%7===0} net={netFor(day)} balance={balances[day]} settledIn={settledInFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
                 {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
-                {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={setEditCard} onRemove={removeCard} navigate={navigate}/>)}
+                {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard} navigate={navigate}/>)}
               </WhiteboardColumn>
             ))}
           </div>
@@ -7625,6 +7664,7 @@ const SectionHead = ({title, count}) => (
 );
 
 function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
+  const readOnly = useReadOnly();
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const hs = v => prv ? maskMoney($$ps(v)) : $$ps(v);
@@ -7739,7 +7779,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
             {prop.purchaseDate && <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Acquired {prop.purchaseDate}</p>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {prop.dateSold && (
+            {!readOnly && prop.dateSold && (
               <button onClick={()=>{
                 if(!window.confirm(`Reopen "${prop.address||"this property"}"? It'll move back to Active Properties and its closing record will be cleared — you'll re-enter closing details if you close it again. Loans that were paid off or rolled as part of this sale are NOT reopened; adjust those individually if needed.`)) return;
                 update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,dateSold:null,isRental:false,closingData:null})}));
@@ -7748,10 +7788,12 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                 ↺ Reopen
               </button>
             )}
+            {!readOnly && (
             <button onClick={()=>setEditing(e=>!e)}
               className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-teal-600 dark:hover:text-teal-400 hover:border-teal-300 dark:hover:border-teal-700 shadow-sm transition-all">
               {editing?"✕ Cancel":"✏️ Edit"}
             </button>
+            )}
           </div>
         </div>
       </div>
@@ -7829,8 +7871,10 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
         )}
         <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-3">
           <SectionHead title="Overage Checks" count={(prop.overageChecks||[]).length}/>
+          {!readOnly && (
           <button onClick={()=>setAddingOverage(true)}
             className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition-colors">+ Overage Check</button>
+          )}
         </div>
         {(prop.overageChecks||[]).length===0 && (
           <div className="px-5 py-6 text-center text-sm text-slate-400 dark:text-zinc-500">No overage checks recorded yet</div>
@@ -7844,8 +7888,10 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
               </div>
               <div className="shrink-0 flex items-center gap-2">
                 <span className="font-bold tabular-nums text-emerald-600 dark:text-emerald-400">+{h$(c.amount)}</span>
+                {!readOnly && (
                 <button onClick={()=>setEditingOverage(c)}
                   className="w-6 h-6 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all text-xs" title="Edit">✏️</button>
+                )}
               </div>
             </div>
           ))}
@@ -7871,8 +7917,10 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
         <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] mb-4 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-3">
             <SectionHead title="Active Loans" count={active.length}/>
+            {!readOnly && (
             <button onClick={()=>setAddingLoan(true)}
               className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white transition-colors">+ Add Loan</button>
+            )}
           </div>
           {active.length===0 && (
             <div className="px-5 py-6 text-center text-sm text-slate-400 dark:text-zinc-500">No active loans on this property yet</div>
@@ -7893,7 +7941,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                       <TypeLabel type={l.loanType}/>
                       <LockBadge loan={l}/>
                     </div>
-                    {l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 shrink-0 whitespace-nowrap transition-colors">Move →</button>}
+                    {!readOnly&&l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 shrink-0 whitespace-nowrap transition-colors">Move →</button>}
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
                     {[
@@ -8029,6 +8077,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
 }
 
 function LenderDetailPage({ name, data, update, onBack, navigate }) {
+  const readOnly = useReadOnly();
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const hs = v => prv ? maskMoney($$ps(v)) : $$ps(v);
@@ -8214,9 +8263,11 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
               {active.length} active loan{active.length!==1?"s":""} · {hist.length} closed
             </p>
           </div>
+          {!readOnly && (
           <button onClick={()=>{setEditName(name);setEditing(e=>!e);}} className="shrink-0 mt-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-teal-600 dark:hover:text-teal-400 hover:border-teal-300 dark:hover:border-teal-700 shadow-sm transition-all">
             {editing?"✕ Cancel":"✏️ Edit"}
           </button>
+          )}
         </div>
       </div>
 
@@ -8487,7 +8538,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
                       <LockBadge loan={l}/>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      {l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 whitespace-nowrap transition-colors">Move →</button>}
+                      {!readOnly&&l.loanType!=="hard"&&<button onClick={()=>setMoveLoan(l)} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 whitespace-nowrap transition-colors">Move →</button>}
                       <button onClick={() => navigate({type:'loan', loanId:l.id, propId:l.prop?.id||null, startEditing:false})} className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 whitespace-nowrap transition-colors">
                         View →
                       </button>
@@ -8529,6 +8580,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
 }
 
 function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startEditing }) {
+  const readOnly = useReadOnly();
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const hr = l => { if(!prv) return fmtRate(l); const s=fmtRate(l); return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s); };
@@ -8723,7 +8775,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
               <LockBadge loan={loan}/>
             </div>
           </div>
-          {update && (
+          {update && !readOnly && (
             <div className="shrink-0 mt-1">
               <button onClick={editing?()=>{setEditing(false);setDeleteConfirm(false);}:openEdit} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-teal-600 dark:hover:text-teal-400 hover:border-teal-300 dark:hover:border-teal-700 shadow-sm transition-all">
                 {editing?"✕ Cancel":"✏️ Edit"}
@@ -8739,7 +8791,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             <div className="font-bold text-red-700 dark:text-red-400 text-sm mb-0.5">🔴 Needs a Promissory Note</div>
             <div className="text-xs text-red-600/80 dark:text-red-400/80">This loan is Fixed to Property, but no promissory note / mortgage link is on file yet.</div>
           </div>
-          {update&&<button onClick={openEdit} className="shrink-0 text-xs font-bold text-red-700 dark:text-red-400 hover:underline whitespace-nowrap">+ Add Link</button>}
+          {update&&!readOnly&&<button onClick={openEdit} className="shrink-0 text-xs font-bold text-red-700 dark:text-red-400 hover:underline whitespace-nowrap">+ Add Link</button>}
         </div>
       )}
 
@@ -9033,6 +9085,7 @@ const DASHBOARD_CARD_DEFS = [
 const DEFAULT_DASHBOARD_ORDER = DASHBOARD_CARD_DEFS.map(c=>c.id);
 
 function DashboardPage({ data, update, onNavigateTab }) {
+  const readOnly = useReadOnly();
   const prv = usePrivacy();
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const hc$ = v => prv ? maskMoney($$c(v)) : $$c(v);
@@ -9390,6 +9443,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
                     }`}>{days}d idle</span>
                   </div>
                   <div className="flex gap-1.5 shrink-0 items-center">
+                    {!readOnly && (<>
                     <button onClick={() => setModal({ type: "place", fund: u })}
                       className="text-[11px] font-bold text-violet-700 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1 transition-colors shadow-sm whitespace-nowrap">Place →</button>
                     <div className="relative z-20">
@@ -9408,6 +9462,7 @@ function DashboardPage({ data, update, onNavigateTab }) {
                         </div>
                       )}
                     </div>
+                    </>)}
                   </div>
                 </div>
               );
@@ -9610,15 +9665,17 @@ function DashboardPage({ data, update, onNavigateTab }) {
           <div className="text-[11px] font-bold uppercase tracking-widest text-teal-500 dark:text-teal-400 mb-1">Nexus Homes</div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">Funding Center</h1>
         </div>
+        {!readOnly && (
         <button onClick={() => setEditMode(e => !e)}
           className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${editMode ? "bg-teal-600 text-white" : "bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:text-teal-600 dark:hover:text-teal-400"}`}>
           {editMode ? "Done" : "Customize"}
         </button>
+        )}
       </div>
 
       <TasksCard data={data} update={update} openPanel={openPanel} onPlaceFund={fund=>setModal({type:"place",fund})}/>
 
-      <DndContext sensors={dashDragSensors} collisionDetection={closestCenter} onDragEnd={handleDashDragEnd}>
+      <DndContext sensors={readOnly?[]:dashDragSensors} collisionDetection={closestCenter} onDragEnd={handleDashDragEnd}>
         <SortableContext items={cardOrder} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {cardOrder.map(id => {
@@ -9736,7 +9793,7 @@ const SideBtn=({icon,label,active,onClick,tooltip,badge})=>(
   </div>
 );
 
-export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark }) {
+export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark, readOnly=false }) {
   const [data,setData]=useState(null);
   const [tab,setTab]=usePersistedState("nx-activeTab","Dashboard");
   const [loading,setLoading]=useState(true);
@@ -9913,6 +9970,9 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   },[])
 
   const update = fn => {
+    // Hard backstop for a bookkeeper (read-only) session — no write of any kind can reach
+    // Supabase from here, no matter what's still clickable elsewhere in the tree.
+    if (readOnly) return;
     setData(prev=>{
       const next=typeof fn==="function"?fn(prev):fn
       const undo = computeInverse(prev, next);
@@ -10075,6 +10135,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
   );
 
   return (
+    <ReadOnlyContext.Provider value={readOnly}>
     <PrivacyContext.Provider value={privacyMode}>
     <PanelContext.Provider value={navigate}>
     <div className="min-h-screen bg-[#F2F2F7] dark:bg-[#14161F] flex transition-colors duration-300">
@@ -10149,11 +10210,13 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
                 {dark?"Light Mode":"Dark Mode"}
               </button>
+              {!readOnly && (<>
               <div className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
               <button onClick={()=>{setSettingsOpen(false);setTab("LenderAccts");}}
                 className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
                 Portal Access
               </button>
+              </>)}
               <div className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
               <button onClick={onSignOut}
                 className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
@@ -10246,10 +10309,12 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
                 {dark?"Light Mode":"Dark Mode"}
               </button>
+              {!readOnly && (
               <button onClick={()=>{setMobileNavOpen(false);setNavStack([]);setPanelStack([]);setTab("LenderAccts");}}
                 className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
                 Portal Access
               </button>
+              )}
               {onHome&&(
                 <button onClick={()=>{setMobileNavOpen(false);onHome();}}
                   className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
@@ -10352,8 +10417,13 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               )}
             </div>
 
-            {/* Right side — Actions button, adjacent to search */}
+            {/* Right side — Actions button, adjacent to search. Kept as a layout spacer
+                (it balances the left spacer to center the search bar on desktop) even in
+                read-only mode, but its contents — Undo/Redo (nothing to do, since `update`
+                never pushes onto the stacks) and Actions (a pure write-entry-point) — are
+                hidden for a bookkeeper session. */}
             <div className="flex-1 flex justify-end sm:justify-start items-center gap-2 pl-0 sm:pl-3">
+            {!readOnly && (<>
             <div className="flex items-center gap-0.5 shrink-0">
               <button onClick={handleUndo} disabled={undoCount===0}
                 title={undoCount>0?`Undo last change${undoCount>1?` (${undoCount} steps available)`:''}`:'Nothing to undo'}
@@ -10397,6 +10467,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 </div>
               )}
             </div>
+            </>)}
             </div>
           </div>
         </div>
@@ -10427,7 +10498,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             {tab==="History"      &&<HistoryPage data={data}/>}
             {tab==="Draws"        &&<DrawsPage data={data}/>}
             {tab==="Whiteboard"   &&<WhiteboardPage data={data} update={update}/>}
-            {tab==="LenderAccts"  &&<ManageLendersPage data={data}/>}
+            {tab==="LenderAccts"  && !readOnly &&<ManageLendersPage data={data}/>}
           </div>
         )}
       </div>
@@ -10477,5 +10548,6 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     </div>
     </PanelContext.Provider>
     </PrivacyContext.Provider>
+    </ReadOnlyContext.Provider>
   );
 }
