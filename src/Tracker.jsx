@@ -6262,7 +6262,7 @@ function HistoryPage({ data }) {
                 <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(asOfTotals.interest)}</div>
               </div>
               <div className="bg-teal-50 dark:bg-teal-900/20 rounded-xl p-3">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-teal-500 dark:text-teal-400 mb-1">Total Payoff — Exposure</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-teal-500 dark:text-teal-400 mb-1">Total Payoff</div>
                 <div className="text-lg font-black text-teal-700 dark:text-teal-300 tabular-nums">{h$(asOfTotals.balance)}</div>
               </div>
             </div>
