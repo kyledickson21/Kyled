@@ -6081,6 +6081,7 @@ function HistoryPage({ data }) {
   const [tf,setTf]=usePersistedState("nx-histType","all");
   const [propSearch,setPropSearch]=useState("");
   const [ledgerSort,setLedgerSort]=usePersistedState("nx-ledgerSort",{col:"endDate",dir:"desc"});
+  const [asOfDate,setAsOfDate]=useState(TODAY);
   // Rebuilding the whole event ledger (every loan start/close/rollover/overage check plus
   // every recurring monthly payment, for every property) is real work — memoize it against
   // `data` so typing in the lender/type/search filters below doesn't redo it on every key.
@@ -6133,14 +6134,35 @@ function HistoryPage({ data }) {
   };
   const ledgerRows=[...ledgerFiltered].sort(sortFn);
   const toggleSort=col=>setLedgerSort(s=>s.col===col?{col,dir:s.dir==="asc"?"desc":"asc"}:{col,dir:"desc"});
+
+  // Point-in-time snapshot — every loan that was actually outstanding on a given date (started
+  // on/before it, and either still active or didn't close until on/after it), each one's
+  // balance recomputed AS OF that date rather than today, via the same calcBalance() every
+  // other payoff figure in the app already uses. A loan closing exactly on the as-of date still
+  // counts — money was out that day.
+  const allAsOfLoans=[
+    ...data.properties.flatMap(p=>p.loans.map(l=>({...l,property:p.address,propId:p.id}))),
+    ...(data.unassigned||[]).map(l=>({...l,property:null,propId:null})),
+  ];
+  const asOfRows=allAsOfLoans
+    .filter(l=>l.startDate&&l.startDate<=asOfDate&&(!l.endDate||l.endDate>=asOfDate))
+    .filter(l=>(lf==="all"||l.lenderName===lf)&&(tf==="all"||l.loanType===tf))
+    .map(l=>{
+      const bal=calcBalance(l,asOfDate);
+      return {...l,balance:bal,interest:Math.max(0,bal-(l.principal||0))};
+    })
+    .sort((a,b)=>(b.balance-a.balance));
+  const allAsOfLenders=[...new Set(allAsOfLoans.map(l=>l.lenderName))].sort();
+  const asOfTotals=asOfRows.reduce((s,l)=>({principal:s.principal+(l.principal||0),interest:s.interest+l.interest,balance:s.balance+l.balance}),{principal:0,interest:0,balance:0});
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">History</h2>
-        <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{view==="trail"?`${groupedTrail.length} events`:`${ledgerRows.length} loans`}</span>
+        <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full">{view==="trail"?`${groupedTrail.length} events`:view==="ledger"?`${ledgerRows.length} loans`:`${asOfRows.length} loans`}</span>
       </div>
       <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 mb-4 self-start gap-1">
-        {[["trail","📋 Money Trail"],["ledger","🗂 Loan Ledger"]].map(([v,l])=>(
+        {[["trail","📋 Money Trail"],["ledger","🗂 Loan Ledger"],["asof","📅 As Of Date"]].map(([v,l])=>(
           <button key={v} onClick={()=>setView(v)}
             className={`flex-1 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${view===v?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
             {l}
@@ -6151,7 +6173,7 @@ function HistoryPage({ data }) {
         <select value={lf} onChange={e=>setLf(e.target.value)}
           className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-teal-500">
           <option value="all">All Lenders</option>
-          {(view==="trail"?allL:allLedgerLenders).map((l,i)=><option key={l} value={l}>{prv?`Lender ${i+1}`:l}</option>)}
+          {(view==="trail"?allL:view==="ledger"?allLedgerLenders:allAsOfLenders).map((l,i)=><option key={l} value={l}>{prv?`Lender ${i+1}`:l}</option>)}
         </select>
         <select value={tf} onChange={e=>setTf(e.target.value)}
           className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-teal-500">
@@ -6217,6 +6239,58 @@ function HistoryPage({ data }) {
                   <div><div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Total Interest</div><div className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(ledgerRows.reduce((s,l)=>s+l.interestEarned,0))}</div></div>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+      {view==="asof"&&(
+        <div>
+          <div className="rounded-2xl bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none p-5 mb-4">
+            <div className="flex items-center gap-3 flex-wrap mb-4">
+              <label className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">As Of</label>
+              <input type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
+                className="px-3 py-1.5 rounded-xl text-sm font-semibold bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+              <span className="text-xs text-slate-400 dark:text-zinc-500">Every loan outstanding on this date, with its payoff recalculated as of that date — not today.</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-xl p-3">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Total Principal</div>
+                <div className="text-lg font-black text-slate-900 dark:text-zinc-100 tabular-nums">{h$(asOfTotals.principal)}</div>
+              </div>
+              <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-xl p-3">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Interest Accrued</div>
+                <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(asOfTotals.interest)}</div>
+              </div>
+              <div className="bg-teal-50 dark:bg-teal-900/20 rounded-xl p-3">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-teal-500 dark:text-teal-400 mb-1">Total Payoff — Exposure</div>
+                <div className="text-lg font-black text-teal-700 dark:text-teal-300 tabular-nums">{h$(asOfTotals.balance)}</div>
+              </div>
+            </div>
+          </div>
+          {!asOfRows.length ? (
+            <div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">📅</div><p className="font-semibold">No loans were outstanding on this date</p></div>
+          ) : (
+            <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+              {asOfRows.map(l=>{
+                const rateLabel=l.interestType==="fixed"?"$"+Math.round(l.interestRate||0).toLocaleString()+" fixed":(l.interestRate||0)+"%/yr";
+                return (
+                  <div key={l.id} className="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button onClick={()=>openPanel?.({type:'lender',name:l.lenderName})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{hn(l.lenderName)}</button>
+                        <TypeLabel type={l.loanType}/>
+                      </div>
+                      <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
+                        <button onClick={()=>l.propId&&openPanel?.({type:'property',id:l.propId})} className={`${l.propId?"hover:text-teal-600 dark:hover:text-teal-400 transition-colors":""} text-left`}>{l.property||"Unassigned"}</button> · {rateLabel}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bold text-teal-700 dark:text-teal-300 text-sm tabular-nums">{h$(l.balance)}</div>
+                      <div className="text-[11px] text-slate-400 dark:text-zinc-500 tabular-nums">{h$(l.principal)} + {h$(l.interest)} int</div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

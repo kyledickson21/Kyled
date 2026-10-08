@@ -300,6 +300,12 @@ Forms with unsaved-edit protection use the `useDirty`/`confirmDiscard`/`useDirty
 - **Rolled events**: `nc = 0`, shows "→ Continues / no cash out"
 - **Sum of nc for a lender = their current outstanding principal with Nexus**
 - A "Net Outstanding" footer shows the sum for all filtered events
+- A third `HistoryPage` view, **"📅 As Of Date"** (`view==="asof"`), answers "what was our
+  total loan exposure on date X" — a date picker plus every loan (properties + unassigned)
+  where `startDate <= asOfDate && (!endDate || endDate >= asOfDate)` (a loan closing exactly
+  on the as-of date still counts — money was out that day), each one's payoff recomputed via
+  `calcBalance(loan, asOfDate)` rather than today, summed into Total Principal / Interest
+  Accrued / Total Payoff stat tiles. The existing lender/type filters apply here too.
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top
