@@ -242,11 +242,27 @@ what Kyle sees, just locked down.
   and WhiteboardPage. `{update && ...}` alone is NOT a safe read-only gate — `update` is
   always a truthy function (a no-op under readOnly), so that pattern only hides UI when the
   prop itself wasn't passed; use `{!readOnly && ...}` (or combine the two) instead.
-- There is currently no in-app "create a bookkeeper account" flow — unlike Portal Access,
-  which calls the `manage-lenders` edge function (deployed outside this repo, source not
-  checked in). A bookkeeper's Supabase Auth user is created manually (Supabase dashboard or
-  CLI) with `user_metadata: { role: "bookkeeper" }`; the app-side routing/lockdown above
-  takes over automatically once that user logs in.
+- **Account creation**: "Portal Access" (`ManageLendersPage`) now has a second "Grant
+  Bookkeeper Access" form/list below the lender one, calling `createBookkeeperAccount({email,
+  password})` / the shared `listLenderAccounts()` / `deleteLenderAccount(userId)` from
+  `supabase.js`. All three hit the same `manage-lenders` edge function (deployed outside this
+  repo — its source isn't checked in, so changes to it have to be pasted into the Supabase
+  dashboard's Edge Functions editor by hand, there's no deploy tooling here) extended to
+  accept `{ role: "bookkeeper" }` on POST: it skips the `lenderName`/`lender_profiles` row
+  entirely (a bookkeeper isn't scoped to one lender) and GET now also returns a `bookkeepers`
+  array (from `auth.admin.listUsers()` filtered to `user_metadata.role === "bookkeeper"`,
+  since those accounts have no profile-table row to list). DELETE is unchanged and already
+  works for either role. The function's own auth check (only `kyle@nexushomesoh.com` may
+  call it at all) means this is safe to share across both account types.
+- **RLS note**: `nexus_data`'s SELECT policy is unrestricted for any authenticated user, so a
+  bookkeeper reads the full blob via the same plain `loadData()` the admin Tracker uses — no
+  dedicated edge function needed for bookkeeper reads, unlike lenders (`lender-data`). The
+  UPDATE policy was originally just as unrestricted, which would have let a lender or
+  bookkeeper account write directly to the table by calling the Supabase client's `.update()`
+  themselves, bypassing the app's own UI lockdown entirely — tightened to exclude both roles
+  (`(auth.jwt() -> 'user_metadata' ->> 'role') IS DISTINCT FROM 'bookkeeper' AND ... 'lender'`)
+  so the read-only guarantee holds even against someone going around the app, not just
+  against the app's own hidden buttons.
 
 ## UI Design Language
 - iOS/Apple aesthetic: frosted glass headers, squircle icons, SF Pro font stack

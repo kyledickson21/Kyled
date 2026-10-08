@@ -63,6 +63,8 @@ async function authFetch(name, opts = {}) {
 
 export const getLenderData = () => authFetch('lender-data')
 
+// Returns { lenders: [...], bookkeepers: [...] } — one shared account-management endpoint
+// for both portal roles (admin-only, see the edge function's own auth check).
 export const listLenderAccounts = () => authFetch('manage-lenders')
 
 export const createLenderAccount = ({ email, lenderName, password }) =>
@@ -72,5 +74,13 @@ export const createLenderAccount = ({ email, lenderName, password }) =>
     body: JSON.stringify({ email, lenderName, password }),
   })
 
+export const createBookkeeperAccount = ({ email, password }) =>
+  authFetch('manage-lenders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, role: 'bookkeeper' }),
+  })
+
+// Works for either a lender or a bookkeeper account — both are deleted by their auth user id.
 export const deleteLenderAccount = (userId) =>
   authFetch(`manage-lenders?userId=${userId}`, { method: 'DELETE' })

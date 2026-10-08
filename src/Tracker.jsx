@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, createContext, useContext, Fragment } from "react";
 import { createPortal } from "react-dom";
-import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, deleteLenderAccount } from './supabase'
+import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, createBookkeeperAccount, deleteLenderAccount } from './supabase'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -6720,12 +6720,19 @@ function OverageCheckModal({ prop, init, onSave, onDelete, onClose }) {
 // ─── Manage Lenders Page ─────────────────────────────────────────────────────
 function ManageLendersPage({ data }) {
   const [lenders, setLenders] = useState(null)
+  const [bookkeepers, setBookkeepers] = useState(null)
   const [fetching, setFetching] = useState(true)
   const [form, setForm] = useState({ lenderName: '', email: '', password: '' })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [ok, setOk] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+
+  const [bkForm, setBkForm] = useState({ email: '', password: '' })
+  const [bkSaving, setBkSaving] = useState(false)
+  const [bkErr, setBkErr] = useState('')
+  const [bkOk, setBkOk] = useState('')
+  const [bkShowPassword, setBkShowPassword] = useState(false)
 
   const allNames = [...new Set([
     ...(data.properties || []).flatMap(p => (p.loans || []).map(l => l.lenderName)),
@@ -6734,7 +6741,10 @@ function ManageLendersPage({ data }) {
 
   const load = () => {
     setFetching(true)
-    listLenderAccounts().then(r => setLenders(r.lenders || [])).catch(e => setErr(e.message)).finally(() => setFetching(false))
+    listLenderAccounts()
+      .then(r => { setLenders(r.lenders || []); setBookkeepers(r.bookkeepers || []) })
+      .catch(e => { setErr(e.message); setBkErr(e.message) })
+      .finally(() => setFetching(false))
   }
   useEffect(load, [])
 
@@ -6750,11 +6760,30 @@ function ManageLendersPage({ data }) {
     finally { setSaving(false) }
   }
 
+  const handleCreateBookkeeper = async e => {
+    e.preventDefault()
+    setBkSaving(true); setBkErr(''); setBkOk('')
+    try {
+      await createBookkeeperAccount(bkForm)
+      setBkOk(`Bookkeeper account created — they can now log in at this URL and will see everything, read-only.`)
+      setBkForm({ email: '', password: '' })
+      load()
+    } catch(ex) { setBkErr(ex.message) }
+    finally { setBkSaving(false) }
+  }
+
   const handleDelete = async (userId, name) => {
     if (!window.confirm(`Remove portal access for ${name}? They will no longer be able to log in.`)) return
     setErr('')
     try { await deleteLenderAccount(userId); load() }
     catch(ex) { setErr(ex.message) }
+  }
+
+  const handleDeleteBookkeeper = async (userId, email) => {
+    if (!window.confirm(`Remove bookkeeper access for ${email}? They will no longer be able to log in.`)) return
+    setBkErr('')
+    try { await deleteLenderAccount(userId); load() }
+    catch(ex) { setBkErr(ex.message) }
   }
 
   return (
@@ -6816,6 +6845,63 @@ function ManageLendersPage({ data }) {
                   <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">{l.email}</div>
                 </div>
                 <button onClick={() => handleDelete(l.auth_user_id, l.lender_name)}
+                  className="shrink-0 text-[11px] font-semibold text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors">
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="h-px bg-slate-200 dark:bg-zinc-800 my-2"/>
+
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4">
+        <div className="font-bold text-[14px] text-slate-800 dark:text-zinc-100 mb-1">Grant Bookkeeper Access</div>
+        <div className="text-[12px] text-slate-400 dark:text-zinc-500 mb-4">Give a bookkeeper their own login — they see everything (all properties, lenders, loans, full History/Money Trail) but can't add, edit, delete, close, or move anything.</div>
+        <form onSubmit={handleCreateBookkeeper} className="space-y-3">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Email</label>
+            <input type="email" value={bkForm.email} onChange={e => setBkForm(f => ({...f, email: e.target.value}))} required placeholder="their@email.com"
+              className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Password</label>
+            <div className="relative">
+              <input type={bkShowPassword?"text":"password"} value={bkForm.password} onChange={e => setBkForm(f => ({...f, password: e.target.value}))} required placeholder="temporary password"
+                className="w-full border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 rounded-xl px-3 py-2.5 pr-16 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+              <button type="button" onClick={()=>setBkShowPassword(s=>!s)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 px-2 py-1">
+                {bkShowPassword?"Hide":"Show"}
+              </button>
+            </div>
+          </div>
+          {bkErr && <p className="text-red-500 text-xs font-medium">{bkErr}</p>}
+          {bkOk  && <p className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">{bkOk}</p>}
+          <button type="submit" disabled={bkSaving}
+            className="w-full bg-teal-600 hover:bg-teal-700 text-white rounded-xl py-2.5 text-sm font-semibold transition-all disabled:opacity-50">
+            {bkSaving ? 'Creating…' : 'Create Login'}
+          </button>
+        </form>
+      </div>
+
+      <div>
+        <div className="text-[13px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-3">
+          Bookkeeper Logins {bookkeepers ? `(${bookkeepers.length})` : ''}
+        </div>
+        {fetching ? (
+          <div className="text-slate-400 dark:text-zinc-500 text-sm text-center py-8">Loading…</div>
+        ) : !bookkeepers?.length ? (
+          <div className="text-slate-300 dark:text-zinc-600 text-sm text-center py-8">No bookkeeper logins yet</div>
+        ) : (
+          <div className="space-y-2">
+            {bookkeepers.map(b => (
+              <div key={b.auth_user_id} className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-200 truncate">{b.email}</div>
+                  <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate">Read-only · full access</div>
+                </div>
+                <button onClick={() => handleDeleteBookkeeper(b.auth_user_id, b.email)}
                   className="shrink-0 text-[11px] font-semibold text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors">
                   Remove
                 </button>
