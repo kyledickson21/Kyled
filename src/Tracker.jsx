@@ -7002,9 +7002,11 @@ function ManageLendersPage({ data }) {
 //   basis) over the loan's own real start/end dates — it does NOT re-simulate monthly
 //   billing mechanics or time individual draws separately, so treat it as a solid ballpark
 //   for comparing rates, not a penny-exact alternate-history replay.
-// - Points are a one-time cost charged at funding under the hypothetical lender; for the
-//   "This Year" total they only count if the loan itself originated this year (a loan that
-//   funded in an earlier year would have paid its points then, not now).
+// - Points are a one-time cost charged at funding under the hypothetical lender — either a
+//   percentage of principal or a flat dollar amount (some hard money lenders quote a flat
+//   origination fee instead of points) — and for the "This Year" total they only count if
+//   the loan itself originated this year (a loan that funded in an earlier year would have
+//   paid its points then, not now).
 function HardMoneyComparePage({ data }) {
   const prv = usePrivacy();
   const openPanel = usePanel();
@@ -7012,12 +7014,16 @@ function HardMoneyComparePage({ data }) {
   const hs = v => prv ? maskMoney($$ps(v)) : $$ps(v);
   const [rate, setRate] = usePersistedState("nx-hmcRate", "");
   const [points, setPoints] = usePersistedState("nx-hmcPoints", "0");
+  const [pointsType, setPointsType] = usePersistedState("nx-hmcPointsType", "percent");
   const [basis, setBasis] = usePersistedState("nx-hmcBasis", "360");
 
   const rateNum = parseFloat(rate) || 0;
   const pointsNum = parseFloat(points) || 0;
   const basisNum = parseInt(basis) || 360;
   const hasRate = rateNum > 0;
+  // One-time origination cost under the hypothetical lender for a given loan — a flat $
+  // amount is the same regardless of loan size, while a percent is of that loan's principal.
+  const pointsCost = loan => pointsType==="fixed" ? pointsNum : (loan.principal||0)*pointsNum/100;
 
   const allHardLoans = [
     ...data.properties.flatMap(p => p.loans.filter(l=>l.loanType==="hard").map(l=>({...l, property:p.address, propId:p.id}))),
@@ -7040,10 +7046,10 @@ function HardMoneyComparePage({ data }) {
   const rows = allHardLoans.map(loan => {
     const loanEnd = loan.endDate || TODAY;
     const actualAll = actualThrough(loan, loanEnd);
-    const hypoAll = hypoThrough(loan, loanEnd) + (loan.principal||0)*pointsNum/100;
+    const hypoAll = hypoThrough(loan, loanEnd) + pointsCost(loan);
     const actualYr = Math.max(0, actualThrough(loan,TODAY) - actualThrough(loan,yearBoundary));
     const startedThisYear = loan.startDate && loan.startDate.slice(0,4)===String(currentYear);
-    const hypoYr = Math.max(0, hypoThrough(loan,TODAY) - hypoThrough(loan,yearBoundary)) + (startedThisYear ? (loan.principal||0)*pointsNum/100 : 0);
+    const hypoYr = Math.max(0, hypoThrough(loan,TODAY) - hypoThrough(loan,yearBoundary)) + (startedThisYear ? pointsCost(loan) : 0);
     return {...loan, actualAll, hypoAll, savingsAll: actualAll-hypoAll, actualYr, hypoYr, savingsYr: actualYr-hypoYr};
   }).sort((a,b)=>Math.abs(b.savingsAll)-Math.abs(a.savingsAll));
 
@@ -7060,9 +7066,10 @@ function HardMoneyComparePage({ data }) {
       </div>
 
       <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <Inp label="Interest Rate (%/yr)" value={rate} onChange={setRate} percent placeholder="11"/>
-          <Inp label="Points / Origination Fee (%)" value={points} onChange={setPoints} percent placeholder="0"/>
+          <Inp label={pointsType==="fixed"?"Origination Fee ($)":"Points / Origination Fee (%)"} value={points} onChange={setPoints} money={pointsType==="fixed"} percent={pointsType!=="fixed"} placeholder="0"/>
+          <Sel label="Fee Type" value={pointsType} onChange={setPointsType} options={[["percent","% of Principal"],["fixed","Fixed $ Amount"]]}/>
           <Sel label="Day-Count Basis" value={basis} onChange={setBasis} options={[["360","360-day year"],["365","365-day year"]]}/>
         </div>
       </div>

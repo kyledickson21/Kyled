@@ -321,10 +321,12 @@ inputs persist locally via `usePersistedState` (`nx-hmcRate`/`nx-hmcPoints`/`nx-
 - **Hypothetical** interest is flat simple interest (`principal × rate × days ÷ basis`) over the
   loan's own real start/end dates — it does not re-simulate monthly billing mechanics, so treat
   it as a ballpark for comparing rates, not a penny-exact alternate history.
-- Points are a one-time cost under the hypothetical lender, counted in "This Year" only if the
-  loan itself originated this year (`loan.startDate.slice(0,4) === currentYear`) — a loan that
-  funded in an earlier year would have paid its points then, not now. They always count toward
-  "All-Time" regardless of origination year.
+- Points are a one-time cost under the hypothetical lender, as either a `%` of principal or a
+  flat `$` origination fee (toggled via "Fee Type", mirroring `interestType`'s percentage/fixed
+  pattern elsewhere in the app) — counted in "This Year" only if the loan itself originated this
+  year (`loan.startDate.slice(0,4) === currentYear`) — a loan that funded in an earlier year
+  would have paid its points then, not now. They always count toward "All-Time" regardless of
+  origination year.
 - "This Year" uses `max(0, earnedThrough(today) - earnedThrough(lastYearEnd))` for both actual
   and hypothetical sides, so a loan that closed before this year contributes $0 to "This Year"
   but still counts fully toward "All-Time".
