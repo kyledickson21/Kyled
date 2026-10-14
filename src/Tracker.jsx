@@ -6988,6 +6988,134 @@ function ManageLendersPage({ data }) {
   )
 }
 
+// ─── Hard Money Rate Comparison ────────────────────────────────────────────────
+// A what-if calculator, not a record of anything real: type in a hypothetical hard-money
+// lender's rate/points/day-count basis and see what every hard-money loan — past and
+// current — would have cost under those terms instead of what it actually cost, both for
+// the current year and all-time. Pure read/compute, nothing is saved.
+//
+// Methodology, so the numbers are honest about what they are:
+// - "Actual" interest reuses calcIntEarned() — the exact same per-type formula every other
+//   interest figure in this app is built on — so these numbers always match what you'd see
+//   on the Dashboard/LenderDetailPage for the same loan.
+// - "Hypothetical" interest is a flat simple-interest accrual (principal × rate × days ÷
+//   basis) over the loan's own real start/end dates — it does NOT re-simulate monthly
+//   billing mechanics or time individual draws separately, so treat it as a solid ballpark
+//   for comparing rates, not a penny-exact alternate-history replay.
+// - Points are a one-time cost charged at funding under the hypothetical lender; for the
+//   "This Year" total they only count if the loan itself originated this year (a loan that
+//   funded in an earlier year would have paid its points then, not now).
+function HardMoneyComparePage({ data }) {
+  const prv = usePrivacy();
+  const openPanel = usePanel();
+  const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
+  const hs = v => prv ? maskMoney($$ps(v)) : $$ps(v);
+  const [rate, setRate] = usePersistedState("nx-hmcRate", "");
+  const [points, setPoints] = usePersistedState("nx-hmcPoints", "0");
+  const [basis, setBasis] = usePersistedState("nx-hmcBasis", "360");
+
+  const rateNum = parseFloat(rate) || 0;
+  const pointsNum = parseFloat(points) || 0;
+  const basisNum = parseInt(basis) || 360;
+  const hasRate = rateNum > 0;
+
+  const allHardLoans = [
+    ...data.properties.flatMap(p => p.loans.filter(l=>l.loanType==="hard").map(l=>({...l, property:p.address, propId:p.id}))),
+    ...(data.unassigned||[]).filter(l=>l.loanType==="hard").map(l=>({...l, property:null, propId:null})),
+  ];
+
+  const currentYear = parseInt(TODAY.slice(0,4));
+  const yearBoundary = `${currentYear-1}-12-31`; // anything earned on/before this isn't "this year"
+
+  // Actual interest earned from the loan's own start through `asOf` — 0 if the loan hadn't
+  // started yet, reusing calcIntEarned's exact per-paymentType math.
+  const actualThrough = (loan, asOf) => (loan.startDate && asOf>=loan.startDate) ? calcIntEarned(loan, asOf) : 0;
+  // Hypothetical flat accrual through `asOf` under the typed-in rate/basis.
+  const hypoThrough = (loan, asOf) => {
+    if (!loan.startDate || asOf<loan.startDate) return 0;
+    const end = loan.endDate && loan.endDate<=asOf ? loan.endDate : asOf;
+    return (loan.principal||0)*rateNum/100*(daysBetween(loan.startDate,end)/basisNum);
+  };
+
+  const rows = allHardLoans.map(loan => {
+    const loanEnd = loan.endDate || TODAY;
+    const actualAll = actualThrough(loan, loanEnd);
+    const hypoAll = hypoThrough(loan, loanEnd) + (loan.principal||0)*pointsNum/100;
+    const actualYr = Math.max(0, actualThrough(loan,TODAY) - actualThrough(loan,yearBoundary));
+    const startedThisYear = loan.startDate && loan.startDate.slice(0,4)===String(currentYear);
+    const hypoYr = Math.max(0, hypoThrough(loan,TODAY) - hypoThrough(loan,yearBoundary)) + (startedThisYear ? (loan.principal||0)*pointsNum/100 : 0);
+    return {...loan, actualAll, hypoAll, savingsAll: actualAll-hypoAll, actualYr, hypoYr, savingsYr: actualYr-hypoYr};
+  }).sort((a,b)=>Math.abs(b.savingsAll)-Math.abs(a.savingsAll));
+
+  const totals = rows.reduce((s,l)=>({
+    actualAll:s.actualAll+l.actualAll, hypoAll:s.hypoAll+l.hypoAll, savingsAll:s.savingsAll+l.savingsAll,
+    actualYr:s.actualYr+l.actualYr, hypoYr:s.hypoYr+l.hypoYr, savingsYr:s.savingsYr+l.savingsYr,
+  }), {actualAll:0,hypoAll:0,savingsAll:0,actualYr:0,hypoYr:0,savingsYr:0});
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Hard Money Rate Comparison</h2>
+        <p className="text-sm text-slate-400 dark:text-zinc-500 mt-0.5">Type in a lender's rate and terms to see what every hard-money loan — past and current — would have cost instead.</p>
+      </div>
+
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Inp label="Interest Rate (%/yr)" value={rate} onChange={setRate} percent placeholder="11"/>
+          <Inp label="Points / Origination Fee (%)" value={points} onChange={setPoints} percent placeholder="0"/>
+          <Sel label="Day-Count Basis" value={basis} onChange={setBasis} options={[["360","360-day year"],["365","365-day year"]]}/>
+        </div>
+      </div>
+
+      {!hasRate ? (
+        <div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">🧮</div><p className="font-semibold">Enter a rate above to compare</p></div>
+      ) : !rows.length ? (
+        <div className="text-center py-16 text-slate-400 dark:text-zinc-500"><div className="text-5xl mb-3">🏗️</div><p className="font-semibold">No hard money loans to compare yet</p></div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Loans Compared</div>
+              <div className="text-2xl font-black text-slate-900 dark:text-zinc-100 tabular-nums">{rows.length}</div>
+            </div>
+            <div className={`rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4 ${totals.savingsYr>=0?"bg-emerald-50 dark:bg-emerald-900/20":"bg-red-50 dark:bg-red-900/20"}`}>
+              <div className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${totals.savingsYr>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>This Year ({currentYear})</div>
+              <div className={`text-2xl font-black tabular-nums ${totals.savingsYr>=0?"text-emerald-700 dark:text-emerald-300":"text-red-700 dark:text-red-300"}`}>{hs(totals.savingsYr)}</div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{totals.savingsYr>=0?"saved":"would have cost more"}</div>
+            </div>
+            <div className={`rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-4 ${totals.savingsAll>=0?"bg-emerald-50 dark:bg-emerald-900/20":"bg-red-50 dark:bg-red-900/20"}`}>
+              <div className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${totals.savingsAll>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>All-Time</div>
+              <div className={`text-2xl font-black tabular-nums ${totals.savingsAll>=0?"text-emerald-700 dark:text-emerald-300":"text-red-700 dark:text-red-300"}`}>{hs(totals.savingsAll)}</div>
+              <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{totals.savingsAll>=0?"saved":"would have cost more"}</div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+            {rows.map(l=>(
+              <div key={l.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button onClick={()=>openPanel?.({type:'lender',name:l.lenderName})} className="font-semibold text-slate-900 dark:text-zinc-100 text-sm hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left">{l.lenderName}</button>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400">{(l.interestRate||0)}%/yr actual</span>
+                    {!l.endDate&&<span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">Active</span>}
+                  </div>
+                  <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
+                    <button onClick={()=>l.propId&&openPanel?.({type:'property',id:l.propId})} className={`${l.propId?"hover:text-teal-600 dark:hover:text-teal-400 transition-colors":""} text-left`}>{l.property||"Unassigned"}</button> · {h$(l.principal)}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className={`font-bold text-sm tabular-nums ${l.savingsAll>=0?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{hs(l.savingsAll)}</div>
+                  <div className="text-[11px] text-slate-400 dark:text-zinc-500 tabular-nums">{h$(l.actualAll)} actual vs {h$(l.hypoAll)} hypo</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Draws Page ───────────────────────────────────────────────────────────────
 function DrawsPage({ data }) {
   const privacy = usePrivacy();
@@ -10376,6 +10504,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
                 Portal Access
               </button>
+              <button onClick={()=>{setSettingsOpen(false);setTab("HardMoneyCompare");}}
+                className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
+                Rate Comparison
+              </button>
               </>)}
               <div className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
               <button onClick={onSignOut}
@@ -10469,12 +10601,16 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
                 {dark?"Light Mode":"Dark Mode"}
               </button>
-              {!readOnly && (
+              {!readOnly && (<>
               <button onClick={()=>{setMobileNavOpen(false);setNavStack([]);setPanelStack([]);setTab("LenderAccts");}}
                 className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
                 Portal Access
               </button>
-              )}
+              <button onClick={()=>{setMobileNavOpen(false);setNavStack([]);setPanelStack([]);setTab("HardMoneyCompare");}}
+                className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
+                Rate Comparison
+              </button>
+              </>)}
               {onHome&&(
                 <button onClick={()=>{setMobileNavOpen(false);onHome();}}
                   className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
@@ -10659,6 +10795,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             {tab==="Draws"        &&<DrawsPage data={data}/>}
             {tab==="Whiteboard"   &&<WhiteboardPage data={data} update={update}/>}
             {tab==="LenderAccts"  && !readOnly &&<ManageLendersPage data={data}/>}
+            {tab==="HardMoneyCompare" && !readOnly &&<HardMoneyComparePage data={data}/>}
           </div>
         )}
       </div>

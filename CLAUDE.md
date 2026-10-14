@@ -184,6 +184,7 @@ const useDirty / confirmDiscard / useDirtyGuard  // warn-before-discard for moda
 | `RehabPriorityPage` | ~5739 | "Rehab Priority" tab |
 | `OverageCheckModal` | ~6160 | Add/edit a post-closing overage refund |
 | `ManageLendersPage` | ~6206 | "Portal Access" — lender portal login management |
+| `HardMoneyComparePage` | ~6990 | "Rate Comparison" — what-if calculator for hard money loans |
 | `DrawsPage` | ~6317 | "Draw Tracker" tab |
 | `WhiteboardPage` | ~6957 | "Whiteboard" tab — cash-flow calendar |
 | `PropertyDetailPage` | ~7143 | Property detail panel/page |
@@ -199,7 +200,9 @@ Dashboard | Properties | LenderDash ("Lenders") | AllLoans ("Loans") | RehabPrio
 Draws ("Draw Tracker") | PropDash ("Prop Dashboard") | Closed + History (grouped as "Records")
 Whiteboard
 ```
-"Portal Access" (lender login management) is reached from the settings menu, not the main nav.
+"Portal Access" (lender login management) and "Rate Comparison" (hard money what-if calculator)
+are both reached from the settings menu, not the main nav. Both are hidden under `!readOnly`,
+so bookkeepers don't see either.
 
 ## State & Update Pattern
 ```js
@@ -306,6 +309,26 @@ Forms with unsaved-edit protection use the `useDirty`/`confirmDiscard`/`useDirty
   on the as-of date still counts — money was out that day), each one's payoff recomputed via
   `calcBalance(loan, asOfDate)` rather than today, summed into Total Principal / Interest
   Accrued / Total Payoff stat tiles. The existing lender/type filters apply here too.
+
+## Hard Money Rate Comparison (`HardMoneyComparePage`)
+A what-if calculator reached via Settings → "Rate Comparison" (hidden from bookkeepers). Kyle
+types in a hypothetical lender's rate/points/day-count basis; the tool shows what every
+`loanType==="hard"` loan — past and current, properties + unassigned — would have cost under
+those terms instead of what it actually cost, both "This Year" and "All-Time". Nothing is saved;
+inputs persist locally via `usePersistedState` (`nx-hmcRate`/`nx-hmcPoints`/`nx-hmcBasis`).
+- **Actual** interest reuses `calcIntEarned()` verbatim, so it always matches the Dashboard/
+  LenderDetailPage figure for the same loan.
+- **Hypothetical** interest is flat simple interest (`principal × rate × days ÷ basis`) over the
+  loan's own real start/end dates — it does not re-simulate monthly billing mechanics, so treat
+  it as a ballpark for comparing rates, not a penny-exact alternate history.
+- Points are a one-time cost under the hypothetical lender, counted in "This Year" only if the
+  loan itself originated this year (`loan.startDate.slice(0,4) === currentYear`) — a loan that
+  funded in an earlier year would have paid its points then, not now. They always count toward
+  "All-Time" regardless of origination year.
+- "This Year" uses `max(0, earnedThrough(today) - earnedThrough(lastYearEnd))` for both actual
+  and hypothetical sides, so a loan that closed before this year contributes $0 to "This Year"
+  but still counts fully toward "All-Time".
+- Private-money loans are entirely out of scope — the tool only ever looks at `loanType==="hard"`.
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top
