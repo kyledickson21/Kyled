@@ -87,7 +87,15 @@ update(d => ({...d, properties: [{newField: value}]}))
                                      // monthly (e.g. lender's equity-line rate); the rest
                                      // (interestRate - splitMonthlyRate) accrues to closing
           specialTerms: "",
-          drawFacility: null | {committed: 0, draws: [{id, date, amount}]},
+          drawFacility: null | {committed: 0, draws: [{id, date, amount, fee}]},
+                                     // each draw's `fee` is optional (omitted, not 0, when
+                                     // there isn't one) — a one-time cost the lender takes off
+                                     // a specific draw, e.g. an inspection/draw fee. `amount`
+                                     // is always the GROSS draw against the committed facility
+                                     // (unchanged meaning — drawn/available math is untouched
+                                     // by fee) — the net that actually hit the bank account is
+                                     // always computed on display as `amount - fee`, never
+                                     // stored. See "Draw Fees" below.
           lockedToProperty: false,   // private-only subtype — "Fixed to Property": can still be
                                      // moved, but PlaceSplitModal gates the move behind confirming
                                      // the promissory note/mortgage was updated (see needsNoteConfirm)
@@ -309,6 +317,19 @@ Forms with unsaved-edit protection use the `useDirty`/`confirmDiscard`/`useDirty
   on the as-of date still counts — money was out that day), each one's payoff recomputed via
   `calcBalance(loan, asOfDate)` rather than today, summed into Total Principal / Interest
   Accrued / Total Payoff stat tiles. The existing lender/type filters apply here too.
+
+## Draw Fees
+Every "Add Draw" entry point — the global Actions → "Record Draw" quick action
+(`QuickDrawModal`), the inline "+ Add Draw" card on Properties (`inlineDraw` state in
+`PropertiesPage`), and the draw-facility editor in both `LenderMoneyForm` (adding/editing a
+loan) and `LoanDetailPage` — has an optional "Draw Fee ($)" field alongside the existing Draw
+Amount, for lenders that take a fee off a specific draw (e.g. an inspection fee). The fee is
+purely additive: `amount` keeps meaning the gross draw against the committed facility (so
+Drawn/Available/funded totals are completely unaffected), and every place a draw is listed —
+the read-only Draw History table on `LoanDetailPage`, the draws list on `PropertyDetailPage`,
+and the editable "Draws Taken" lists in the two forms — shows the fee (when present) and the
+computed net (`amount - fee`, "what actually hit the account"), so bookkeepers see it too
+without needing any write access.
 
 ## Hard Money Rate Comparison (`HardMoneyComparePage`)
 A what-if calculator reached via Settings → "Rate Comparison" (hidden from bookkeepers). Kyle
