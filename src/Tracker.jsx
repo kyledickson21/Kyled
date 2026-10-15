@@ -207,6 +207,11 @@ const drawRemaining = loan => {
   return Math.max(0,(loan.drawFacility.committed||0)-drawn);
 };
 
+// Total of every per-draw fee taken on this loan's draw facility — used to pre-fill the
+// "Lender Fees" field when closing a property, so draw fees land in Money Costs (not Rehab)
+// without Kyle having to re-add them up by hand. Still just a starting value; editable there.
+const sumDrawFees = loan => (loan?.drawFacility?.draws||[]).reduce((s,d)=>s+(d.fee||0),0);
+
 // What lender money actually gets allocated toward: cost to close, rehab, and the interest
 // carry expected over the hold period. Holding costs (taxes, insurance, utilities) are a
 // real expense but aren't sized against loan proceeds — they're covered out of pocket/cash
@@ -2127,7 +2132,11 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
         interestPayoff:String(isMonthly?intEarned:calcI),
         // Hard money is settled through title as standard practice; private money is
         // settled from the wire by default. Still a per-lender toggle either way.
-        lenderFees:"0",overageRefund:"0",titleMoneyCosts:"0",paidAtTitle:l.loanType==="hard",
+        // lenderFees starts pre-filled with any draw fees taken over this loan's life (a real
+        // cost of this deal, belongs in Money Costs not Rehab) — still editable from here.
+        // drawFeesHint keeps that original figure around as a reminder even if Kyle edits
+        // lenderFees afterward for an unrelated reason.
+        lenderFees:String(sumDrawFees(l)),drawFeesHint:sumDrawFees(l),overageRefund:"0",titleMoneyCosts:"0",paidAtTitle:l.loanType==="hard",
         customRolling:String(l.principal||0),
         origStartDate:l.startDate||soldDate,
         type:"paidOut",destination:otherProps[0]?.id||"unassigned",newStartDate:nextDay(soldDate),
@@ -2142,7 +2151,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
       paymentType:l.paymentType||"closing",specialTerms:l.specialTerms||"",
       principalPayoff:"0", // already returned to lender
       interestPayoff:String(Math.round(calcIntEarned(l,l.endDate)*100)/100), // editable in case actual amount differed
-      lenderFees:"0",overageRefund:"0",titleMoneyCosts:"0",paidAtTitle:false,
+      lenderFees:String(sumDrawFees(l)),drawFeesHint:sumDrawFees(l),overageRefund:"0",titleMoneyCosts:"0",paidAtTitle:false,
       customRolling:"0",origStartDate:l.startDate||"",
       type:"alreadyPaid",destination:"",newStartDate:"",
     })),
@@ -2404,6 +2413,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
                               <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
+                              {r.drawFeesHint>0&&<p className="text-[9px] text-teal-600 dark:text-teal-400 mt-1">Pre-filled from {$$p(r.drawFeesHint)} in recorded draw fees</p>}
                             </div>
                           </div>
                           {r.isMonthly&&!r.paidAtTitle&&<p className="text-[10px] text-amber-600 dark:text-amber-400">Total interest over hold period — not deducted from closing wire</p>}
@@ -2441,6 +2451,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
                               <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
+                              {r.drawFeesHint>0&&<p className="text-[9px] text-teal-600 dark:text-teal-400 mt-1">Pre-filled from {$$p(r.drawFeesHint)} in recorded draw fees</p>}
                             </div>
                           </div>
                           <div className="text-[10px] text-slate-400 dark:text-zinc-500">Principal {$$p(r.principal)} rolls to next deal</div>
@@ -2463,6 +2474,7 @@ function MarkSoldModal({ prop, allProperties, onConfirm, onClose }) {
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
                               <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
+                              {r.drawFeesHint>0&&<p className="text-[9px] text-teal-600 dark:text-teal-400 mt-1">Pre-filled from {$$p(r.drawFeesHint)} in recorded draw fees</p>}
                             </div>
                           </div>
                         </div>
@@ -4750,7 +4762,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
         principalPayoff:String(lp.principalPayoff??l.principal??0),
         interestPayoff:String(lp.interestPayoff??0),
         titleMoneyCosts:String(lp.titleInterestPayoff||""),
-        lenderFees:String(lp.lenderFees??0),
+        lenderFees:String(lp.lenderFees??0),drawFeesHint:sumDrawFees(l),
         overageRefund:"0", // not stored per lender historically — only the combined total was saved
         paidAtTitle:lp.paidAtTitle||false,
         wireAmount:String(lp.wireAmount??0),
@@ -4763,7 +4775,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
         loanId:l.id,lenderName:l.lenderName,loanType:l.loanType,
         principal:l.principal||0,isMonthly:false,isPreClosed:true,type:"alreadyPaid",
         principalPayoff:"0",interestPayoff:String(lp.interestPayoff??0),
-        titleMoneyCosts:"",lenderFees:String(lp.lenderFees??0),overageRefund:"0",
+        titleMoneyCosts:"",lenderFees:String(lp.lenderFees??0),drawFeesHint:sumDrawFees(l),overageRefund:"0",
         paidAtTitle:false,wireAmount:"0",customRolling:"0",
       };
     }),
@@ -4942,6 +4954,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
                               <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
+                              {r.drawFeesHint>0&&<p className="text-[9px] text-teal-600 dark:text-teal-400 mt-1">Pre-filled from {$$p(r.drawFeesHint)} in recorded draw fees</p>}
                             </div>
                           </div>
                           {r.isMonthly&&!r.paidAtTitle&&<p className="text-[10px] text-amber-600 dark:text-amber-400">Total interest over hold period — not deducted from closing wire</p>}
@@ -4979,6 +4992,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
                               <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
+                              {r.drawFeesHint>0&&<p className="text-[9px] text-teal-600 dark:text-teal-400 mt-1">Pre-filled from {$$p(r.drawFeesHint)} in recorded draw fees</p>}
                             </div>
                           </div>
                           <div className="text-[10px] text-slate-400 dark:text-zinc-500">Principal {$$p(r.principal)} rolls to next deal</div>
@@ -5001,6 +5015,7 @@ function EditClosingModal({ prop, onSave, onClose }) {
                             <div>
                               <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">Lender Fees</div>
                               <MoneyField value={r.lenderFees} onChange={v=>upd(r.loanId,{lenderFees:v})} className={numIn}/>
+                              {r.drawFeesHint>0&&<p className="text-[9px] text-teal-600 dark:text-teal-400 mt-1">Pre-filled from {$$p(r.drawFeesHint)} in recorded draw fees</p>}
                             </div>
                           </div>
                         </div>

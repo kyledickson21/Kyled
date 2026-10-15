@@ -330,6 +330,14 @@ the read-only Draw History table on `LoanDetailPage`, the draws list on `Propert
 and the editable "Draws Taken" lists in the two forms — shows the fee (when present) and the
 computed net (`amount - fee`, "what actually hit the account"), so bookkeepers see it too
 without needing any write access.
+- **At closing**: `sumDrawFees(loan)` (near `drawRemaining`, top of file) totals every fee
+  recorded across a loan's draws. `MarkSoldModal` pre-fills that loan's row's "Lender Fees"
+  field with this sum (still editable) when a property is first marked sold, so draw fees land
+  in **Money Costs**, not Rehab — `rehabIn` is a wholly separate field, never touched by this.
+  A small teal hint under the field ("Pre-filled from $X in recorded draw fees") shows the
+  original figure even if Kyle edits Lender Fees afterward for an unrelated reason.
+  `EditClosingModal` (editing an already-closed deal) keeps using the real saved `lenderFees`
+  value rather than re-deriving it, but shows the same hint for reference.
 
 ## Hard Money Rate Comparison (`HardMoneyComparePage`)
 A what-if calculator reached via Settings → "Rate Comparison" (hidden from bookkeepers). Kyle
