@@ -323,13 +323,21 @@ Every "Add Draw" entry point — the global Actions → "Record Draw" quick acti
 (`QuickDrawModal`), the inline "+ Add Draw" card on Properties (`inlineDraw` state in
 `PropertiesPage`), and the draw-facility editor in both `LenderMoneyForm` (adding/editing a
 loan) and `LoanDetailPage` — has an optional "Draw Fee ($)" field alongside the existing Draw
-Amount, for lenders that take a fee off a specific draw (e.g. an inspection fee). The fee is
-purely additive: `amount` keeps meaning the gross draw against the committed facility (so
-Drawn/Available/funded totals are completely unaffected), and every place a draw is listed —
-the read-only Draw History table on `LoanDetailPage`, the draws list on `PropertyDetailPage`,
-and the editable "Draws Taken" lists in the two forms — shows the fee (when present) and the
-computed net (`amount - fee`, "what actually hit the account"), so bookkeepers see it too
-without needing any write access.
+Amount, for lenders that take a fee off a specific draw (e.g. an inspection fee).
+- **`amount` is the NET** — what Kyle actually types in is the amount that hits the bank
+  account, since that's the number he has in hand (off a bank statement/draw sheet). The fee
+  is on top of that, not carved out of it. `drawGross(d) = d.amount + (d.fee||0)` (declared
+  right next to `drawRemaining`, top of file) is the true draw against the committed
+  facility — every "Drawn"/"Available"/funded total, and the per-draw interest accrual in
+  `addHardPayments` (Whiteboard), sums `drawGross(d)`, never `d.amount` alone. Getting this
+  backwards (subtracting the fee from amount instead of adding it) was a bug fixed shortly
+  after the feature shipped — watch for any new "drawn against facility" math defaulting back
+  to a bare `d.amount` sum instead of `drawGross(d)`.
+- Every place a draw is listed — the read-only Draw History table on `LoanDetailPage`
+  ("To Account" / "Fee" / "Drawn (Facility)" columns), the draws list on `PropertyDetailPage`,
+  and the editable "Draws Taken" lists in the two forms — shows the net amount, the fee (when
+  present), and the computed gross (`drawGross(d)`, "drawn against the facility"), so
+  bookkeepers see it too without needing any write access.
 - **At closing**: `sumDrawFees(loan)` (near `drawRemaining`, top of file) totals every fee
   recorded across a loan's draws. `MarkSoldModal` pre-fills that loan's row's "Lender Fees"
   field with this sum (still editable) when a property is first marked sold, so draw fees land

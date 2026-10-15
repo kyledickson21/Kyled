@@ -201,9 +201,14 @@ const updateLoanById = (d, loanId, patch) => ({
   unassigned: (d.unassigned||[]).map(l => l.id===loanId ? {...l,...patch} : l),
 });
 
+// A draw's `amount` is the NET that actually hits the account — whatever the lender takes
+// as a `fee` is on top of that, not out of it, so what's actually drawn against the
+// committed facility (and what interest accrues on) is amount + fee, never amount - fee.
+const drawGross = d => (d.amount||0)+(d.fee||0);
+
 const drawRemaining = loan => {
   if (!loan?.drawFacility) return 0;
-  const drawn=(loan.drawFacility.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
+  const drawn=(loan.drawFacility.draws||[]).reduce((s,d)=>s+drawGross(d),0);
   return Math.max(0,(loan.drawFacility.committed||0)-drawn);
 };
 
@@ -1276,7 +1281,7 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
                   <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Draws Taken</div>
                   {f.drawFacility.draws.map(d=>(
                     <div key={d.id} className="flex items-center justify-between text-sm py-1.5 border-b border-slate-200 dark:border-zinc-700 last:border-0">
-                      <span className="text-slate-600 dark:text-zinc-300 tabular-nums">{d.date} · {$$p(d.amount)}{d.fee>0&&<> · −{$$p(d.fee)} fee · <strong className="text-slate-700 dark:text-zinc-200">{$$p(d.amount-d.fee)} net</strong></>}</span>
+                      <span className="text-slate-600 dark:text-zinc-300 tabular-nums">{d.date} · {$$p(d.amount)}{d.fee>0&&<> · +{$$p(d.fee)} fee · <strong className="text-slate-700 dark:text-zinc-200">{$$p(drawGross(d))} drawn</strong></>}</span>
                       <button type="button" onClick={()=>sf(p=>({...p,drawFacility:{...p.drawFacility,draws:p.drawFacility.draws.filter(x=>x.id!==d.id)}}))}
                         className="text-red-400 hover:text-red-600 text-xs p-1 transition-colors">✕</button>
                     </div>
@@ -1286,8 +1291,8 @@ function LenderMoneyForm({ properties, lenders = [], unassigned = [], init, onSa
               <div className="pt-1 border-t border-slate-200 dark:border-zinc-700">
                 <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Add Draw</div>
                 <DateInp label="Draw Date" value={drawDate} onChange={setDrawDate}/>
-                <Inp label="Amount ($)" money value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
-                <Inp label="Draw Fee ($) — optional" money value={drawFee} onChange={setDrawFee} placeholder="0" helpText="If the lender takes a fee off the top, so everyone can see what actually hit the account."/>
+                <Inp label="Amount ($) — net, what hits the account" money value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
+                <Inp label="Draw Fee ($) — optional" money value={drawFee} onChange={setDrawFee} placeholder="0" helpText="If the lender takes a fee off the top, add it here — it's on top of the net amount above, not out of it."/>
                 <Btn onClick={addDraw} sm color="navy" full>+ Record Draw</Btn>
               </div>
             </div>
@@ -1685,10 +1690,11 @@ function QuickDrawModal({ data, onSave, onClose }) {
   const sel=drawLoans.find(l=>l.id===selId);
   const maxDraw=sel?.remaining??0;
   const totalCommitted=sel?.drawFacility?.committed??0;
-  const totalDrawn=(sel?.drawFacility?.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
+  const totalDrawn=(sel?.drawFacility?.draws||[]).reduce((s,d)=>s+drawGross(d),0);
   const amt=parseFloat(amount)||0;
   const feeAmt=parseFloat(fee)||0;
-  const valid=sel&&amt>0&&amt<=maxDraw&&date;
+  const grossAmt=amt+feeAmt;
+  const valid=sel&&amt>0&&grossAmt<=maxDraw&&date;
 
   if(drawLoans.length===0) return(
     <Modal title="Record Draw" onClose={onClose}>
@@ -1740,17 +1746,17 @@ function QuickDrawModal({ data, onSave, onClose }) {
           <DateInp label="Draw Date" value={date} onChange={setDate}/>
         </Lockable>
         <Lockable locked={locked.amount} onToggle={()=>toggleLock("amount")}>
-          <Inp label="Draw Amount" money value={amount} onChange={setAmount} placeholder="0"/>
+          <Inp label="Draw Amount (net — what hits the account)" money value={amount} onChange={setAmount} placeholder="0"/>
         </Lockable>
         <Lockable locked={locked.fee} onToggle={()=>toggleLock("fee")}>
-          <Inp label="Draw Fee (optional)" money value={fee} onChange={setFee} placeholder="0" helpText="If the lender takes a fee off the top — the rest shows everyone what actually hit the account."/>
+          <Inp label="Draw Fee (optional)" money value={fee} onChange={setFee} placeholder="0" helpText="If the lender takes a fee off the top, add it here — it's on top of the net amount above, not out of it."/>
         </Lockable>
 
-        {amt>maxDraw&&maxDraw>0&&(
-          <p className="text-xs text-red-500 dark:text-red-400">Amount exceeds available balance of {$$p(maxDraw)}</p>
+        {grossAmt>maxDraw&&maxDraw>0&&(
+          <p className="text-xs text-red-500 dark:text-red-400">Draw exceeds available balance of {$$p(maxDraw)}</p>
         )}
         {feeAmt>0&&amt>0&&(
-          <p className="text-xs text-slate-500 dark:text-zinc-400">{$$p(amt)} draw − {$$p(feeAmt)} fee = <strong className="text-slate-700 dark:text-zinc-200">{$$p(amt-feeAmt)} to the account</strong></p>
+          <p className="text-xs text-slate-500 dark:text-zinc-400">{$$p(amt)} to the account + {$$p(feeAmt)} fee = <strong className="text-slate-700 dark:text-zinc-200">{$$p(grossAmt)} drawn against the facility</strong></p>
         )}
 
         <div className="flex gap-2 pt-1">
@@ -4031,7 +4037,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                       const bal=calcBalance(loan);
                       const earned=calcIntEarned(loan);
                       const monthly=monthlyLoanPayment(loan);
-                      const drawn=(loan.drawFacility?.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
+                      const drawn=(loan.drawFacility?.draws||[]).reduce((s,d)=>s+drawGross(d),0);
                       return (
                         <div key={loan.id} className={`px-4 py-3 bg-white dark:bg-[#1C1F2B] transition-all ${loan.endDate?"opacity-55":""}`}>
                           <div className="flex items-start gap-2">
@@ -4067,7 +4073,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                                   {(loan.drawFacility.draws||[]).map(d=>(
                                     <div key={d.id} className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400 pt-1 border-t border-teal-100 dark:border-teal-900/40 first:border-0 mt-1">
                                       <span>{d.date}</span>
-                                      <span className="tabular-nums">{h$(d.amount)} drawn{d.fee>0&&<> · −{h$(d.fee)} fee · <strong className="text-slate-600 dark:text-zinc-300">{h$(d.amount-d.fee)} net</strong></>}</span>
+                                      <span className="tabular-nums">{h$(d.amount)} to account{d.fee>0&&<> · +{h$(d.fee)} fee · <strong className="text-slate-600 dark:text-zinc-300">{h$(drawGross(d))} drawn</strong></>}</span>
                                     </div>
                                   ))}
                                   {inlineDraw?.loanId===loan.id&&(
@@ -4080,7 +4086,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                                         </LockableInline>
                                       </div>
                                       <div>
-                                        <div className="text-[9px] font-semibold text-teal-400 dark:text-teal-500 uppercase mb-1">Amount ($)</div>
+                                        <div className="text-[9px] font-semibold text-teal-400 dark:text-teal-500 uppercase mb-1">Amount ($) — net, what hits the account</div>
                                         <LockableInline locked={inlineDraw.amtLocked} onToggle={()=>setInlineDraw(p=>({...p,amtLocked:!p.amtLocked}))}>
                                           <MoneyField value={inlineDraw.amt} onChange={v=>setInlineDraw(p=>({...p,amt:v}))}
                                             placeholder="25000"
@@ -5776,7 +5782,7 @@ function computeHistoryEvents(data) {
         (loan.drawFacility?.draws||[]).forEach(d=>{
           if (!d.date||d.date>=periodStart) return;
           const drawStart = d.date>prevDate ? d.date : prevDate;
-          amount += settings.monthlyMethod==="flat" ? (d.amount||0)*billRate/1200 : (d.amount||0)*dailyRate*daysBetween(drawStart,periodStart);
+          amount += settings.monthlyMethod==="flat" ? drawGross(d)*billRate/1200 : drawGross(d)*dailyRate*daysBetween(drawStart,periodStart);
         });
         pushPayment(dateStr, amount+feeFor(prevDate,periodStart));
         prevDate = periodStart;
@@ -5815,7 +5821,7 @@ function computeHistoryEvents(data) {
         amount = isFullMonth ? flatMonthly : (loan.principal||0)*billRate/100*(days/360);
         (loan.drawFacility?.draws||[]).forEach(d=>{
           if (!d.date||d.date>=dateStr||d.date<prevDate) return;
-          amount += (d.amount||0)*billRate/1200;
+          amount += drawGross(d)*billRate/1200;
         });
       } else if (pt==="monthly_fixed") {
         amount = (loan.monthlyPayment||0)*days/30.44;
@@ -5827,7 +5833,7 @@ function computeHistoryEvents(data) {
         (loan.drawFacility?.draws||[]).forEach(d=>{
           if (!d.date||d.date>=dateStr) return;
           const drawStart = d.date>prevDate ? d.date : prevDate;
-          amount += (d.amount||0)*dailyRate*daysBetween(drawStart,dateStr);
+          amount += drawGross(d)*dailyRate*daysBetween(drawStart,dateStr);
         });
       }
       pushPayment(dateStr, amount+feeFor(prevDate,dateStr));
@@ -7179,7 +7185,7 @@ function DrawsPage({ data }) {
       // Aggregate across all draw-facility loans
       const totalCommitted = drawLoans.reduce((s,l) => s+(l.drawFacility.committed||0), 0);
       const allDraws = drawLoans.flatMap(l => (l.drawFacility.draws||[]).map(d=>({...d, lenderName:l.lenderName})));
-      const totalDrawn = allDraws.reduce((s,d) => s+(d.amount||0), 0);
+      const totalDrawn = allDraws.reduce((s,d) => s+drawGross(d), 0);
       const totalAvailable = Math.max(0, totalCommitted - totalDrawn);
       const fullyDrawn = totalAvailable <= 0;
 
@@ -7368,7 +7374,7 @@ function DrawsPage({ data }) {
                 <div className="px-3.5 pb-2.5 space-y-1">
                   <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">By Lender</div>
                   {drawLoans.map(l => {
-                    const drawn = (l.drawFacility.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
+                    const drawn = (l.drawFacility.draws||[]).reduce((s,d)=>s+drawGross(d),0);
                     const avail = Math.max(0,(l.drawFacility.committed||0)-drawn);
                     return (
                       <div key={l.id} className="flex items-center justify-between text-[11px]">
@@ -7438,7 +7444,7 @@ function DrawsPage({ data }) {
                 <div className="px-4 pb-3 space-y-1.5">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">By Lender</div>
                   {drawLoans.map(l => {
-                    const drawn = (l.drawFacility.draws||[]).reduce((s,d)=>s+(d.amount||0),0);
+                    const drawn = (l.drawFacility.draws||[]).reduce((s,d)=>s+drawGross(d),0);
                     const avail = Math.max(0,(l.drawFacility.committed||0)-drawn);
                     return (
                       <div key={l.id} className="flex items-center justify-between text-[12px]">
@@ -8262,7 +8268,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
               const bal = calcBalance(l);
               const earned = calcIntEarned(l);
               const draws = l.drawFacility?.draws || [];
-              const drawn = draws.reduce((s,d) => s + (d.amount||0), 0);
+              const drawn = draws.reduce((s,d) => s + drawGross(d), 0);
               return (
                 <div key={l.id} className="px-5 py-4">
                   <div className="flex items-start justify-between gap-3 mb-3">
@@ -8305,7 +8311,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                           {[...draws].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(d => (
                             <div key={d.id} className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400">
                               <span>{d.date}</span>
-                              <span className="tabular-nums font-medium">{h$(d.amount)}{d.fee>0&&<> · −{h$(d.fee)} fee · <strong className="text-slate-700 dark:text-zinc-200">{h$(d.amount-d.fee)} net</strong></>}</span>
+                              <span className="tabular-nums font-medium">{h$(d.amount)}{d.fee>0&&<> · +{h$(d.fee)} fee · <strong className="text-slate-700 dark:text-zinc-200">{h$(drawGross(d))} drawn</strong></>}</span>
                             </div>
                           ))}
                         </div>
@@ -8955,7 +8961,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
   const bal = calcBalance(loan);
   const earned = calcIntEarned(loan);
   const draws = loan.drawFacility?.draws || [];
-  const drawn = draws.reduce((s,d) => s + (d.amount||0), 0);
+  const drawn = draws.reduce((s,d) => s + drawGross(d), 0);
   const available = Math.max(0, (loan.drawFacility?.committed||0) - drawn);
 
   const openEdit = () => {
@@ -9243,7 +9249,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
                       <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Draws Taken</div>
                       {ef.drawFacility.draws.map(d=>(
                         <div key={d.id} className="flex items-center justify-between text-sm py-1.5 border-b border-slate-200 dark:border-zinc-700 last:border-0">
-                          <span className="text-slate-600 dark:text-zinc-300 tabular-nums">{d.date} · {$$p(d.amount)}{d.fee>0&&<> · −{$$p(d.fee)} fee · <strong className="text-slate-700 dark:text-zinc-200">{$$p(d.amount-d.fee)} net</strong></>}</span>
+                          <span className="text-slate-600 dark:text-zinc-300 tabular-nums">{d.date} · {$$p(d.amount)}{d.fee>0&&<> · +{$$p(d.fee)} fee · <strong className="text-slate-700 dark:text-zinc-200">{$$p(drawGross(d))} drawn</strong></>}</span>
                           <button type="button" onClick={()=>setEf(f=>({...f,drawFacility:{...f.drawFacility,draws:f.drawFacility.draws.filter(x=>x.id!==d.id)}}))}
                             className="text-red-400 hover:text-red-600 text-xs p-1 transition-colors">✕</button>
                         </div>
@@ -9256,10 +9262,10 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
                       <DateInp label="Draw Date" value={drawDate} onChange={setDrawDate}/>
                     </Lockable>
                     <Lockable locked={drawLocked.amt} onToggle={()=>toggleDrawLock("amt")}>
-                      <Inp label="Amount ($)" money value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
+                      <Inp label="Amount ($) — net, what hits the account" money value={drawAmt} onChange={setDrawAmt} placeholder="25000"/>
                     </Lockable>
                     <Lockable locked={drawLocked.fee} onToggle={()=>toggleDrawLock("fee")}>
-                      <Inp label="Draw Fee ($) — optional" money value={drawFee} onChange={setDrawFee} placeholder="0" helpText="If the lender takes a fee off the top, so everyone can see what actually hit the account."/>
+                      <Inp label="Draw Fee ($) — optional" money value={drawFee} onChange={setDrawFee} placeholder="0" helpText="If the lender takes a fee off the top, add it here — it's on top of the net amount above, not out of it."/>
                     </Lockable>
                     <Btn onClick={addDraw} sm color="navy" full>+ Record Draw</Btn>
                   </div>
@@ -9370,9 +9376,9 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
             <thead>
               <tr className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
                 <th className="px-5 pb-2 pt-3 text-left font-semibold">Date</th>
-                <th className="px-5 pb-2 pt-3 text-right font-semibold">Amount</th>
+                <th className="px-5 pb-2 pt-3 text-right font-semibold">To Account</th>
                 <th className="px-5 pb-2 pt-3 text-right font-semibold">Fee</th>
-                <th className="px-5 pb-2 pt-3 text-right font-semibold">Net to Account</th>
+                <th className="px-5 pb-2 pt-3 text-right font-semibold">Drawn (Facility)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
@@ -9381,7 +9387,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
                   <td className="px-5 py-3 text-slate-600 dark:text-zinc-300">{d.date}</td>
                   <td className="px-5 py-3 text-right tabular-nums font-semibold text-slate-800 dark:text-zinc-200">{h$(d.amount)}</td>
                   <td className="px-5 py-3 text-right tabular-nums text-slate-400 dark:text-zinc-500">{d.fee>0?h$(d.fee):"—"}</td>
-                  <td className="px-5 py-3 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{h$(d.amount-(d.fee||0))}</td>
+                  <td className="px-5 py-3 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{h$(drawGross(d))}</td>
                 </tr>
               ))}
             </tbody>
