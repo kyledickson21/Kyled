@@ -6834,6 +6834,47 @@ function OverageCheckModal({ prop, init, onSave, onDelete, onClose }) {
   );
 }
 
+// ─── Edit Draw Modal ────────────────────────────────────────────────────────
+// Lets Kyle go back and fix a mistake on a draw already recorded — wrong date, wrong
+// amount, a fee he forgot to log or needs to add after the fact — from either the property
+// page or the loan page, via the ✏️ next to each draw, not just by reopening the loan's
+// whole edit form.
+function EditDrawModal({ draw, onSave, onDelete, onClose }) {
+  const [date,setDate]=useState(draw.date||TODAY);
+  const [amount,setAmount]=useState(String(draw.amount||""));
+  const [fee,setFee]=useState(draw.fee?String(draw.fee):"");
+  const guardedClose=useDirtyGuard(()=>({date,amount,fee}),onClose);
+  // Already a real, checked draw — start locked so it can't be bumped by accident while
+  // fixing something else on the same row.
+  const [locked,setLocked]=useState({date:true,amount:true});
+  const toggleLock=k=>setLocked(l=>({...l,[k]:!l[k]}));
+  const amt=parseFloat(amount)||0;
+  const feeAmt=parseFloat(fee)||0;
+  const allConfirmed=locked.date&&locked.amount;
+  const canSave=amt>0&&!!date&&allConfirmed;
+  return (
+    <Modal title="Edit Draw" onClose={guardedClose}>
+      <div className="space-y-1">
+        <Lockable locked={locked.date} onToggle={()=>toggleLock("date")}>
+          <DateInp label="Draw Date" value={date} onChange={setDate}/>
+        </Lockable>
+        <Lockable locked={locked.amount} onToggle={()=>toggleLock("amount")}>
+          <Inp label="Draw Amount (net — what hits the account)" money value={amount} onChange={setAmount} placeholder="0"/>
+        </Lockable>
+        <Inp label="Draw Fee (optional)" money value={fee} onChange={setFee} placeholder="0" helpText="If the lender takes a fee off the top, add it here — it's on top of the net amount above, not out of it."/>
+        {feeAmt>0&&amt>0&&(
+          <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-2">{$$p(amt)} to the account + {$$p(feeAmt)} fee = {$$p(amt+feeAmt)} drawn against the facility</p>
+        )}
+        {!allConfirmed&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Tap ✓ Confirm on the date and amount before this can be saved.</p>}
+        <div className="flex gap-2">
+          <Btn onClick={()=>canSave&&onSave({date,amount:amt,fee:feeAmt})} color={canSave?"blue":"ghost"} disabled={!canSave} full>Save Changes</Btn>
+          <Btn onClick={()=>{if(window.confirm("Delete this draw? This can't be undone."))onDelete();}} color="red">Delete</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Manage Lenders Page ─────────────────────────────────────────────────────
 function ManageLendersPage({ data }) {
   const [lenders, setLenders] = useState(null)
@@ -8012,6 +8053,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const [addingLoan, setAddingLoan] = useState(false);
   const [addingOverage, setAddingOverage] = useState(false);
   const [editingOverage, setEditingOverage] = useState(null);
+  const [editingDraw, setEditingDraw] = useState(null); // {loanId, draw}
   const [loanFormDirty, setLoanFormDirty] = useState(false);
   const closeAddingLoan = () => confirmDiscard(loanFormDirty, () => setAddingLoan(false));
 
@@ -8095,6 +8137,23 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
   const deleteOverageCheck = id => {
     update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,overageChecks:(p.overageChecks||[]).filter(c=>c.id!==id)})}));
     setEditingOverage(null);
+  };
+
+  const saveEditedDraw = (loanId,drawId,patch) => {
+    update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,
+      loans:p.loans.map(l=>l.id!==loanId?l:{...l,
+        drawFacility:{...l.drawFacility,draws:l.drawFacility.draws.map(x=>x.id!==drawId?x:{id:x.id,date:patch.date,amount:patch.amount,...(patch.fee>0?{fee:patch.fee}:{})})}
+      })
+    })}));
+    setEditingDraw(null);
+  };
+  const deleteDraw = (loanId,drawId) => {
+    update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,
+      loans:p.loans.map(l=>l.id!==loanId?l:{...l,
+        drawFacility:{...l.drawFacility,draws:l.drawFacility.draws.filter(x=>x.id!==drawId)}
+      })
+    })}));
+    setEditingDraw(null);
   };
 
   return (
@@ -8248,6 +8307,12 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
             onClose={()=>setEditingOverage(null)}/>
         </div>
       )}
+      {editingDraw && (
+        <EditDrawModal draw={editingDraw.draw}
+          onSave={patch=>saveEditedDraw(editingDraw.loanId,editingDraw.draw.id,patch)}
+          onDelete={()=>deleteDraw(editingDraw.loanId,editingDraw.draw.id)}
+          onClose={()=>setEditingDraw(null)}/>
+      )}
 
       {/* Active loans — header (with Add Loan) always shows, even with none yet, so a loan
           can start on this property without leaving the page for a separate screen. */}
@@ -8309,9 +8374,15 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                       {draws.length > 0 && (
                         <div className="space-y-1">
                           {[...draws].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(d => (
-                            <div key={d.id} className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400">
+                            <div key={d.id} className="flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-zinc-400">
                               <span>{d.date}</span>
-                              <span className="tabular-nums font-medium">{h$(d.amount)}{d.fee>0&&<> · +{h$(d.fee)} fee · <strong className="text-slate-700 dark:text-zinc-200">{h$(drawGross(d))} drawn</strong></>}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="tabular-nums font-medium">{h$(d.amount)}{d.fee>0&&<> · +{h$(d.fee)} fee · <strong className="text-slate-700 dark:text-zinc-200">{h$(drawGross(d))} drawn</strong></>}</span>
+                                {!readOnly && (
+                                  <button onClick={()=>setEditingDraw({loanId:l.id,draw:d})}
+                                    className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all shrink-0" title="Edit draw">✏️</button>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -8940,6 +9011,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
     setEf(f=>({...f,splitMonthlyRate:principal>0?String(Math.round(amt*12/principal*100*10000)/10000):"0"}));
   },[splitEntryMode,splitMonthlyAmt,ef?.principal]);
   const [closeModal, setCloseModal] = useState(false);
+  const [editingDraw, setEditingDraw] = useState(null);
   const [drawDate, setDrawDate] = useState(TODAY);
   const [drawAmt, setDrawAmt] = useState("");
   const [drawFee, setDrawFee] = useState("");
@@ -9085,6 +9157,21 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
     onBack();
   };
 
+  const saveEditedDraw = (drawId,patch) => {
+    const applyPatch = l => l.id!==loanId?l:{...l,
+      drawFacility:{...l.drawFacility,draws:l.drawFacility.draws.map(x=>x.id!==drawId?x:{id:x.id,date:patch.date,amount:patch.amount,...(patch.fee>0?{fee:patch.fee}:{})})}
+    };
+    update(d=>({...d, properties: d.properties.map(p=>({...p,loans:p.loans.map(applyPatch)})), unassigned: (d.unassigned||[]).map(applyPatch)}));
+    setEditingDraw(null);
+  };
+  const deleteDraw = drawId => {
+    const applyPatch = l => l.id!==loanId?l:{...l,
+      drawFacility:{...l.drawFacility,draws:l.drawFacility.draws.filter(x=>x.id!==drawId)}
+    };
+    update(d=>({...d, properties: d.properties.map(p=>({...p,loans:p.loans.map(applyPatch)})), unassigned: (d.unassigned||[]).map(applyPatch)}));
+    setEditingDraw(null);
+  };
+
   return (
     <div className="px-5 pt-4 pb-8 w-full max-w-5xl mx-auto">
       <div className="mb-5">
@@ -9138,6 +9225,11 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
       )}
 
       {closeModal&&<CloseLoanModal loan={loan} onConfirm={closeLoan} onClose={()=>setCloseModal(false)}/>}
+
+      {editingDraw&&<EditDrawModal draw={editingDraw}
+        onSave={patch=>saveEditedDraw(editingDraw.id,patch)}
+        onDelete={()=>deleteDraw(editingDraw.id)}
+        onClose={()=>setEditingDraw(null)}/>}
 
       {editing&&ef&&(
         <div className="mb-6 bg-white dark:bg-[#1C1F2B] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
@@ -9379,6 +9471,7 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
                 <th className="px-5 pb-2 pt-3 text-right font-semibold">To Account</th>
                 <th className="px-5 pb-2 pt-3 text-right font-semibold">Fee</th>
                 <th className="px-5 pb-2 pt-3 text-right font-semibold">Drawn (Facility)</th>
+                {!readOnly && <th className="px-5 pb-2 pt-3 text-right font-semibold"></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
@@ -9388,6 +9481,12 @@ function LoanDetailPage({ loanId, propId, data, update, onBack, navigate, startE
                   <td className="px-5 py-3 text-right tabular-nums font-semibold text-slate-800 dark:text-zinc-200">{h$(d.amount)}</td>
                   <td className="px-5 py-3 text-right tabular-nums text-slate-400 dark:text-zinc-500">{d.fee>0?h$(d.fee):"—"}</td>
                   <td className="px-5 py-3 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{h$(drawGross(d))}</td>
+                  {!readOnly && (
+                    <td className="px-5 py-3 text-right">
+                      <button onClick={()=>setEditingDraw(d)}
+                        className="w-6 h-6 inline-flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all text-xs" title="Edit draw">✏️</button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

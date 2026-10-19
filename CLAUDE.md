@@ -191,6 +191,7 @@ const useDirty / confirmDiscard / useDirtyGuard  // warn-before-discard for moda
 | `HistoryPage` | ~5140 | "Records" tab, History sub-view (money trail) |
 | `RehabPriorityPage` | ~5739 | "Rehab Priority" tab |
 | `OverageCheckModal` | ~6160 | Add/edit a post-closing overage refund |
+| `EditDrawModal` | ~6842 | Edit/delete an already-recorded draw, from Properties or Loans |
 | `ManageLendersPage` | ~6206 | "Portal Access" — lender portal login management |
 | `HardMoneyComparePage` | ~6990 | "Rate Comparison" — what-if calculator for hard money loans |
 | `DrawsPage` | ~6317 | "Draw Tracker" tab |
@@ -338,6 +339,13 @@ Amount, for lenders that take a fee off a specific draw (e.g. an inspection fee)
   and the editable "Draws Taken" lists in the two forms — shows the net amount, the fee (when
   present), and the computed gross (`drawGross(d)`, "drawn against the facility"), so
   bookkeepers see it too without needing any write access.
+- **Editing a recorded draw**: a ✏️ next to each draw row on both `PropertyDetailPage` (inside
+  the loan's Draw Facility card) and `LoanDetailPage`'s Draw History table — not just inside
+  the loan's full edit form — opens `EditDrawModal` (date/amount/fee, same Lockable-confirm
+  pattern as everywhere else, plus a Delete button with a confirm prompt). `PropertyDetailPage`
+  patches `prop.loans` directly (it already knows `propId`); `LoanDetailPage` uses the same
+  "patch across properties + unassigned" pattern as `saveEdit`/`closeLoan`/`deleteLoan` there,
+  since a loan can live in either place. Both pencils are gated `!readOnly`.
 - **At closing**: `sumDrawFees(loan)` (near `drawRemaining`, top of file) totals every fee
   recorded across a loan's draws. `MarkSoldModal` pre-fills that loan's row's "Lender Fees"
   field with this sum (still editable) when a property is first marked sold, so draw fees land
