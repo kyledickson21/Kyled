@@ -310,6 +310,12 @@ Forms with unsaved-edit protection use the `useDirty`/`confirmDiscard`/`useDirty
 - **Start events**: `nc = +principal` (money in from lender, green `+$X`)
 - **Close/Paid-back events**: `nc = -principal` (money out to lender, red `−$X`); interest shown as supplemental info
 - **Rolled events**: `nc = 0`, shows "→ Continues / no cash out"
+- **Draw events** (`etype:"draw"`, one per entry in a loan's `drawFacility.draws`): `nc =
+  drawGross(d)` — a draw is new money in, just like a loan starting, so it grows what's owed
+  by the full gross (not the smaller net that actually hit the account, which is `ev.amount`,
+  the headline `+$X` figure shown). 🏗️ "Rehab Draw", green. `groupTrailEvents` sums `fee`/
+  `gross` too when same-day draws combine into one row — don't forget those two fields if the
+  grouping logic there ever changes shape.
 - **Sum of nc for a lender = their current outstanding principal with Nexus**
 - A "Net Outstanding" footer shows the sum for all filtered events
 - A third `HistoryPage` view, **"📅 As Of Date"** (`view==="asof"`), answers "what was our

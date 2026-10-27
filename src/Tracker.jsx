@@ -5691,6 +5691,14 @@ function computeHistoryEvents(data) {
         const dispAmt=disp?.type==="waiveInterest"?loan.principal:finBal+titleInterest;
         raw.push({date:end,sx:"a",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype,disposition:disp?.type||null,amount:dispAmt,principal:loan.principal||0,interest:(finBal-(loan.principal||0))+titleInterest,property:prop.address,propId:prop.id,rate:loan.interestRate||0,loanId:loan.id});
       }
+      // Each rehab draw is its own cash-in event, same as a loan starting — the lender
+      // disburses more money against the committed facility. `amount` is what actually hit
+      // the account (the net Kyle typed in); the fee is shown alongside but isn't itself
+      // cash in. The gross (amount+fee) is what's actually owed back, so that's what feeds
+      // the running "outstanding principal" total, not the smaller net figure.
+      (loan.drawFacility?.draws||[]).forEach(d=>{
+        raw.push({date:d.date,sx:"e",lender:loan.lenderName,loanType:loan.loanType,interestType:loan.interestType||"percentage",etype:"draw",amount:d.amount||0,fee:d.fee||0,gross:drawGross(d),property:prop.address,propId:prop.id,rate:loan.interestRate||0,loanId:`${loan.id}-draw-${d.id}`});
+      });
     });
     if(prop.dateSold&&prop.closingData){
       raw.push({date:prop.dateSold,sx:"c",etype:"saleSummary",property:prop.address,propId:prop.id,closingData:prop.closingData,overageChecks:prop.overageChecks||[],loanId:`sale-${prop.id}`});
@@ -5868,6 +5876,7 @@ function computeHistoryEvents(data) {
     if(ev.etype==="saleSummary"){nc=ev.closingData?.profit??0;}
     else if(ev.etype==="overageCheck"){nc=ev.amount||0;} // post-close cash in, not tied to any lender
     else if(ev.etype==="hardPayment"){nc=0;} // interest paid, principal outstanding unchanged
+    else if(ev.etype==="draw"){nc=ev.gross;} // what's owed grows by the gross draw, not just the net that hit the account
     else if(ev.etype==="start"){lc[ev.lender]+=ev.amount;pp=lp[ev.lender];nc=pp>0?ev.amount-pp:ev.amount;lp[ev.lender]=0;}
     else{
       const waived=ev.disposition==="waiveInterest";
@@ -5919,6 +5928,8 @@ function groupTrailEvents(filtered) {
       nc: group.reduce((s,e)=>s+(e.nc||0),0),
       principal: group.reduce((s,e)=>s+(e.principal||0),0),
       interest: group.reduce((s,e)=>s+(e.interest||0),0),
+      fee: group.reduce((s,e)=>s+(e.fee||0),0),
+      gross: group.reduce((s,e)=>s+(e.gross||0),0),
       pp: group.reduce((s,e)=>s+(e.pp||0),0),
       rate: sameRate ? first.rate : null,
       property: sameProp ? first.property : `${group.length} properties`,
@@ -5939,6 +5950,7 @@ const TRAIL_CFG={
   rolled:      {label:"Rolled",        icon:"↙", cls:TRAIL_IN_CLS},
   hardPayment: {label:"Interest Payment",icon:"↗",cls:TRAIL_OUT_CLS},
   overageCheck:{label:"Overage Check", icon:"💰", cls:TRAIL_IN_CLS},
+  draw:        {label:"Rehab Draw",    icon:"🏗️", cls:TRAIL_IN_CLS},
 };
 const TRAIL_ROLL_LABEL={rollFull:"Rolled Full",rollPrincipal:"Principal Rolled",payInterest:"Interest Paid — Rolled",waiveInterest:"Interest Waived — Rolled",custom:"Partial Roll"};
 
@@ -6091,6 +6103,13 @@ function TrailEventRow({ ev, openPanel, h$, hn }) {
               <>
                 <div className="font-bold text-red-600 dark:text-red-400 tabular-nums">−{h$(ev.amount)}</div>
                 <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">Interest {h$(ev.amount)}</div>
+              </>
+            ):ev.etype==="draw"?(
+              <>
+                <div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">+{h$(ev.amount)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">
+                  {ev.fee>0?`+${h$(ev.fee)} fee · ${h$(ev.gross)} drawn`:"To account"}
+                </div>
               </>
             ):(
               <>
