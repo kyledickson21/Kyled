@@ -383,6 +383,38 @@ inputs persist locally via `usePersistedState` (`nx-hmcRate`/`nx-hmcPoints`/`nx-
   but still counts fully toward "All-Time".
 - Private-money loans are entirely out of scope — the tool only ever looks at `loanType==="hard"`.
 
+## Registering a Lender Before Any Loan (`AddLenderModal`)
+`data.lenders[]` was always the authoritative lender roster independent of loans —
+`resolveLenderSettings`/`LenderMoneyForm`'s lender picker already read from it directly — but
+`LenderDashboard` only ever built its list from actual loan records, so a lender with zero
+loans was invisible and there was no UI to create one in the first place. "+ Add Lender" on
+the Lenders tab (gated `!readOnly`) opens `AddLenderModal` (name + loan type, blocks a
+case-insensitive duplicate name) and calls `upsertLender` to create the record, then navigates
+straight to that lender's `LenderDetailPage` so Kyle can fill in Payment Settings (how their
+monthly interest is actually billed) right away — the whole point being to capture a lender's
+terms the moment he works them out, before an actual loan exists.
+- `LenderDashboard` now also seeds its `byLender` map from `data.lenders[]` directly (not just
+  loan records), so a zero-loan lender shows up with a "No loans yet — terms on file" line
+  instead of silently not appearing at all.
+- `LenderDetailPage` already worked for zero loans (`allLoans` is just `[]`, Payment Settings
+  reads/writes by name regardless) — fixed `currentLoanType`/`editType` to check the saved
+  `data.lenders` record's own `loanType` FIRST, falling back to an actual loan's type and then
+  "private" only if neither exists, so a pre-registered hard money lender with no loans yet
+  doesn't silently read back as private.
+- The "Edit Lender" rename/retype Save handler previously only patched `lenderName`/`loanType`
+  on actual loan records — for a zero-loan lender there's nothing for that to touch, so Save
+  did nothing at all; fixed to also patch the lender's own `data.lenders` record (by old name),
+  which was already a latent bug for lenders WITH loans too (their Payment Settings went
+  orphaned under the stale name after a rename).
+- Found and fixed a real bug while testing this: the "Lender Name" field's `onChange` was
+  written as `e=>setEditName(e.target.value)`, but `Inp`'s `onChange` already unwraps the
+  event and calls back with the plain string — so typing a new name threw immediately
+  ("Cannot read properties of undefined (reading 'value')"). Now `onChange={setEditName}`.
+- "Remove Lender" (next to Save/Cancel in the Edit panel) only shows when `allLoans.length===0`
+  — deleting a lender with any loan history (active or closed) is never exposed this casually,
+  since their Payment Settings would be the only thing lost but the blast radius of "this
+  button ever touches real loan data" isn't worth the risk for a feature this narrow.
+
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top
 - Stats (count, avg cash to close, avg rehab, avg profit) reflect whichever tab is active

@@ -4183,10 +4183,41 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   );
 }
 
+// ─── Add Lender Modal ───────────────────────────────────────────────────────
+// Registers a lender with no loan yet — lets Kyle lock in a hard money lender's payment
+// terms (how their monthly interest is actually billed) the moment he figures them out,
+// rather than having to wait until an actual loan exists before there's anywhere to put it.
+function AddLenderModal({ existingLenders, onSave, onClose }) {
+  const [name, setName] = useState("");
+  const [loanType, setLoanType] = useState("hard");
+  const guardedClose = useDirtyGuard(() => ({name, loanType}), onClose);
+  const trimmed = name.trim();
+  const dupe = trimmed && existingLenders.some(l => l.name.toLowerCase() === trimmed.toLowerCase());
+  const canSave = trimmed.length > 0 && !dupe;
+  return (
+    <Modal title="Add Lender" onClose={guardedClose}>
+      <div className="space-y-1">
+        <Inp label="Lender Name" value={name} onChange={setName} placeholder="ABC Capital"/>
+        {dupe && <p className="text-[11px] text-red-500 dark:text-red-400 -mt-2 mb-2">A lender named "{trimmed}" already exists — open their page instead to edit terms.</p>}
+        <Sel label="Loan Type" value={loanType} onChange={setLoanType} options={[["hard","Hard Money"],["private","Private Money"]]}/>
+        <p className="text-[11px] text-slate-400 dark:text-zinc-500 -mt-2 mb-2">No loan needed yet — this just registers the lender so you can set their Payment Settings (how they calculate monthly interest) right away. You'll land on their page next to fill those in.</p>
+        <Btn onClick={()=>canSave&&onSave({name:trimmed,loanType})} color={canSave?"blue":"ghost"} disabled={!canSave} full>Add Lender</Btn>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Lender Dashboard ─────────────────────────────────────────────────────────
-function LenderDashboard({ data }) {
+function LenderDashboard({ data, update }) {
+  const readOnly = useReadOnly();
   const prv = usePrivacy();
   const navigate = usePanel();
+  const [addingLender, setAddingLender] = useState(false);
+  const addLender = ({name, loanType}) => {
+    update(d => upsertLender(d, {id: uid(), name, loanType}));
+    setAddingLender(false);
+    navigate({type:'lender', name});
+  };
   const h$ = v => prv ? maskMoney($$p(v)) : $$p(v);
   const [search, setSearch] = useState("");
   const [lenderFilter, setLenderFilter] = usePersistedState("nx-lenderFilter", "active");
@@ -4223,6 +4254,13 @@ function LenderDashboard({ data }) {
   });
   const closedByLender = {};
   allHistorical.forEach(l => { closedByLender[l.lenderName] = (closedByLender[l.lenderName]||0) + 1; });
+
+  // Lenders registered ahead of any loan (see AddLenderModal) — e.g. a hard money lender
+  // whose terms Kyle wants on file before the first deal with them — otherwise wouldn't show
+  // up here at all, since everything above is built purely from actual loan records.
+  (data.lenders||[]).forEach(rec => {
+    if (!byLender[rec.name]) byLender[rec.name] = {name:rec.name, activeLoans:[], totalPrin:0, totalBal:0, totalInt:0, props:new Set(), types:new Set([rec.loanType])};
+  });
 
   let lenders = Object.values(byLender).map(ld => ({
     ...ld,
@@ -4266,6 +4304,10 @@ function LenderDashboard({ data }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Lenders</h2>
+        {!readOnly && (
+          <button onClick={()=>setAddingLender(true)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white transition-colors">+ Add Lender</button>
+        )}
       </div>
 
       {/* Filter tabs */}
@@ -4318,8 +4360,10 @@ function LenderDashboard({ data }) {
                   {ld.types.map(t => <TypeLabel key={t} type={t}/>)}
                 </div>
                 <div className="text-xs text-slate-400 dark:text-zinc-500">
-                  {ld.activeLoans.length} active loan{ld.activeLoans.length!==1?"s":""}
-                  {ld.closedCount > 0 && ` · ${ld.closedCount} closed`}
+                  {ld.activeLoans.length===0&&ld.closedCount===0
+                    ? "No loans yet — terms on file"
+                    : <>{ld.activeLoans.length} active loan{ld.activeLoans.length!==1?"s":""}
+                      {ld.closedCount > 0 && ` · ${ld.closedCount} closed`}</>}
                   {ld.props.length > 0 && ` · ${ld.props.slice(0,2).join(", ")}${ld.props.length>2?` +${ld.props.length-2} more`:""}`}
                 </div>
               </div>
@@ -4334,6 +4378,9 @@ function LenderDashboard({ data }) {
           </button>
         ))}
       </div>
+      {addingLender && (
+        <AddLenderModal existingLenders={data.lenders||[]} onSave={addLender} onClose={()=>setAddingLender(false)}/>
+      )}
     </div>
   );
 }
@@ -8517,7 +8564,13 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   const [moveLoan, setMoveLoan] = useState(null);
   const [trailOpen, setTrailOpen] = useState(false);
   const [editName, setEditName] = useState(name);
+  // A lender registered ahead of any loan (see AddLenderModal) already has a loanType saved
+  // on their own data.lenders record — check that FIRST, falling back to an actual loan's
+  // type and then "private" only when neither exists, so a pre-registered hard money lender
+  // with zero loans doesn't silently read back as "private" here.
+  const lenderRec = (data.lenders||[]).find(l => l.name === name);
   const [editType, setEditType] = useState(() => {
+    if (lenderRec) return lenderRec.loanType;
     const loans = [
       ...data.properties.flatMap(p => p.loans),
       ...(data.unassigned||[]),
@@ -8534,7 +8587,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
   // count, flat vs. per-diem monthly amount, first month prepaid at closing, per-draw fee).
   // Seeded from whatever's saved, falling back to the defaults that match current app
   // behavior for this lender's loan type, so nothing changes until explicitly adjusted.
-  const currentLoanType = allLoans[0]?.loanType || "private";
+  const currentLoanType = lenderRec?.loanType || allLoans[0]?.loanType || "private";
   const [psForm, setPsForm] = useState(() => resolveLenderSettings(data, name, currentLoanType));
   const [psSaved, setPsSaved] = useState(false);
   const [drawFeeLocked, setDrawFeeLocked] = useState(!!resolveLenderSettings(data, name, currentLoanType).drawFee);
@@ -8704,7 +8757,7 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
         <div className="mb-6 bg-white dark:bg-[#1C1F2B] rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] border border-slate-100 dark:border-zinc-800">
           <div className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 mb-4">Edit Lender</div>
           <div className="flex flex-col gap-3">
-            <Inp label="Lender Name" value={editName} onChange={e=>setEditName(e.target.value)}/>
+            <Inp label="Lender Name" value={editName} onChange={setEditName}/>
             <Sel label="Loan Type" value={editType} onChange={v=>setEditType(v)} options={[["private","Private Money"],["hard","Hard Money"]]}/>
             <div className="flex gap-2 pt-1">
               <Btn color="blue" onClick={()=>{
@@ -8717,11 +8770,24 @@ function LenderDetailPage({ name, data, update, onBack, navigate }) {
                     loans: p.loans.map(l=>l.lenderName===name?{...l,lenderName:newName,loanType:editType}:l),
                   })),
                   unassigned: (d.unassigned||[]).map(l=>l.lenderName===name?{...l,lenderName:newName,loanType:editType}:l),
+                  // Rename/retype the lender's own record too, not just loans pointing at
+                  // them — otherwise a lender with no loans yet (see AddLenderModal) has
+                  // nothing for this to touch and Save silently does nothing, and even a
+                  // lender WITH loans would leave their Payment Settings orphaned under the
+                  // old name.
+                  lenders: (d.lenders||[]).map(l=>l.name===name?{...l,name:newName,loanType:editType}:l),
                 }));
                 setEditing(false);
                 if(newName!==name) navigate({type:'lender',name:newName});
               }}>Save</Btn>
               <Btn color="ghost" onClick={()=>setEditing(false)}>Cancel</Btn>
+              {allLoans.length===0&&(
+                <Btn color="red" onClick={()=>{
+                  if(!window.confirm(`Remove ${name}? They have no loans on file, so this just deletes their saved Payment Settings. This can't be undone.`)) return;
+                  update(d=>({...d, lenders:(d.lenders||[]).filter(l=>l.name!==name)}));
+                  onBack();
+                }}>Remove Lender</Btn>
+              )}
             </div>
           </div>
         </div>
@@ -10965,7 +11031,7 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             )}
             {tab==="Dashboard"     &&<DashboardPage data={data} update={update} onNavigateTab={t=>{setNavStack([]);setPanelStack([]);if(t==="AllLoans:hard"){setLoanFilterPending("hard");setTab("AllLoans");}else setTab(t);}}/>}
             {tab==="Properties"    &&<PropertiesPage data={data} update={update} pendingAction={fabPending} onClearPendingAction={()=>setFabPending(null)}/>}
-            {tab==="LenderDash"   &&<LenderDashboard data={data}/>}
+            {tab==="LenderDash"   &&<LenderDashboard data={data} update={update}/>}
             {tab==="AllLoans"     &&<AllLoansPage data={data} update={update} pendingTypeFilter={loanFilterPending} onClearPendingTypeFilter={()=>setLoanFilterPending(null)}/>}
             {tab==="PropDash"     &&<PropertyDashboard data={data}/>}
             {tab==="RehabPriority"&&<RehabPriorityPage data={data} update={update}/>}
