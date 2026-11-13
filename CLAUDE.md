@@ -415,6 +415,26 @@ terms the moment he works them out, before an actual loan exists.
   since their Payment Settings would be the only thing lost but the blast radius of "this
   button ever touches real loan data" isn't worth the risk for a feature this narrow.
 
+## Prop Dashboard — "Funded" Means Actual Cash, Not Committed
+`PropertyDashboard`'s capital calculator (Total Portfolio Size / Available Now / Deployment
+rate assumption / You Need to Find / Idle Capital) and its per-property funded/needed bars
+compute `funded` as `principal + sum(drawGross(d) for d in drawFacility.draws)` — actual money
+in, not the draw facility's full `committed` ceiling. A committed-but-largely-undrawn rehab
+facility used to count as fully funded the moment it was set up, which made this page read as
+"almost full" when the real cash position was much tighter (the Available Now number included
+lender promises that hadn't been disbursed yet). `pendingDraws = committed − funded` is kept
+as a separate, clearly-labeled "+$X committed, not yet drawn" line (under the "On Deals" stat
+tile, and per-property in the list below) so that capital is still visible, just not folded
+into what's treated as in-hand.
+- **The regular Properties tab (`PropertiesPage`) deliberately still uses the full committed
+  amount** for its own funded/needed bars and shortage sort — Kyle confirmed that's correct
+  there: it answers "does this deal have financing lined up" (so he doesn't go raise/place
+  more private money than a property actually needs), not "do I have cash in hand right now."
+  Whiteboard's auto-generated cards and the other ~6 `principal + drawFacility?.committed`
+  call sites across the file (LenderDashboard, AllLoansPage, RehabPriorityPage, etc.) were
+  intentionally left untouched for the same reason — only `PropertyDashboard`'s capital
+  calculator is about present-tense cash position.
+
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top
 - Stats (count, avg cash to close, avg rehab, avg profit) reflect whichever tab is active

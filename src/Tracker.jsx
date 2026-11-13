@@ -4616,15 +4616,24 @@ function PropertyDashboard({ data }) {
   const hr=l=>{if(!prv)return fmtRate(l);const s=fmtRate(l);return s.includes('%')?s.replace(/[\d.]+(?=%)/,'∙∙'):maskMoney(s);};
   const [deployPct,setDeployPct]=useState(75);
   const active=data.properties.filter(p=>!p.dateSold);
+  // Funded = actual cash in, not lender promises: principal plus whatever's actually been
+  // drawn so far — a committed-but-undrawn draw facility is financing that's lined up, but
+  // it isn't capital Kyle has in hand yet, and counting the full commitment here is exactly
+  // why this calculator used to read as "almost full" when the real cash position was much
+  // tighter. pendingDraws (committed − drawn) is kept alongside as a separate, clearly-
+  // labeled "lined up for later" figure rather than silently folded into funded.
   const rows=active.map(prop=>{
     const loans=prop.loans.filter(l=>!l.endDate);
-    const funded=loans.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+    const funded=loans.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.draws||[]).reduce((ds,d)=>ds+drawGross(d),0),0);
+    const committed=loans.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+    const pendingDraws=Math.max(0,committed-funded);
     const needed=propNeeded(prop,loans);
     const short=Math.max(0,needed-funded);
-    return{prop,loans,funded,needed,short,under:short>0&&pct(funded,needed)<95};
+    return{prop,loans,funded,pendingDraws,needed,short,under:short>0&&pct(funded,needed)<95};
   }).sort((a,b)=>b.short-a.short);
 
   const totalDeployed=rows.reduce((s,r)=>s+r.funded,0);
+  const totalPendingDraws=rows.reduce((s,r)=>s+r.pendingDraws,0);
   const unassignedTotal=data.unassigned.reduce((s,u)=>s+(u.principal||u.amount||0),0);
   const totalPortfolio=rows.reduce((s,r)=>s+r.needed,0);
   const needNow=Math.round(totalPortfolio*deployPct/100);
@@ -4664,6 +4673,7 @@ function PropertyDashboard({ data }) {
           <div className="text-[9px] font-semibold text-teal-200 uppercase tracking-widest mb-2">On Deals</div>
           <div className="text-xl font-bold tabular-nums">{hc(totalDeployed)}</div>
           <div className="text-[10px] text-teal-200 mt-1">{rows.length} propert{rows.length===1?"y":"ies"}</div>
+          {totalPendingDraws>0&&<div className="text-[9px] text-teal-200/70 mt-0.5">+{hc(totalPendingDraws)} committed, not drawn</div>}
         </div>
         <div className="bg-violet-600 rounded-2xl p-4 text-white text-center">
           <div className="text-[9px] font-semibold text-violet-200 uppercase tracking-widest mb-2">Ready</div>
@@ -4727,7 +4737,7 @@ function PropertyDashboard({ data }) {
 
       {active.length===0&&<div className="text-center text-slate-400 dark:text-zinc-500 py-12 text-sm">No active properties.</div>}
       <div className="space-y-3">
-        {rows.map(({prop,loans,funded,needed,short,under})=>(
+        {rows.map(({prop,loans,funded,pendingDraws,needed,short,under})=>(
           <div key={prop.id} className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
             <div className={`px-5 py-3.5 border-b border-black/[0.06] dark:border-white/[0.06] ${under?"bg-red-50/60 dark:bg-red-950/15":""}`}>
               <div className="flex justify-between items-center mb-2">
@@ -4741,6 +4751,7 @@ function PropertyDashboard({ data }) {
                 <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{h$(funded)} funded</span>
                 <span className="text-slate-400 dark:text-zinc-500 tabular-nums">{h$(needed)} needed</span>
               </div>
+              {pendingDraws>0&&<div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">+{h$(pendingDraws)} committed, not yet drawn</div>}
             </div>
             {loans.length>0&&(
               <div className="overflow-x-auto">
