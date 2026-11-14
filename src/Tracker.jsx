@@ -3942,6 +3942,29 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     data.properties.filter(p=>!p.dateSold&&p.resimpli?.stage)
       .map(p=>[`${p.resimpli.recordType||"_"}::${p.resimpli.stage}`,{recordType:p.resimpli.recordType||null,stage:p.resimpli.stage}])
   ).values()].sort((a,b)=>stageSortKey({resimpli:a}).localeCompare(stageSortKey({resimpli:b})));
+  // Properties page's REsimpli-style kanban (Pipeline view) — one column per Inventory stage
+  // (always shown, even empty), then the non-Inventory buckets (hidden when empty), built from
+  // `visible` so the existing search/stage filter already apply. Display-only: no drag/write.
+  const invStages=PIPELINE_BY_KEY.inventory.stages;
+  const pipelineColumns=(()=>{
+    const invCols=invStages.map(stage=>({key:`inv::${stage}`,label:stage,items:[]}));
+    const otherInv={key:"inv::other",label:"Other Inventory",items:[]};
+    const leadCol={key:"lead",label:"Lead: Under Contract",items:[]};
+    const rentalCol={key:"rental",label:"Rental",items:[]};
+    const soldCol={key:"sold",label:"Sold",items:[]};
+    const noneCol={key:"none",label:"No stage",items:[]};
+    visible.forEach(prop=>{
+      const rt=prop.resimpli?.recordType;
+      if(rt==="inventory"){
+        const idx=invStages.indexOf(prop.resimpli?.stage);
+        (idx!==-1?invCols[idx]:otherInv).items.push(prop);
+      } else if(rt==="lead") leadCol.items.push(prop);
+      else if(rt==="rental") rentalCol.items.push(prop);
+      else if(rt==="sold") soldCol.items.push(prop);
+      else noneCol.items.push(prop);
+    });
+    return [...invCols,otherInv,leadCol,rentalCol,soldCol,noneCol].filter(c=>invStages.includes(c.label)||c.items.length>0);
+  })();
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
 
@@ -3961,8 +3984,8 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             </button>
           )}
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-lg p-0.5 gap-0.5">
-            {[["condensed","≡"],["grid","▦"],["expanded","⊞"]].map(([v,icon])=>(
-              <button key={v} onClick={()=>setViewMode(v)} title={v==="condensed"?"Condensed view":v==="grid"?"Card view":"Expanded view"}
+            {[["condensed","≡"],["grid","▦"],["expanded","⊞"],["pipeline","Ⅲ"]].map(([v,icon])=>(
+              <button key={v} onClick={()=>setViewMode(v)} title={v==="condensed"?"Condensed view":v==="grid"?"Card view":v==="expanded"?"Expanded view":"Pipeline view (REsimpli)"}
                 className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${viewMode===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
                 {icon}
               </button>
@@ -4481,6 +4504,65 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       </div>
       </SortableContext>
       </DndContext>
+      )}
+
+      {/* Pipeline view — mirrors REsimpli's own Inventory Grid (kanban). Display-only: no
+          dragging between columns, no data write — the stage shown is whatever REsimpli last
+          synced/imported, the tracker never sets it. Operates on `visible` so the existing
+          search/stage filter still apply. */}
+      {viewMode==="pipeline"&&(
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {pipelineColumns.map(col=>(
+            <div key={col.key} className="shrink-0 w-64 bg-slate-100/70 dark:bg-zinc-800/40 rounded-2xl flex flex-col max-h-[75vh]">
+              <div className="px-3.5 py-3 flex items-center justify-between shrink-0">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wide truncate">{col.label}</span>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 bg-white dark:bg-zinc-700 rounded-full px-1.5 py-0.5 shrink-0">{col.items.length}</span>
+              </div>
+              <div className="px-2.5 pb-2.5 space-y-2 overflow-y-auto flex-1">
+                {col.items.length===0&&<div className="text-[11px] text-slate-400 dark:text-zinc-500 text-center py-6">No properties</div>}
+                {col.items.map(prop=>{
+                  const active=prop.loans.filter(l=>!l.endDate);
+                  const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
+                  const needed=propNeeded(prop,active);
+                  const short=Math.max(0,needed-funded);
+                  const full=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
+                  const under=!prop.dateSold&&short>0&&!full;
+                  const over=needed>0?Math.max(0,funded-needed):0;
+                  return (
+                    <button key={prop.id} onClick={()=>openPanel?.({type:'property',id:prop.id})}
+                      className="w-full text-left rounded-xl bg-white dark:bg-[#1C1F2B] shadow-[0_1px_6px_rgba(0,0,0,0.06)] dark:shadow-none p-3 hover:-translate-y-0.5 transition-all">
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <span className="font-semibold text-slate-900 dark:text-zinc-100 text-[12.5px] truncate">{prop.address?.split(',')[0]||"Unnamed Property"}</span>
+                        {prop.resimpli?.url&&(
+                          <a href={prop.resimpli.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} title="Open in REsimpli"
+                            className="text-[10px] text-indigo-400 shrink-0">↗</a>
+                        )}
+                      </div>
+                      {needed>0&&!prop.dateSold?(
+                        <>
+                          <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5">
+                            <div className={`h-full transition-all rounded-full ${full?"bg-emerald-500":under?"bg-red-400":"bg-teal-500"}`} style={{width:`${pct(funded,needed)}%`}}/>
+                          </div>
+                          <div className="flex justify-between text-[10px]">
+                            <span className={`font-semibold tabular-nums ${under?"text-red-600 dark:text-red-400":full?"text-emerald-600 dark:text-emerald-400":"text-slate-500 dark:text-zinc-400"}`}>{h$(funded)} of {h$(needed)}</span>
+                            <span className="text-slate-400 dark:text-zinc-500 tabular-nums">{pct(funded,needed)}%</span>
+                          </div>
+                          {(under||((full&&short>0)||(full&&over>0)))&&(
+                            <div className={`text-[10px] font-semibold mt-0.5 tabular-nums ${under?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>
+                              {under?`-${h$(short)} short`:over>0?`+${h$(over)} surplus`:null}
+                            </div>
+                          )}
+                        </>
+                      ):(
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500">{prop.dateSold?`Sold ${prop.dateSold}`:"No funding target set"}</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {(modal==="addMoney"||modal?.type==="addMoney")&&<Modal title="Add Lender Money" onClose={closeModal}><LenderMoneyForm properties={data.properties} lenders={data.lenders||[]} init={modal?.propId?{destination:modal.propId}:undefined} onSave={saveMoneyForm} onClose={closeModal} onDirtyChange={setFormDirty}/></Modal>}
