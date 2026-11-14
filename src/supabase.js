@@ -84,3 +84,22 @@ export const createBookkeeperAccount = ({ email, password }) =>
 // Works for either a lender or a bookkeeper account — both are deleted by their auth user id.
 export const deleteLenderAccount = (userId) =>
   authFetch(`manage-lenders?userId=${userId}`, { method: 'DELETE' })
+
+// Manual "Sync Now" trigger for the REsimpli live sync — a Vercel serverless function
+// (api/resimpli-sync.mjs), not a Supabase edge function, so it's a same-origin fetch rather
+// than authFetch's functions/v1/* URL. Still sends the Supabase access token so the function
+// can check it's really kyle@nexushomesoh.com calling (same allowlist pattern as
+// manage-lenders), separate from the CRON_SECRET/webhook-secret gates used for the
+// non-interactive triggers. dryRun:true computes and returns the diff without writing
+// anything; dryRun:false (after Kyle reviews that diff) applies it.
+export async function runResimpliSync({ dryRun }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/api/resimpli-sync', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dryRun }),
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error || res.statusText)
+  return json
+}

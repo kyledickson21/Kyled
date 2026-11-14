@@ -1,6 +1,10 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, createContext, useContext, Fragment } from "react";
 import { createPortal } from "react-dom";
-import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, createBookkeeperAccount, deleteLenderAccount } from './supabase'
+import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, createBookkeeperAccount, deleteLenderAccount, runResimpliSync } from './supabase'
+import {
+  RESIMPLI_STAGES, buildPipelineIndex, pipelineForRecordType, resimpliStageLabel, stageSortKey,
+  normalizeAddressForMatch, matchResimpliRecords, assertOnlyResimpliChanged,
+} from './resimpli-shared.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -34,73 +38,11 @@ const streetSortKey = address => {
   return noDirection.toLowerCase();
 };
 
-// REsimpli's actual pipelines and each one's stage order, left to right/top to bottom exactly
-// as REsimpli shows them — verified against both the REsimpli screens and the API's
-// orderIndex. Kept hardcoded here as the default/fallback; the live sync (held, separate
-// branch) will eventually read this live from REsimpli's getPipelineList and store it
-// alongside the synced data, falling back to this same order when that isn't available.
-const RESIMPLI_PIPELINES = [
-  { key:"lead", label:"Lead", stages:["New Leads","Discovery","Interested","Due Diligence","Offer Follow Up","Offers Made","Under Contract"] },
-  { key:"inventory", label:"Inventory", stages:["New Inventory","Waiting On Possession","Ready For Rehab","Under Rehab","Rehab Complete","Listed For Sale","Under Contract"] },
-  { key:"rental", label:"Rental", stages:["New Rental","Under Rehab","Ready to Rent","DSCR in process","Rented","Lease Ending Soon","Eviction In Progress","TURN/NEEDS RENTED"] },
-  { key:"sold", label:"Sold", stages:["Sold"] },
-];
-// Flat, deduplicated list of every stage name across every pipeline — used only as the
-// PropertyForm datalist suggestions for a hand-typed stage, which has no recordType (so no
-// pipeline) to narrow it to one list.
-const RESIMPLI_STAGES = [...new Set(RESIMPLI_PIPELINES.flatMap(p=>p.stages))];
-const PIPELINE_BY_KEY = Object.fromEntries(RESIMPLI_PIPELINES.map((p,i)=>[p.key,{...p,order:i}]));
-// Stage names used by more than one pipeline — "Under Contract" (Lead + Inventory) and "Under
-// Rehab" (Inventory + Rental) — so the badge/filter label can disambiguate them. The stage
-// name alone is never enough to identify or sort a stage; recordType (which pipeline) always
-// has to come first.
-const STAGE_NAME_PIPELINE_COUNT = (() => {
-  const m = new Map();
-  RESIMPLI_PIPELINES.forEach(p=>p.stages.forEach(s=>m.set(s,(m.get(s)||0)+1)));
-  return m;
-})();
-const pipelineForRecordType = recordType => PIPELINE_BY_KEY[recordType] || null;
-// Human label for a resimpli stage — adds "(Lead)"/"(Inventory)" etc. only when the bare stage
-// name is ambiguous across pipelines AND the pipeline is actually known (recordType set);
-// otherwise just the stage name as-is.
-const resimpliStageLabel = resimpli => {
-  if (!resimpli?.stage) return null;
-  const pipeline = pipelineForRecordType(resimpli.recordType);
-  if (pipeline && STAGE_NAME_PIPELINE_COUNT.get(resimpli.stage)>1) return `${resimpli.stage} (${pipeline.label})`;
-  return resimpli.stage;
-};
-// Sortable string key for "Sort by Stage": pipeline first (Lead, Inventory, Rental, Sold, in
-// that order), then stage within that pipeline's own order, then any stage REsimpli doesn't
-// list (alphabetically, within its pipeline), then a stage whose pipeline isn't known at all
-// (e.g. hand-typed with no recordType — alphabetically), then no stage at all (always last).
-const stageSortKey = prop => {
-  const resimpli = prop?.resimpli;
-  const stage = resimpli?.stage;
-  if (!stage) return "9";
-  const pipeline = pipelineForRecordType(resimpli?.recordType);
-  if (!pipeline) return `8${stage.toLowerCase()}`;
-  const sIdx = pipeline.stages.indexOf(stage);
-  return `${pipeline.order}${sIdx!==-1?`0${String(sIdx).padStart(2,'0')}`:`1${stage.toLowerCase()}`}`;
-};
-
-// Normalizes an address down to just its street line for fuzzy-matching a REsimpli CSV
-// export against tracker properties — city/state/zip and any unit/apt/suite are dropped
-// entirely (ignored for matching per the import spec), common street-suffix spellings are
-// collapsed to one short form, and punctuation/extra whitespace is stripped, so
-// "123 Oak Avenue, Apt 2, Nashville, TN 37201" and "123 Oak Ave" normalize to the same key.
-const ADDRESS_SUFFIX_MAP = {
-  street:"st", avenue:"ave", road:"rd", drive:"dr", court:"ct",
-  circle:"cir", lane:"ln", boulevard:"blvd", place:"pl", way:"way",
-};
-const normalizeAddressForMatch = address => {
-  if (!address) return "";
-  let line = (address.split(',')[0] || "").toLowerCase();
-  line = line.replace(/\s*#.*$/, '');                               // "123 oak ave #2" -> "123 oak ave"
-  line = line.replace(/\b(apt|apartment|unit|suite|ste)\b.*$/, '');  // "123 oak ave apt 2" -> "123 oak ave "
-  line = line.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
-  line = line.split(' ').map(w => ADDRESS_SUFFIX_MAP[w] || w).join(' ');
-  return line;
-};
+// RESIMPLI_PIPELINES / RESIMPLI_STAGES / pipelineForRecordType / resimpliStageLabel /
+// stageSortKey / normalizeAddressForMatch / matchResimpliRecords / assertOnlyResimpliChanged
+// now live in ./resimpli-shared.mjs (imported above), shared verbatim with the server-side
+// sync (api/*.mjs) so the CSV import, the scheduled sync, and the webhook receiver all agree
+// on exactly the same pipeline/stage order and matching rules.
 
 const daysBetween = (d1, d2) => {
   if (!d1||!d2) return 0;
@@ -2950,6 +2892,9 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
   const resimpliUrlTrim=f.resimpliUrl.trim();
   const resimpli=(resimpliStageTrim||resimpliIdTrim||resimpliUrlTrim||init?.resimpli)?{
     leadId:resimpliIdTrim||null,
+    // moduleId/recordType aren't editable from this form at all — only an import or a future
+    // sync sets them — so a hand-edit here always carries whatever was already on file forward.
+    moduleId:init?.resimpli?.moduleId||null,
     stage:resimpliStageTrim||null,
     recordType:init?.resimpli?.recordType||null,
     url:resimpliUrlTrim||null,
@@ -3454,11 +3399,13 @@ const computeInverse = (prev, next) => {
 
 // A property's REsimpli stage, shown as a small badge — a muted "No stage" when there isn't
 // one, otherwise the stage text, clickable through to REsimpli when a url is on file.
-function ResimpliBadge({ resimpli }) {
+// `pipelineIndex` (from buildPipelineIndex(data.resimpliPipelineOrder)) lets the label use the
+// live-fetched pipeline order once the sync provides one; omit it to use the hardcoded default.
+function ResimpliBadge({ resimpli, pipelineIndex }) {
   if (!resimpli?.stage) return <span className="text-[10px] text-slate-300 dark:text-zinc-600">No stage</span>;
   const chip = (
     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
-      {resimpliStageLabel(resimpli)}
+      {pipelineIndex?resimpliStageLabel(resimpli,pipelineIndex):resimpliStageLabel(resimpli)}
     </span>
   );
   if (!resimpli.url) return chip;
@@ -3508,24 +3455,14 @@ function csvRowsToResimpliObjects(rows) {
     .map(r=>({address:get(r,c.address),resimpli_id:get(r,c.resimpli_id),record_type:get(r,c.record_type),stage:get(r,c.stage),url:get(r,c.url)}));
 }
 
-// Matches each CSV row to at most one tracker property — an existing resimpli.leadId first,
-// then normalized street address — and never guesses: two or more candidates for the same
-// row go to `ambiguous` instead of either list, and nothing about them is written.
-function matchResimpliImport(properties, csvRows) {
-  const matched=[], noTrackerMatch=[], ambiguous=[];
-  const matchedPropIds=new Set();
-  csvRows.forEach(row=>{
-    let candidates=row.resimpli_id ? properties.filter(p=>p.resimpli?.leadId&&p.resimpli.leadId===row.resimpli_id) : [];
-    if (candidates.length===0) {
-      const key=normalizeAddressForMatch(row.address);
-      if (key) candidates=properties.filter(p=>normalizeAddressForMatch(p.address)===key);
-    }
-    if (candidates.length===1) { matched.push({property:candidates[0],row}); matchedPropIds.add(candidates[0].id); }
-    else if (candidates.length===0) noTrackerMatch.push(row);
-    else ambiguous.push({row,candidates});
-  });
-  const noCsvRow=properties.filter(p=>!matchedPropIds.has(p.id));
-  return {matched,noTrackerMatch,ambiguous,noCsvRow};
+// A CSV row's resimpli_id may be a Lead id or an Inventory/Rental/Sold "module" id — the
+// Open API can only read/list Leads, so the two have to be told apart and kept separate
+// (see resimpli.moduleId in CLAUDE.md). record_type says which; a blank/unrecognized
+// record_type with an id present defaults to "lead", the more common case.
+function csvRowToRecord(row) {
+  const rt=(row.record_type||"").toLowerCase().trim();
+  const idType=row.resimpli_id ? (rt&&rt!=="lead" ? "module" : "lead") : null;
+  return {id:row.resimpli_id||null, idType, address:row.address, stage:row.stage||null, recordType:rt||null, url:row.url||null};
 }
 
 function ImportResimpliModal({ properties, onConfirm, onClose }) {
@@ -3549,17 +3486,22 @@ function ImportResimpliModal({ properties, onConfirm, onClose }) {
     reader.readAsText(file);
   };
 
-  const result=useMemo(()=>csvRows?matchResimpliImport(properties,csvRows):null,[csvRows,properties]);
+  const records=useMemo(()=>csvRows?csvRows.map(csvRowToRecord):null,[csvRows]);
+  const result=useMemo(()=>records?matchResimpliRecords(properties,records):null,[records,properties]);
 
   const confirmImport=()=>{
     if (!result||result.matched.length===0) return;
-    onConfirm(result.matched.map(({property,row})=>({
+    onConfirm(result.matched.map(({property,record})=>({
       propId:property.id,
       resimpli:{
-        leadId:row.resimpli_id||null,
-        stage:row.stage||null,
-        recordType:row.record_type?row.record_type.toLowerCase():null,
-        url:row.url||null,
+        // A row only ever carries one id type — keep whichever one this property already had
+        // stored for the other (e.g. an inventory-export import shouldn't erase a leadId a
+        // prior sync found), per the leadId/moduleId split documented in CLAUDE.md.
+        leadId:record.idType==="lead"?record.id:(property.resimpli?.leadId||null),
+        moduleId:record.idType==="module"?record.id:(property.resimpli?.moduleId||null),
+        stage:record.stage||null,
+        recordType:record.recordType||null,
+        url:record.url||null,
         source:"import",
         updatedAt:new Date().toISOString(),
       },
@@ -3590,10 +3532,10 @@ function ImportResimpliModal({ properties, onConfirm, onClose }) {
           <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
             <Section title="Matched" count={result.matched.length} color="border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-400">
               <div className="space-y-1">
-                {result.matched.map(({property,row})=>(
+                {result.matched.map(({property,record})=>(
                   <div key={property.id} className="flex justify-between gap-2 text-[11px]">
                     <span className="text-slate-700 dark:text-zinc-200 truncate">{property.address}</span>
-                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold shrink-0">{row.stage||"—"}</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold shrink-0">{record.stage||"—"}</span>
                   </div>
                 ))}
               </div>
@@ -3602,30 +3544,34 @@ function ImportResimpliModal({ properties, onConfirm, onClose }) {
             {result.ambiguous.length>0&&(
               <Section title="Ambiguous — skipped" count={result.ambiguous.length} color="border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-900/10 text-amber-600 dark:text-amber-400">
                 <div className="space-y-1.5">
-                  {result.ambiguous.map(({row,candidates},i)=>(
+                  {result.ambiguous.map(({record,candidates},i)=>(
                     <div key={i} className="text-[11px]">
-                      <div className="text-slate-700 dark:text-zinc-200">{row.address}</div>
-                      <div className="text-amber-600 dark:text-amber-400 pl-2">→ {candidates.map(c=>c.address).join(" · ")}</div>
+                      <div className="text-slate-700 dark:text-zinc-200">{record.address}</div>
+                      <div className="text-amber-600 dark:text-amber-400 pl-2">
+                        {candidates.length>1
+                          ? <>→ {candidates.map(c=>c.address).join(" · ")}</>
+                          : <>→ {candidates[0]?.address} already matched by another CSV row</>}
+                      </div>
                     </div>
                   ))}
                 </div>
               </Section>
             )}
 
-            <Section title="CSV rows with no tracker property" count={result.noTrackerMatch.length} color="border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
+            <Section title="CSV rows with no tracker property" count={result.noPropertyMatch.length} color="border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
               <div className="space-y-1">
-                {result.noTrackerMatch.map((row,i)=>(
+                {result.noPropertyMatch.map((record,i)=>(
                   <div key={i} className="flex justify-between gap-2 text-[11px]">
-                    <span className="text-slate-600 dark:text-zinc-300 truncate">{row.address||"(blank address)"}</span>
-                    <span className="text-slate-400 dark:text-zinc-500 shrink-0">{row.stage||"—"}</span>
+                    <span className="text-slate-600 dark:text-zinc-300 truncate">{record.address||"(blank address)"}</span>
+                    <span className="text-slate-400 dark:text-zinc-500 shrink-0">{record.stage||"—"}</span>
                   </div>
                 ))}
               </div>
             </Section>
 
-            <Section title="Tracker properties with no CSV row" count={result.noCsvRow.length} color="border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
+            <Section title="Tracker properties with no CSV row" count={result.noRecordMatch.length} color="border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
               <div className="space-y-1">
-                {result.noCsvRow.map(p=>(
+                {result.noRecordMatch.map(p=>(
                   <div key={p.id} className="text-[11px] text-slate-600 dark:text-zinc-300 truncate">{p.address}</div>
                 ))}
               </div>
@@ -3641,6 +3587,105 @@ function ImportResimpliModal({ properties, onConfirm, onClose }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Manual "Sync Now" flow for the REsimpli live sync: always dry-run first (computes and shows
+// the diff without writing anything), then a separate, explicit Apply step. The actual write —
+// and the only thing the apply step does — happens server-side (api/resimpli-sync.mjs calling
+// the resimpli_sync_apply Postgres RPC, see CLAUDE.md), scoped to property.resimpli/
+// resimpliReview only; this modal never touches `update()`/Supabase itself.
+function SyncNowModal({ onClose, onApplied }) {
+  const [phase,setPhase]=useState("loading"); // loading | preview | applying | applied | error
+  const [preview,setPreview]=useState(null);
+  const [error,setError]=useState("");
+
+  const runDryRun=()=>{
+    setPhase("loading"); setError("");
+    runResimpliSync({dryRun:true})
+      .then(res=>{ setPreview(res); setPhase("preview"); })
+      .catch(e=>{ setError(e.message||"Sync failed."); setPhase("error"); });
+  };
+  useEffect(runDryRun,[]);
+
+  const apply=()=>{
+    setPhase("applying"); setError("");
+    runResimpliSync({dryRun:false})
+      .then(res=>{ setPhase("applied"); onApplied?.(res); })
+      .catch(e=>{ setError(e.message||"Sync failed."); setPhase("error"); });
+  };
+
+  return (
+    <Modal title="REsimpli Sync" onClose={onClose}>
+      <div className="space-y-3">
+        {phase==="loading"&&<p className="text-sm text-slate-500 dark:text-zinc-400">Checking REsimpli for changes…</p>}
+        {phase==="error"&&(
+          <>
+            <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
+            <Btn onClick={runDryRun} color="ghost" full>Try Again</Btn>
+          </>
+        )}
+        {phase==="applied"&&<p className="text-sm text-emerald-600 dark:text-emerald-400">Synced. Changes will appear momentarily.</p>}
+        {(phase==="preview"||phase==="applying")&&preview&&(
+          <>
+            <p className="text-[11px] text-slate-400 dark:text-zinc-500">
+              Dry run only — nothing has been written yet. {preview.changes?.length||0} property
+              update{preview.changes?.length===1?"":"s"}, {preview.review?.length||0} new review
+              item{preview.review?.length===1?"":"s"}.
+            </p>
+            <div className="space-y-1.5 max-h-[45vh] overflow-y-auto pr-1">
+              {(preview.changes||[]).map((c,i)=>(
+                <div key={i} className="rounded-xl border border-slate-200 dark:border-zinc-700 p-2.5 text-[11px]">
+                  <div className="font-semibold text-slate-700 dark:text-zinc-200 truncate">{c.address}</div>
+                  <div className="text-slate-400 dark:text-zinc-500">{c.oldStage||"No stage"} → <span className="text-teal-600 dark:text-teal-400 font-semibold">{c.newStage||"No stage"}</span></div>
+                </div>
+              ))}
+              {(preview.changes||[]).length===0&&<p className="text-[11px] text-slate-400 dark:text-zinc-500">No property changes.</p>}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Btn onClick={apply} color="blue" disabled={phase==="applying"} full>{phase==="applying"?"Applying…":"Apply"}</Btn>
+              <Btn onClick={onClose} color="ghost" disabled={phase==="applying"}>Cancel</Btn>
+            </div>
+          </>
+        )}
+        {phase==="applied"&&<Btn onClick={onClose} color="ghost" full>Close</Btn>}
+      </div>
+    </Modal>
+  );
+}
+
+// Surfaces data.resimpliReview — leads/addresses the live sync (or a future one) couldn't
+// confidently match to a tracker property, so nothing was guessed or written for them. Shown
+// to everyone (pure reference data, same as ResimpliBadge); only the Dismiss action writes,
+// so it's gated !readOnly. Dismissing just removes the review entry itself — it never touches
+// property.resimpli or any other field.
+function ResimpliReviewCard({ data, update }) {
+  const readOnly=useReadOnly();
+  const review=data.resimpliReview||[];
+  if (review.length===0) return null;
+  const dismiss=id=>update(d=>({...d,resimpliReview:(d.resimpliReview||[]).filter(r=>r.id!==id)}));
+  return (
+    <div className="mb-4 rounded-2xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-900/10 overflow-hidden">
+      <div className="px-5 pt-4 pb-3">
+        <div className="text-sm font-bold text-amber-700 dark:text-amber-400">⚠️ REsimpli Review ({review.length})</div>
+        <div className="text-[11px] text-amber-600/80 dark:text-amber-400/70 mt-0.5">The REsimpli sync couldn't confidently match these — nothing was written.</div>
+      </div>
+      <div className="divide-y divide-amber-100 dark:divide-amber-800/30">
+        {review.map(item=>(
+          <div key={item.id} className="px-5 py-2.5 flex items-center justify-between gap-3 text-[11px]">
+            <div className="min-w-0">
+              <div className="text-slate-700 dark:text-zinc-200 truncate">{item.record?.address||"(no address)"}</div>
+              <div className="text-amber-600 dark:text-amber-400">
+                {item.kind==="ambiguous"
+                  ? `→ ${(item.candidateAddresses||[]).join(" · ")||"multiple candidates"}`
+                  : "no matching tracker property"}
+              </div>
+            </div>
+            {!readOnly&&<button onClick={()=>dismiss(item.id)} className="shrink-0 text-amber-600 dark:text-amber-400 font-semibold hover:underline">Dismiss</button>}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -3762,12 +3807,17 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 
   // Writes only property.resimpli on each matched property (by id, from the import preview's
   // already-confirmed match list) — every other field on every property, matched or not,
-  // passes through untouched.
+  // passes through untouched. assertOnlyResimpliChanged is the explicit last-line guard: it's
+  // not expected to ever fire given how `next` is built above, but aborts the write instead of
+  // crashing the tree if it somehow would touch anything else.
   const importResimpliStages = updates => {
-    update(d=>({...d,properties:d.properties.map(p=>{
+    const next={...data,properties:data.properties.map(p=>{
       const u=updates.find(x=>x.propId===p.id);
       return u?{...p,resimpli:u.resimpli}:p;
-    })}));
+    })};
+    try { assertOnlyResimpliChanged(data,next); }
+    catch (e) { alert(`Import blocked: ${e.message}`); return; }
+    update(()=>next);
     setModal(null);
   };
 
@@ -3885,6 +3935,11 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       return s+Math.round((l.principal||0)*(l.interestRate||0)/100/12);
     },0);
   };
+  // Once the live sync has run at least once, data.resimpliPipelineOrder carries REsimpli's
+  // real, live-fetched pipeline order — use it everywhere a hardcoded default would otherwise
+  // be used (sort, filter, badge labels, Pipeline view). Undefined until then, in which case
+  // every call below just uses buildPipelineIndex's own hardcoded fallback.
+  const pipelineIndex=data.resimpliPipelineOrder?buildPipelineIndex(data.resimpliPipelineOrder):undefined;
   const visible=data.properties
     .filter(p=>!p.dateSold)
     .filter(p=>{
@@ -3915,7 +3970,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       if(propSortMode==="dateAcquired")return d*propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return d*streetSortKey(a.address).localeCompare(streetSortKey(b.address));
       if(propSortMode==="dateSold")return d*(a.dateSold||"0000").localeCompare(b.dateSold||"0000");
-      if(propSortMode==="stage")return d*stageSortKey(a).localeCompare(stageSortKey(b));
+      if(propSortMode==="stage")return d*stageSortKey(a,pipelineIndex).localeCompare(stageSortKey(b,pipelineIndex));
       return d*propSellDate(a).localeCompare(propSellDate(b));
     });
   const rankMap=Object.fromEntries(
@@ -3929,7 +3984,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return streetSortKey(a.address).localeCompare(streetSortKey(b.address));
       if(propSortMode==="dateSold")return (a.dateSold||"0000").localeCompare(b.dateSold||"0000");
-      if(propSortMode==="stage")return stageSortKey(a).localeCompare(stageSortKey(b));
+      if(propSortMode==="stage")return stageSortKey(a,pipelineIndex).localeCompare(stageSortKey(b,pipelineIndex));
       return propSellDate(a).localeCompare(propSellDate(b));
     }).map((p,i)=>[p.id,i+1])
   );
@@ -3941,11 +3996,11 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const stagesPresent=[...new Map(
     data.properties.filter(p=>!p.dateSold&&p.resimpli?.stage)
       .map(p=>[`${p.resimpli.recordType||"_"}::${p.resimpli.stage}`,{recordType:p.resimpli.recordType||null,stage:p.resimpli.stage}])
-  ).values()].sort((a,b)=>stageSortKey({resimpli:a}).localeCompare(stageSortKey({resimpli:b})));
+  ).values()].sort((a,b)=>stageSortKey({resimpli:a},pipelineIndex).localeCompare(stageSortKey({resimpli:b},pipelineIndex)));
   // Properties page's REsimpli-style kanban (Pipeline view) — one column per Inventory stage
   // (always shown, even empty), then the non-Inventory buckets (hidden when empty), built from
   // `visible` so the existing search/stage filter already apply. Display-only: no drag/write.
-  const invStages=PIPELINE_BY_KEY.inventory.stages;
+  const invStages=pipelineForRecordType("inventory",pipelineIndex).stages;
   const pipelineColumns=(()=>{
     const invCols=invStages.map(stage=>({key:`inv::${stage}`,label:stage,items:[]}));
     const otherInv={key:"inv::other",label:"Other Inventory",items:[]};
@@ -3972,15 +4027,21 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     <div>
       {menuOpen && <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)}/>}
       <TasksCard data={data} update={update} openPanel={openPanel} onPlaceFund={fund=>setModal({type:"place",fund})}/>
+      <ResimpliReviewCard data={data} update={update}/>
       <div className="flex justify-between items-center mb-5">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Properties</h2>
         </div>
         <div className="flex items-center gap-2">
           {!readOnly && (
-            <button onClick={()=>setModal({type:"resimpliImport"})}
+            <span className="text-[11px] text-slate-400 dark:text-zinc-500 whitespace-nowrap">
+              {data.resimpliLastSyncedAt?`Last synced ${new Date(data.resimpliLastSyncedAt).toLocaleString()}`:"Never synced"}
+            </span>
+          )}
+          {!readOnly && (
+            <button onClick={()=>setModal({type:"resimpliSync"})}
               className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all border border-slate-200 dark:border-zinc-700 whitespace-nowrap">
-              ⇪ Import REsimpli Stages
+              ⟳ Sync Now
             </button>
           )}
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-lg p-0.5 gap-0.5">
@@ -4012,7 +4073,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           <option value="all">All Stages</option>
           {stagesPresent.map(({recordType,stage})=>{
             const value=`${recordType||"_"}::${stage}`;
-            return <option key={value} value={value}>{resimpliStageLabel({recordType,stage})}</option>;
+            return <option key={value} value={value}>{resimpliStageLabel({recordType,stage},pipelineIndex)}</option>;
           })}
           <option value="__none__">No stage</option>
         </select>
@@ -4123,7 +4184,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             case"Funded":     return d*(a.funded-b.funded);
             case"Needed":     return d*(a.needed-b.needed);
             case"Status":     return d*(a.short-b.short);
-            case"Stage":      return d*stageSortKey(a.prop).localeCompare(stageSortKey(b.prop));
+            case"Stage":      return d*stageSortKey(a.prop,pipelineIndex).localeCompare(stageSortKey(b.prop,pipelineIndex));
             default:          return 0;
           }
         });
@@ -4149,7 +4210,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   </HoverTip>
                 </td>
                 <td className="py-2.5 px-4 text-right" onClick={e=>e.stopPropagation()}>
-                  <ResimpliBadge resimpli={prop.resimpli}/>
+                  <ResimpliBadge resimpli={prop.resimpli} pipelineIndex={pipelineIndex}/>
                 </td>
                 <td className="py-2.5 px-4 text-right tabular-nums text-slate-500 dark:text-zinc-400">
                   {daysOwned!=null?(
@@ -4305,7 +4366,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   link inside a button is invalid HTML (the browser would silently break the
                   card's click target). */}
               <div className="bg-white dark:bg-[#1C1F2B] px-4 pb-3 -mt-px rounded-b-2xl">
-                <ResimpliBadge resimpli={prop.resimpli}/>
+                <ResimpliBadge resimpli={prop.resimpli} pipelineIndex={pipelineIndex}/>
               </div>
               </SortableItem>
             );
@@ -4362,7 +4423,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                     {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{h$(short)}</span>}
                   </div>
                 </div>
-                <div className="mb-2"><ResimpliBadge resimpli={prop.resimpli}/></div>
+                <div className="mb-2"><ResimpliBadge resimpli={prop.resimpli} pipelineIndex={pipelineIndex}/></div>
                 {needed>0&&!prop.dateSold&&(
                   <>
                     <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5 relative">
@@ -4616,6 +4677,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       {modal?.type==="overageCheckPicker"&&<OverageCheckPropertyPickerModal properties={data.properties} onPick={prop=>setModal({type:"overageCheck",prop})} onClose={()=>setModal(null)}/>}
       {modal?.type==="overageCheck"&&<OverageCheckModal prop={modal.prop} onSave={entry=>saveOverageCheck(modal.prop.id,entry)} onClose={()=>setModal(null)}/>}
       {modal?.type==="resimpliImport"&&<ImportResimpliModal properties={data.properties} onConfirm={importResimpliStages} onClose={()=>setModal(null)}/>}
+      {modal?.type==="resimpliSync"&&<SyncNowModal onApplied={()=>setModal(null)} onClose={()=>setModal(null)}/>}
     </div>
   );
 }
@@ -11468,6 +11530,8 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                     "divider",
                     {label:"Record Draw",modal:{type:"quickDraw"}},
                     {label:"Overage Check",modal:{type:"overageCheckPicker"}},
+                    "divider",
+                    {label:"Import REsimpli Stages (fallback)",modal:{type:"resimpliImport"}},
                   ].map((item,i)=>
                     item==="divider"
                       ?<div key={i} className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>

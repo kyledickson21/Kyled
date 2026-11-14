@@ -43,9 +43,8 @@ update(d => ({...d, properties: [{newField: value}]}))
 **Export Backup**: "Export Backup (JSON)" in the Settings menu (desktop sidebar and mobile
 drawer, gated `!readOnly`) downloads the exact `data` this session has loaded — unchanged, no
 transform or filtering — as `nexus-backup-<date>-<timestamp>.json`. This is the backup to
-restore from before running anything that writes to `nexus_data` in bulk (e.g. the REsimpli
-live sync, held on a separate branch) — see `exportBackup` near the top of the main `Tracker`
-component.
+restore from before running anything that writes to `nexus_data` in bulk (e.g. the first
+REsimpli sync) — see `exportBackup` near the top of the main `Tracker` component.
 
 ## Data Shape (Supabase blob)
 ```js
@@ -60,18 +59,23 @@ component.
       projectMonths: null,           // optional — overrides the estimated hold length
       monthlyHolding: 500,           // optional
       resimpli: null | {             // optional — REsimpli pipeline tracking, reference only.
-        leadId: "12345",             // REsimpli's own lead/record id — used to match a CSV
-                                      // import row to this property even if the address text
-                                      // has since drifted, and is what a future REsimpli API
-                                      // sync would also key off of
+        leadId: "12345",             // REsimpli's own LEAD id — the Open API can only read/list
+                                      // Leads (not Inventory/Rental/Sold), so this is the only id
+                                      // the live sync itself can discover. Matched/stored
+                                      // separately from moduleId (below) since they're different
+                                      // id spaces in REsimpli — never compare one against the other.
+        moduleId: null,              // REsimpli's Inventory/Rental/Sold "module" id — only ever
+                                      // arrives via the CSV import (resimpli_id column when
+                                      // record_type isn't "lead"); the live sync can't read these
+                                      // modules at all. Kept so a later address-match sync can
+                                      // still discover and backfill the real leadId without losing
+                                      // this reference.
         stage: "Under Contract",     // free text — not constrained to RESIMPLI_STAGES, which
                                       // is only the datalist's suggestion list
-        recordType: "lead",          // "lead" | "inventory" — only ever set by import/sync,
-                                      // never by the property form
+        recordType: "lead",          // "lead" | "inventory" | "rental" | "sold" — only ever set
+                                      // by import/sync, never by the property form
         url: "https://app.resimpli.com/...",
-        source: "manual",            // "manual" | "import" | "sync" — "sync" is reserved for
-                                      // a future REsimpli API integration; nothing in this repo
-                                      // sets it yet
+        source: "manual",            // "manual" | "import" | "sync"
         updatedAt: "2026-11-14T00:00:00.000Z",
       },
       closingBuy: {                  // itemized Cost-to-Buy, straight off the purchase HUD
@@ -173,7 +177,25 @@ component.
   dashboardLayout: { // Dashboard card drag-order + hidden cards, synced across devices
     order: [],       // card ids, see DASHBOARD_CARD_DEFS in Tracker.jsx
     hidden: []       // card ids currently hidden
-  }
+  },
+  resimpliLastSyncedAt: null, // ISO timestamp of the live sync's last successful run (scheduled,
+                              // manual "Sync Now", or webhook) — shown on the Properties page.
+                              // Not touched by the CSV import.
+  resimpliReview: [],  // REsimpli records the live sync couldn't confidently match to a tracker
+                       // property — shown in a dismissible "⚠️ REsimpli Review" card on the
+                       // Properties page. {id, kind:"ambiguous"|"noPropertyMatch", record,
+                       // candidateAddresses, detectedAt}. Fully recomputed by every scheduled/
+                       // manual sync run (so a resolved ambiguity naturally drops off); a
+                       // single-lead webhook hit that can't resolve is just dropped, not added
+                       // here — only a full sync run maintains this list. See "REsimpli Live
+                       // Sync" below.
+  resimpliPipelineOrder: null, // REsimpli's live-fetched pipeline/stage order (same shape as
+                                // the hardcoded RESIMPLI_PIPELINES default in
+                                // resimpli-shared.mjs: [{key,label,stages,order}]) — set by the
+                                // scheduled/manual sync's fetchPipelineOrder(), null until the
+                                // first sync run. The UI (sort/filter/badge/Pipeline view) uses
+                                // this instead of the hardcoded default whenever it's set. Not
+                                // touched by the CSV import or the single-lead webhook.
 }
 ```
 
@@ -215,7 +237,9 @@ const useDirty / confirmDiscard / useDirtyGuard  // warn-before-discard for moda
 | `OverageCheckModal` | ~6160 | Add/edit a post-closing overage refund |
 | `EditDrawModal` | ~6842 | Edit/delete an already-recorded draw, from Properties or Loans |
 | `ResimpliBadge` | ~3420 | Stage badge shown per property on the Properties page |
-| `ImportResimpliModal` | ~3494 | "Import REsimpli Stages" CSV bulk-match/import flow |
+| `ImportResimpliModal` | ~3465 | "Import REsimpli Stages" CSV bulk-match/import flow |
+| `SyncNowModal` | ~3595 | "Sync Now" dry-run-then-apply flow for the REsimpli live sync |
+| `ResimpliReviewCard` | ~3659 | "⚠️ REsimpli Review" dismissible card — unmatched/ambiguous sync results |
 | `ManageLendersPage` | ~6206 | "Portal Access" — lender portal login management |
 | `HardMoneyComparePage` | ~6990 | "Rate Comparison" — what-if calculator for hard money loans |
 | `DrawsPage` | ~6317 | "Draw Tracker" tab |
@@ -462,43 +486,76 @@ into what's treated as in-hand.
 ## REsimpli Stage Tracking (Properties Page)
 Reference-only metadata (`property.resimpli` — see Data Shape above) for where a deal sits in
 REsimpli's own pipeline. Never touches any money field, loan, lender, or draw.
-- **Pipelines**: REsimpli has four pipelines, each with its own stage order — `RESIMPLI_PIPELINES`
-  (near `streetSortKey`, top of file) is the hardcoded default, verified against both the
-  REsimpli screens and the API's `orderIndex`: Lead (New Leads → … → Under Contract), Inventory
-  (New Inventory → … → Under Contract), Rental (New Rental → … → TURN/NEEDS RENTED), Sold
-  (Sold). `property.resimpli.recordType` ("lead"|"inventory"|"rental"|"sold") says which
-  pipeline a property is in — the stage name alone is never enough, since "Under Contract" is
-  used by both Lead and Inventory, and "Under Rehab" by both Inventory and Rental.
-  `pipelineForRecordType(recordType)` looks up a pipeline by key; `RESIMPLI_STAGES` is a flat,
-  deduplicated list of every stage across every pipeline, used only for the PropertyForm
-  datalist (a hand-typed stage has no recordType, so no single pipeline to scope it to).
+- **Shared logic lives in `src/resimpli-shared.mjs`** — a pure, dependency-free ES module
+  (explicit `.mjs` extension since `package.json` has no `"type":"module"`), imported by both
+  `Tracker.jsx` (via Vite) and the server-side sync (`api/*.mjs`, via plain Node ESM), so the
+  CSV import, the scheduled sync, the webhook receiver, and the manual "Sync Now" button all
+  agree on exactly the same pipeline/stage order, address-normalization rules, and matching
+  algorithm. Exports: `RESIMPLI_PIPELINES`, `RESIMPLI_STAGES`, `pipelineForRecordType`,
+  `resimpliStageLabel`, `stageSortKey`, `normalizeAddressForMatch`, `expandCombinedAddress`,
+  `propertyAddressKeys`, `matchResimpliRecords`, `assertOnlyResimpliChanged`. Don't
+  re-implement any of this elsewhere — import from here.
+- **Pipelines**: REsimpli has four pipelines, each with its own stage order —
+  `RESIMPLI_PIPELINES` is the hardcoded default, verified against both the REsimpli screens and
+  the API's `orderIndex`: Lead (New Leads → … → Under Contract), Inventory (New Inventory → … →
+  Under Contract), Rental (New Rental → … → TURN/NEEDS RENTED), Sold (Sold).
+  `property.resimpli.recordType` ("lead"|"inventory"|"rental"|"sold") says which pipeline a
+  property is in — the stage name alone is never enough, since "Under Contract" is used by both
+  Lead and Inventory, and "Under Rehab" by both Inventory and Rental. `pipelineForRecordType
+  (recordType)` looks up a pipeline by key; `RESIMPLI_STAGES` is a flat, deduplicated list of
+  every stage across every pipeline, used only for the PropertyForm datalist (a hand-typed
+  stage has no recordType, so no single pipeline to scope it to). The live sync (held, see
+  below) will eventually read this order live from REsimpli's `getPipelineList` and store it
+  alongside the synced data, falling back to this hardcoded default when that isn't available.
 - **Display**: `ResimpliBadge` shows `resimpliStageLabel(resimpli)` as a small indigo chip, or
   muted "No stage" when there isn't one; clickable through to `resimpli.url` when set.
   `resimpliStageLabel` adds "(Lead)"/"(Inventory)"/etc. only when the bare stage name is
   ambiguous across pipelines (`STAGE_NAME_PIPELINE_COUNT`) AND the pipeline is actually known
   (recordType set) — otherwise just the stage name. Shown on the Properties page in condensed/
-  grid/expanded — a dedicated "Stage" column in condensed, a line under the card in grid, a
-  line under the header in expanded — and NOT shown anywhere else (PropertyDetailPage,
-  Dashboard, etc.), scoped to the Properties page only.
+  grid/expanded/pipeline — a dedicated "Stage" column in condensed, a line under the card in
+  grid, a line under the header in expanded, the column itself in pipeline — and NOT shown
+  anywhere else (PropertyDetailPage, Dashboard, etc.), scoped to the Properties page only.
 - **Editing**: `PropertyForm` has a "REsimpli (optional)" section — Stage (plain text input
   with an HTML `<datalist>` of `RESIMPLI_STAGES` as suggestions, not a locked dropdown, since
   REsimpli's own stage names can drift), REsimpli ID, and URL. None of the three are
   Lockable/confirm-gated like the money fields are — there's nothing here that affects a
-  calculation. `recordType` is NOT editable from this form at all — only an import (or a
-  future sync) sets it. Saving from the form always sets `source:"manual"` and a fresh
-  `updatedAt`, even if the record previously came from an import, since a hand-edit is by
-  definition the latest manual word on it. Both `PropertyForm` callers (`PropertiesPage`'s
-  `saveProp` and `PropertyDetailPage`'s inline edit handler) just pass `resimpli: f.resimpli`
-  straight through — `PropertyForm` itself already computed the correct final value (preserved,
-  updated, or `null`) from `init?.resimpli`, so neither caller needs its own merge logic.
-- **Sort**: `stageSortKey(prop)` (near `streetSortKey`, top of file) returns a sortable string —
-  pipeline first (Lead, Inventory, Rental, Sold, in that order, via `pipelineForRecordType`),
-  then stage within that pipeline's own order, then any stage REsimpli doesn't list
-  (alphabetically, within its pipeline), then a stage with no known pipeline (alphabetically),
-  then no stage at all (always last) — wired into `propSortMode==="stage"` in both places
-  `PropertiesPage` computes sort order (`visible`'s own sort AND the separate `rankMap` sort),
-  so the two stay in sync. The condensed table's clickable "Stage" column header reuses the
-  same key.
+  calculation. `recordType` and `moduleId` are NOT editable from this form at all — only an
+  import or the live sync sets them; a hand-edit always carries whatever was already on file
+  for those two fields forward unchanged. Saving from the form always sets `source:"manual"`
+  and a fresh `updatedAt`, even if the record previously came from an import or sync, since a
+  hand-edit is by definition the latest manual word on it. Both `PropertyForm` callers
+  (`PropertiesPage`'s `saveProp` and `PropertyDetailPage`'s inline edit handler) just pass
+  `resimpli: f.resimpli` straight through — `PropertyForm` itself already computed the correct
+  final value from `init?.resimpli`, so neither caller needs its own merge logic.
+- **leadId vs. moduleId**: the Open API can read/list Leads but **cannot list the Inventory,
+  Rental, or Sold modules** — so `resimpli.leadId` (set by the live sync, or by a CSV row whose
+  `record_type` is `lead`) and `resimpli.moduleId` (set only by a CSV row whose `record_type`
+  is `inventory`/`rental`/`sold`) are stored and matched **separately**, never compared against
+  each other. A CSV row carries only one id type per row; importing one never clobbers the
+  other id already on file for that property (see `confirmImport` in `ImportResimpliModal`,
+  and the same preserve-the-other-field pattern in `PropertyForm`'s save path and in
+  `api/resimpli-sync.mjs`'s diff computation). The live sync can only ever discover/refresh
+  `leadId` — a property whose REsimpli record only has a `moduleId` stays matched on address
+  until the lead is created/found in REsimpli too.
+- **Combined addresses** (e.g. "3126 & 3134 Wessex Ct") and **directionals**:
+  `normalizeAddressForMatch` drops directionals (N/S/E/W/NE/NW/SE/SW and the spelled-out forms)
+  wherever they appear in the street line, not just leading, and strips unit/apt/suite/#
+  tokens — so "902 Dayton Ave Nw # 52pt" and "902 Dayton Ave #52" normalize identically. This
+  is deliberate even though it can make two genuinely different addresses collide (e.g. "123 N
+  Main St" vs "123 S Main St") — when that happens, the normal 2+-candidates ambiguity check
+  already sends them to review instead of guessing, which is exactly the wanted behavior.
+  `expandCombinedAddress`/`propertyAddressKeys` split a tracker property like "3126 & 3134
+  Wessex Ct" into its two individual addresses for matching: if REsimpli has **one** matching
+  record, the property matches cleanly; if REsimpli has **two** (one per half), both move to
+  `ambiguous` instead of either being picked — see `matchResimpliRecords`'s second pass in
+  `resimpli-shared.mjs`.
+- **Sort**: `stageSortKey(prop)` returns a sortable string — pipeline first (Lead, Inventory,
+  Rental, Sold, in that order, via `pipelineForRecordType`), then stage within that pipeline's
+  own order, then any stage REsimpli doesn't list (alphabetically, within its pipeline), then a
+  stage with no known pipeline (alphabetically), then no stage at all (always last) — wired
+  into `propSortMode==="stage"` in both places `PropertiesPage` computes sort order
+  (`visible`'s own sort AND the separate `rankMap` sort), so the two stay in sync. The condensed
+  table's clickable "Stage" column header reuses the same key.
 - **Filter**: a plain `<select>` next to the sort controls — "All Stages", then only the
   (recordType, stage) pairs actually present on an active property, in `stageSortKey` order,
   labeled via `resimpliStageLabel` (so "Under Contract (Lead)" and "Under Contract (Inventory)"
@@ -509,34 +566,145 @@ REsimpli's own pipeline. Never touches any money field, loan, lender, or draw.
 - **Pipeline view**: a fourth Properties-page view mode (toggle icon "Ⅲ", next to condensed/
   grid/expanded), mirroring REsimpli's own Inventory Grid (kanban). Built from `pipelineColumns`
   (computed alongside `stagesPresent`/`visible`, so the existing search/stage filter apply
-  here too): one column per Inventory stage (always shown, even empty, in REsimpli's order),
-  then "Other Inventory" (unrecognized inventory stage), "Lead: Under Contract", "Rental",
-  "Sold", and "No stage" — all five hidden when empty. Each card shows the address, the
-  REsimpli link when on file, and the same funded/needed/shortage-or-surplus figures the other
-  views already compute inline; clicking a card opens the same property detail panel as every
-  other view. No drag-and-drop between columns and no write of any kind — REsimpli's stage is
-  read-only reference data here, exactly like the badge elsewhere on this page.
-- **Import** (`ImportResimpliModal`, "⇪ Import REsimpli Stages" button, gated `!readOnly`):
+  here too): one column per Inventory stage (always shown, even empty, in REsimpli's order,
+  via `pipelineForRecordType("inventory").stages`), then "Other Inventory" (unrecognized
+  inventory stage), "Lead: Under Contract", "Rental", "Sold", and "No stage" — all five hidden
+  when empty. Each card shows the address, the REsimpli link when on file, and the same
+  funded/needed/shortage-or-surplus figures the other views already compute inline; clicking a
+  card opens the same property detail panel as every other view. No drag-and-drop between
+  columns and no write of any kind — REsimpli's stage is read-only reference data here, exactly
+  like the badge elsewhere on this page. Once the live sync (below) starts storing the live
+  pipeline order, this view (and sort/filter above) will use that instead, falling back to the
+  hardcoded `RESIMPLI_PIPELINES` default.
+- **Import** (`ImportResimpliModal`, reached via the global Actions (+) menu → "Import
+  REsimpli Stages (fallback)", gated `!readOnly` same as every other item in that menu — moved
+  off the Properties-page toolbar once the live sync below does this automatically, so it's no
+  longer a default-visible button, just a deliberate fallback):
   accepts a CSV file (`parseCSV` — a small hand-rolled quoted-field parser, fine since this is
   Kyle's own export, not third-party input) with columns `address,resimpli_id,record_type,
   stage,url`, matched by header name via `csvRowsToResimpliObjects` so a reordered export still
-  works. `matchResimpliImport(properties, csvRows)` matches each row to **at most one**
-  property — an existing `resimpli.leadId` first, then `normalizeAddressForMatch(address)`
-  (lowercases, drops everything from the first comma onward so city/state/zip never affects
-  matching, strips a unit/apt/suite/# token, strips punctuation, and collapses common street
-  suffixes via `ADDRESS_SUFFIX_MAP` — "123 Oak Avenue, Apt 2, Nashville, TN" and "123 Oak Ave"
-  normalize identically) — and **never guesses**: 2+ candidates for the same row go to
+  works. Each row is converted to a generic record (`csvRowToRecord` — `idType` is `"module"`
+  when `record_type` is set and isn't `"lead"`, else `"lead"`) and matched via the shared
+  `matchResimpliRecords(properties, records)` — never guesses: 2+ property candidates for the
+  same record, or 2+ records for the same property (see combined-address note above), go to
   `ambiguous` and are skipped entirely, not written. The preview shows all four buckets —
   Matched, Ambiguous — skipped, CSV rows with no tracker property, and tracker properties with
-  no CSV row (this includes any property that was only an ambiguous candidate, never a
-  confirmed match, which is correct — nothing was actually decided for it). Matching runs
-  against **every** property regardless of `dateSold`, not just active ones. Nothing writes
-  until "Confirm Import" — `importResimpliStages` then does one `update()` that touches only
-  `property.resimpli` on the matched properties, by id, leaving every other property and every
-  other field completely untouched. Every imported record gets `source:"import"` and a fresh
-  `updatedAt`, unconditionally overwriting whatever `resimpli` that property had before (this
-  is intentional — a confirmed import row is authoritative for those four fields, same as a
-  future sync would be).
+  no CSV row. Matching runs against **every** property regardless of `dateSold`, not just
+  active ones. Nothing writes until "Confirm Import" — `importResimpliStages` builds the full
+  next state, runs it through `assertOnlyResimpliChanged` as an explicit last-line guard (see
+  "REsimpli Live Sync" below), and only then calls `update()`, touching only `property.resimpli`
+  on the matched properties, by id — every other property and every other field passes through
+  completely untouched. Every imported record gets `source:"import"` and a fresh `updatedAt`.
+  The CSV import does **not** write to `data.resimpliReview` — that list is maintained only by
+  the live sync (see below); the import modal's own preview is where Kyle resolves CSV
+  ambiguity/no-match before confirming, and nothing from it persists past that one import.
+
+## REsimpli Live Sync
+A server-side sync that keeps `property.resimpli` current from REsimpli itself, on top of the
+manual CSV import above (which remains as a fallback). Nothing here is deployed yet — see the
+HOLD note at the end of this section.
+
+- **Architecture**: implemented as **Vercel serverless functions** (`api/*.mjs`), not Supabase
+  Edge Functions — chosen because the app already deploys via Vercel and its env vars are
+  already set there, Vercel Cron is natively configurable via `vercel.json`, and (per the
+  Bookkeeper section above) this repo has no deploy tooling for Supabase Edge Functions at all
+  — those have to be hand-pasted into the Supabase dashboard. One deploy pipeline covers both
+  the app and the sync.
+  - `api/_resimpli-client.mjs` — the REsimpli Open API v6 HTTP client. The base URL and
+    `getPipelineList` endpoint are **CONFIRMED** (Kyle gave the exact URL:
+    `POST https://api.resimpli.com/api/v6/openapi/getPipelineList`). **Every other path/response
+    shape — `fetchLeads()`'s list endpoint and its field names — is still UNVERIFIED**:
+    `developer.resimpli.com` could not be reached while building this, so those are inferred
+    from the confirmed facts, not a confirmed copy of the real contract. Confirm against the
+    real docs before trusting `fetchLeads()` against production data. What IS confirmed (from
+    Kyle directly): every call, reads included, is a **POST** — a GET returns 404 — and the
+    header is `Authorization: <key>`, **no** `Bearer ` prefix. `fetchPipelineOrder()` calls
+    `getPipelineList` for moduleType 1 (Lead)/6 (Inventory)/7 (Rental), sorts `mainStatusList`
+    by `orderIndex`, and fills in the "Under Contract" stage that endpoint always omits for Lead
+    and Inventory (and the Sold pipeline it has no module for at all) from the hardcoded
+    `RESIMPLI_PIPELINES` default — per Kyle's documented fallback, never guessed some other way.
+    Read-only: nothing in this file ever writes to REsimpli.
+  - `api/resimpli-sync.mjs` — `POST /api/resimpli-sync { dryRun }`. Two callers: Vercel Cron
+    (sends `GET` with `Authorization: Bearer $CRON_SECRET` — cron calls always apply for real,
+    no dry run, since there's no one to show a preview to) and the Properties page's "Sync Now"
+    button (`POST`, sends the Supabase access token, checked against the
+    `kyle@nexushomesoh.com` allowlist — same pattern as the existing `manage-lenders` edge
+    function — and honors `dryRun` from the body).
+  - `api/resimpli-webhook.mjs` — `POST /api/resimpli-webhook?secret=<RESIMPLI_WEBHOOK_SECRET>`
+    (or header `X-Resimpli-Webhook-Secret`). An endpoint a REsimpli automation can call on a
+    single lead's stage change. REsimpli documents no request signature for automations, so the
+    shared secret is the only gate. **No REsimpli automation has been created to call this** —
+    this repo only builds the receiving endpoint; wiring it up on REsimpli's side is a separate
+    step for Kyle, and the payload field names read here (`leadId`/`address`/`stage`/`url`) are
+    an unverified guess like the HTTP client above.
+- **Matching**: both the scheduled/manual sync and the webhook call the same shared
+  `matchResimpliRecords` from `resimpli-shared.mjs` used by the CSV import — same leadId-first,
+  then-normalized-address rules, same combined-address/directional handling, same
+  never-guess-on-ambiguity behavior.
+- **Review list**: unmatched/ambiguous REsimpli records go to `data.resimpliReview` (see Data
+  Shape above), shown in a dismissible "⚠️ REsimpli Review" card at the top of the Properties
+  page (`ResimpliReviewCard`, visible to everyone — pure reference data — but the Dismiss button
+  is gated `!readOnly`). The scheduled/manual sync fully recomputes this list every run, so a
+  since-resolved ambiguity naturally drops off; the webhook never adds to it (a single-lead hit
+  that can't resolve cleanly is just dropped — it'll show up on the next full sync instead).
+- **Safe writes — the database layer**: neither Vercel function ever reads or writes
+  `nexus_data` with a bare `.from('nexus_data')` call. Both go through two Postgres functions
+  defined in **`supabase/resimpli_sync.sql` (written to the repo, NOT applied to Supabase yet)**:
+  - `resimpli_sync_read(secret)` — returns only `{id, address, resimpli}` per property. No loan,
+    lender, fund, draw, or money field is ever returned by it.
+  - `resimpli_sync_apply(secret, changes, review, synced_at, pipeline_order)` — the **only**
+    write path (`pipeline_order` is optional/nullable — the webhook always passes null, since a
+    single lead has nothing new to report about pipeline order, and null leaves whatever's
+    already stored untouched rather than clearing it). It rebuilds the properties array,
+    copying every property through unchanged except that a property whose id appears in
+    `changes` gets `jsonb_set` applied to just its `resimpli` key, then separately sets
+    `data.resimpliReview`, `data.resimpliLastSyncedAt`, and `data.resimpliPipelineOrder`. No
+    property or loan can be added/removed/changed by it, and no field besides those four is
+    ever touched — that's enforced by how the function is written (an atomic
+    `UPDATE ... SET data = jsonb_set(...)` on the single `nexus_data` row), not by a separate
+    check, so a sync can never clobber a concurrent money edit via a stale read-modify-write of
+    the whole blob.
+  - Both are `SECURITY DEFINER` (bypass RLS) but refuse (raise an exception, write nothing)
+    unless their `secret` argument matches a value stored in a new `resimpli_sync_config` table
+    — which has RLS enabled with **zero policies**, so nothing can read or write it through the
+    normal Supabase client at all, only these two functions. That stored value is meant to match
+    a new env var, `RESIMPLI_SYNC_SECRET` — a database-layer secret, intentionally separate from
+    `CRON_SECRET`/`RESIMPLI_WEBHOOK_SECRET` (which only gate the Vercel functions), so that
+    possessing the public anon key alone still can't trigger a write. **This was Kyle's own
+    ask — a narrow database function instead of adding the Supabase service role key** — see
+    the SQL file's own comments for exactly what to run and in what order.
+- **Guard, client-side**: `assertOnlyResimpliChanged(oldData, newData)` (in
+  `resimpli-shared.mjs`) is the same kind of last-line check on the browser side — used before
+  the CSV import's `update()` call — throwing if anything other than `property.resimpli` or the
+  top-level `resimpliReview`/`resimpliLastSyncedAt`/`resimpliPipelineOrder` keys
+  (`RESIMPLI_MANAGED_KEYS`) would change. It's not expected to ever fire given how the import's
+  next-state is built, but aborts instead of silently writing if it somehow would. The server
+  sync does NOT call this — `resimpli_sync_read()` deliberately never returns a property's
+  non-resimpli fields at all, so there's nothing to diff against; its equivalent guarantee is
+  structural instead (see `resimpli_sync_apply()` above).
+- **Live pipeline order**: once a sync has actually run, `data.resimpliPipelineOrder` holds
+  REsimpli's live-fetched stage order (from `fetchPipelineOrder()` above) in the same
+  `{key, label, stages}` shape as the hardcoded `RESIMPLI_PIPELINES` default. `PropertiesPage`
+  builds `pipelineIndex = data.resimpliPipelineOrder ? buildPipelineIndex(data.resimpliPipelineOrder)
+  : undefined` once, near the top of the component (before `visible`, since several `.sort()`
+  calls run as soon as it's defined), and threads it through every `stageSortKey`/
+  `resimpliStageLabel`/`pipelineForRecordType` call and into `<ResimpliBadge pipelineIndex=.../>`
+  — each one defaults to the hardcoded order via its own default parameter when `pipelineIndex`
+  is `undefined`, so nothing breaks before the first sync has ever run.
+- **"Last synced" + "Sync Now"**: shown on the Properties page toolbar (gated `!readOnly`).
+  "Sync Now" opens `SyncNowModal`, which always runs a **dry run** first (`dryRun:true` —
+  computes and shows the diff without writing anything), then a separate **Apply** step the
+  user has to click explicitly.
+- **Env vars** (server-side only — `api/*.mjs` — never `VITE_`-prefixed, never imported by
+  client code): `RESIMPLI_API_KEY`, `CRON_SECRET`, `RESIMPLI_WEBHOOK_SECRET`, and the new
+  `RESIMPLI_SYNC_SECRET` proposed above. See `.env.example`.
+- **Vercel Cron only runs on Production deployments, not Preview** — so even once deployed to a
+  preview branch, the scheduled sync literally cannot fire until this is merged to the
+  production branch. The manual "Sync Now" button and the webhook both work on Preview, though.
+- **HOLD**: as of 2026-11-14, none of this (this section, `api/`, or `supabase/resimpli_sync.sql`)
+  has been pushed to `claude/build-deploy-app-BIdEz` or applied to Supabase — see the session's
+  reply for the exact commit/branch state, backup location, and rollback steps. Don't deploy or
+  apply the SQL without checking that HOLD is still in effect.
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top
