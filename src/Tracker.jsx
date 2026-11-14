@@ -34,16 +34,53 @@ const streetSortKey = address => {
   return noDirection.toLowerCase();
 };
 
-// REsimpli pipeline stages, in the order a deal actually moves through them — used both as
-// the datalist suggestions on the property form and as the canonical "Sort by Stage" order.
-const RESIMPLI_STAGES = ["Under Contract","Inventory","Ready For Rehab","Rehab","Listed","Sold"];
-// Sortable string key for "Sort by Stage": known pipeline stages in pipeline order, then any
-// other stage alphabetically, then properties with no stage at all (always last).
+// REsimpli's actual pipelines and each one's stage order, left to right/top to bottom exactly
+// as REsimpli shows them — verified against both the REsimpli screens and the API's
+// orderIndex. Kept hardcoded here as the default/fallback; the live sync (held, separate
+// branch) will eventually read this live from REsimpli's getPipelineList and store it
+// alongside the synced data, falling back to this same order when that isn't available.
+const RESIMPLI_PIPELINES = [
+  { key:"lead", label:"Lead", stages:["New Leads","Discovery","Interested","Due Diligence","Offer Follow Up","Offers Made","Under Contract"] },
+  { key:"inventory", label:"Inventory", stages:["New Inventory","Waiting On Possession","Ready For Rehab","Under Rehab","Rehab Complete","Listed For Sale","Under Contract"] },
+  { key:"rental", label:"Rental", stages:["New Rental","Under Rehab","Ready to Rent","DSCR in process","Rented","Lease Ending Soon","Eviction In Progress","TURN/NEEDS RENTED"] },
+  { key:"sold", label:"Sold", stages:["Sold"] },
+];
+// Flat, deduplicated list of every stage name across every pipeline — used only as the
+// PropertyForm datalist suggestions for a hand-typed stage, which has no recordType (so no
+// pipeline) to narrow it to one list.
+const RESIMPLI_STAGES = [...new Set(RESIMPLI_PIPELINES.flatMap(p=>p.stages))];
+const PIPELINE_BY_KEY = Object.fromEntries(RESIMPLI_PIPELINES.map((p,i)=>[p.key,{...p,order:i}]));
+// Stage names used by more than one pipeline — "Under Contract" (Lead + Inventory) and "Under
+// Rehab" (Inventory + Rental) — so the badge/filter label can disambiguate them. The stage
+// name alone is never enough to identify or sort a stage; recordType (which pipeline) always
+// has to come first.
+const STAGE_NAME_PIPELINE_COUNT = (() => {
+  const m = new Map();
+  RESIMPLI_PIPELINES.forEach(p=>p.stages.forEach(s=>m.set(s,(m.get(s)||0)+1)));
+  return m;
+})();
+const pipelineForRecordType = recordType => PIPELINE_BY_KEY[recordType] || null;
+// Human label for a resimpli stage — adds "(Lead)"/"(Inventory)" etc. only when the bare stage
+// name is ambiguous across pipelines AND the pipeline is actually known (recordType set);
+// otherwise just the stage name as-is.
+const resimpliStageLabel = resimpli => {
+  if (!resimpli?.stage) return null;
+  const pipeline = pipelineForRecordType(resimpli.recordType);
+  if (pipeline && STAGE_NAME_PIPELINE_COUNT.get(resimpli.stage)>1) return `${resimpli.stage} (${pipeline.label})`;
+  return resimpli.stage;
+};
+// Sortable string key for "Sort by Stage": pipeline first (Lead, Inventory, Rental, Sold, in
+// that order), then stage within that pipeline's own order, then any stage REsimpli doesn't
+// list (alphabetically, within its pipeline), then a stage whose pipeline isn't known at all
+// (e.g. hand-typed with no recordType — alphabetically), then no stage at all (always last).
 const stageSortKey = prop => {
-  const stage = prop?.resimpli?.stage;
-  if (!stage) return "2";
-  const idx = RESIMPLI_STAGES.indexOf(stage);
-  return idx !== -1 ? `0${String(idx).padStart(2,'0')}` : `1${stage.toLowerCase()}`;
+  const resimpli = prop?.resimpli;
+  const stage = resimpli?.stage;
+  if (!stage) return "9";
+  const pipeline = pipelineForRecordType(resimpli?.recordType);
+  if (!pipeline) return `8${stage.toLowerCase()}`;
+  const sIdx = pipeline.stages.indexOf(stage);
+  return `${pipeline.order}${sIdx!==-1?`0${String(sIdx).padStart(2,'0')}`:`1${stage.toLowerCase()}`}`;
 };
 
 // Normalizes an address down to just its street line for fuzzy-matching a REsimpli CSV
@@ -3421,7 +3458,7 @@ function ResimpliBadge({ resimpli }) {
   if (!resimpli?.stage) return <span className="text-[10px] text-slate-300 dark:text-zinc-600">No stage</span>;
   const chip = (
     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
-      {resimpli.stage}
+      {resimpliStageLabel(resimpli)}
     </span>
   );
   if (!resimpli.url) return chip;
@@ -3858,7 +3895,11 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     .filter(p=>{
       if(propStageFilter==="all")return true;
       if(propStageFilter==="__none__")return !p.resimpli?.stage;
-      return p.resimpli?.stage===propStageFilter;
+      // Composite "recordType::stage" value — the stage name alone can't tell "Under
+      // Contract (Lead)" apart from "Under Contract (Inventory)", so the filter always
+      // carries both.
+      const [rt,stage]=propStageFilter.split("::");
+      return (p.resimpli?.recordType||"_")===rt && p.resimpli?.stage===stage;
     })
     .sort((a,b)=>{
       const d=propSortDir==="asc"?1:-1;
@@ -3893,9 +3934,14 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     }).map((p,i)=>[p.id,i+1])
   );
   // Stages actually present on an active property, for the Filter by Stage options — only
-  // ones Kyle will actually see, not the whole fixed pipeline list regardless of use.
-  const stagesPresent=[...new Set(data.properties.filter(p=>!p.dateSold&&p.resimpli?.stage).map(p=>p.resimpli.stage))]
-    .sort((a,b)=>stageSortKey({resimpli:{stage:a}}).localeCompare(stageSortKey({resimpli:{stage:b}})));
+  // ones Kyle will actually see, not the whole fixed pipeline list regardless of use. Keyed by
+  // (recordType, stage) together, not stage alone, since the same stage name can belong to
+  // more than one pipeline — sorted pipeline-first via the shared stageSortKey, then grouped
+  // by pipeline within that order.
+  const stagesPresent=[...new Map(
+    data.properties.filter(p=>!p.dateSold&&p.resimpli?.stage)
+      .map(p=>[`${p.resimpli.recordType||"_"}::${p.resimpli.stage}`,{recordType:p.resimpli.recordType||null,stage:p.resimpli.stage}])
+  ).values()].sort((a,b)=>stageSortKey({resimpli:a}).localeCompare(stageSortKey({resimpli:b})));
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
 
@@ -3941,7 +3987,10 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         <select value={propStageFilter} onChange={e=>setPropStageFilter(e.target.value)}
           className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-teal-500 shrink-0">
           <option value="all">All Stages</option>
-          {stagesPresent.map(st=><option key={st} value={st}>{st}</option>)}
+          {stagesPresent.map(({recordType,stage})=>{
+            const value=`${recordType||"_"}::${stage}`;
+            return <option key={value} value={value}>{resimpliStageLabel({recordType,stage})}</option>;
+          })}
           <option value="__none__">No stage</option>
         </select>
         <input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
