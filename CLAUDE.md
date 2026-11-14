@@ -52,6 +52,21 @@ update(d => ({...d, properties: [{newField: value}]}))
       rehabBudget: 30000,            // optional
       projectMonths: null,           // optional — overrides the estimated hold length
       monthlyHolding: 500,           // optional
+      resimpli: null | {             // optional — REsimpli pipeline tracking, reference only.
+        leadId: "12345",             // REsimpli's own lead/record id — used to match a CSV
+                                      // import row to this property even if the address text
+                                      // has since drifted, and is what a future REsimpli API
+                                      // sync would also key off of
+        stage: "Under Contract",     // free text — not constrained to RESIMPLI_STAGES, which
+                                      // is only the datalist's suggestion list
+        recordType: "lead",          // "lead" | "inventory" — only ever set by import/sync,
+                                      // never by the property form
+        url: "https://app.resimpli.com/...",
+        source: "manual",            // "manual" | "import" | "sync" — "sync" is reserved for
+                                      // a future REsimpli API integration; nothing in this repo
+                                      // sets it yet
+        updatedAt: "2026-11-14T00:00:00.000Z",
+      },
       closingBuy: {                  // itemized Cost-to-Buy, straight off the purchase HUD
         cashFromBorrower: 0, depositEarnest: 0, loanToTitle: 0,
         rehabHoldback: 0, loanPointsFees: 0, prepaidInterest: 0,
@@ -192,6 +207,8 @@ const useDirty / confirmDiscard / useDirtyGuard  // warn-before-discard for moda
 | `RehabPriorityPage` | ~5739 | "Rehab Priority" tab |
 | `OverageCheckModal` | ~6160 | Add/edit a post-closing overage refund |
 | `EditDrawModal` | ~6842 | Edit/delete an already-recorded draw, from Properties or Loans |
+| `ResimpliBadge` | ~3420 | Stage badge shown per property on the Properties page |
+| `ImportResimpliModal` | ~3494 | "Import REsimpli Stages" CSV bulk-match/import flow |
 | `ManageLendersPage` | ~6206 | "Portal Access" — lender portal login management |
 | `HardMoneyComparePage` | ~6990 | "Rate Comparison" — what-if calculator for hard money loans |
 | `DrawsPage` | ~6317 | "Draw Tracker" tab |
@@ -434,6 +451,55 @@ into what's treated as in-hand.
   call sites across the file (LenderDashboard, AllLoansPage, RehabPriorityPage, etc.) were
   intentionally left untouched for the same reason — only `PropertyDashboard`'s capital
   calculator is about present-tense cash position.
+
+## REsimpli Stage Tracking (Properties Page)
+Reference-only metadata (`property.resimpli` — see Data Shape above) for where a deal sits in
+REsimpli's own pipeline. Never touches any money field, loan, lender, or draw.
+- **Display**: `ResimpliBadge` shows the stage as a small indigo chip, or muted "No stage" when
+  there isn't one; clickable through to `resimpli.url` when set. Shown on the Properties page
+  in all three view modes — a dedicated "Stage" column in condensed, a line under the card in
+  grid, a line under the header in expanded. It's deliberately NOT shown anywhere else
+  (PropertyDetailPage, Dashboard, etc.) — this was scoped to the Properties page only.
+- **Editing**: `PropertyForm` has a "REsimpli (optional)" section — Stage (plain text input
+  with an HTML `<datalist>` of `RESIMPLI_STAGES` as suggestions, not a locked dropdown, since
+  REsimpli's own stage names can drift), REsimpli ID, and URL. None of the three are
+  Lockable/confirm-gated like the money fields are — there's nothing here that affects a
+  calculation. `recordType` is NOT editable from this form at all — only an import (or a
+  future sync) sets it. Saving from the form always sets `source:"manual"` and a fresh
+  `updatedAt`, even if the record previously came from an import, since a hand-edit is by
+  definition the latest manual word on it. Both `PropertyForm` callers (`PropertiesPage`'s
+  `saveProp` and `PropertyDetailPage`'s inline edit handler) just pass `resimpli: f.resimpli`
+  straight through — `PropertyForm` itself already computed the correct final value (preserved,
+  updated, or `null`) from `init?.resimpli`, so neither caller needs its own merge logic.
+- **Sort**: `stageSortKey(prop)` (near `streetSortKey`, top of file) returns a sortable string —
+  known `RESIMPLI_STAGES` in pipeline order, then any other stage alphabetically, then "no
+  stage" always last — wired into `propSortMode==="stage"` in both places `PropertiesPage`
+  computes sort order (`visible`'s own sort AND the separate `rankMap` sort), so the two stay
+  in sync. The condensed table's clickable "Stage" column header reuses the same key.
+- **Filter**: a plain `<select>` next to the sort controls — "All Stages", then only the
+  stages actually present on an active property (not the fixed `RESIMPLI_STAGES` list
+  regardless of use), then "No stage". Persisted via `usePersistedState("nx-propStageFilter")`.
+- **Import** (`ImportResimpliModal`, "⇪ Import REsimpli Stages" button, gated `!readOnly`):
+  accepts a CSV file (`parseCSV` — a small hand-rolled quoted-field parser, fine since this is
+  Kyle's own export, not third-party input) with columns `address,resimpli_id,record_type,
+  stage,url`, matched by header name via `csvRowsToResimpliObjects` so a reordered export still
+  works. `matchResimpliImport(properties, csvRows)` matches each row to **at most one**
+  property — an existing `resimpli.leadId` first, then `normalizeAddressForMatch(address)`
+  (lowercases, drops everything from the first comma onward so city/state/zip never affects
+  matching, strips a unit/apt/suite/# token, strips punctuation, and collapses common street
+  suffixes via `ADDRESS_SUFFIX_MAP` — "123 Oak Avenue, Apt 2, Nashville, TN" and "123 Oak Ave"
+  normalize identically) — and **never guesses**: 2+ candidates for the same row go to
+  `ambiguous` and are skipped entirely, not written. The preview shows all four buckets —
+  Matched, Ambiguous — skipped, CSV rows with no tracker property, and tracker properties with
+  no CSV row (this includes any property that was only an ambiguous candidate, never a
+  confirmed match, which is correct — nothing was actually decided for it). Matching runs
+  against **every** property regardless of `dateSold`, not just active ones. Nothing writes
+  until "Confirm Import" — `importResimpliStages` then does one `update()` that touches only
+  `property.resimpli` on the matched properties, by id, leaving every other property and every
+  other field completely untouched. Every imported record gets `source:"import"` and a fresh
+  `updatedAt`, unconditionally overwriting whatever `resimpli` that property had before (this
+  is intentional — a confirmed import row is authoritative for those four fields, same as a
+  future sync would be).
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top

@@ -34,6 +34,37 @@ const streetSortKey = address => {
   return noDirection.toLowerCase();
 };
 
+// REsimpli pipeline stages, in the order a deal actually moves through them — used both as
+// the datalist suggestions on the property form and as the canonical "Sort by Stage" order.
+const RESIMPLI_STAGES = ["Under Contract","Inventory","Ready For Rehab","Rehab","Listed","Sold"];
+// Sortable string key for "Sort by Stage": known pipeline stages in pipeline order, then any
+// other stage alphabetically, then properties with no stage at all (always last).
+const stageSortKey = prop => {
+  const stage = prop?.resimpli?.stage;
+  if (!stage) return "2";
+  const idx = RESIMPLI_STAGES.indexOf(stage);
+  return idx !== -1 ? `0${String(idx).padStart(2,'0')}` : `1${stage.toLowerCase()}`;
+};
+
+// Normalizes an address down to just its street line for fuzzy-matching a REsimpli CSV
+// export against tracker properties — city/state/zip and any unit/apt/suite are dropped
+// entirely (ignored for matching per the import spec), common street-suffix spellings are
+// collapsed to one short form, and punctuation/extra whitespace is stripped, so
+// "123 Oak Avenue, Apt 2, Nashville, TN 37201" and "123 Oak Ave" normalize to the same key.
+const ADDRESS_SUFFIX_MAP = {
+  street:"st", avenue:"ave", road:"rd", drive:"dr", court:"ct",
+  circle:"cir", lane:"ln", boulevard:"blvd", place:"pl", way:"way",
+};
+const normalizeAddressForMatch = address => {
+  if (!address) return "";
+  let line = (address.split(',')[0] || "").toLowerCase();
+  line = line.replace(/\s*#.*$/, '');                               // "123 oak ave #2" -> "123 oak ave"
+  line = line.replace(/\b(apt|apartment|unit|suite|ste)\b.*$/, '');  // "123 oak ave apt 2" -> "123 oak ave "
+  line = line.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  line = line.split(' ').map(w => ADDRESS_SUFFIX_MAP[w] || w).join(' ');
+  return line;
+};
+
 const daysBetween = (d1, d2) => {
   if (!d1||!d2) return 0;
   return Math.max(0, Math.floor((new Date(d2)-new Date(d1))/864e5));
@@ -2838,6 +2869,9 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
     rehabHoldback:seedHudEntries("rehabHoldback"),
     loanPointsFees:seedHudEntries("loanPointsFees"),
     prepaidInterest:seedHudEntries("prepaidInterest"),
+    resimpliStage:init?.resimpli?.stage||"",
+    resimpliId:init?.resimpli?.leadId||"",
+    resimpliUrl:init?.resimpli?.url||"",
   }));
   const s=k=>v=>sf(p=>({...p,[k]:v}));
   const addHudEntry=key=>sf(p=>({...p,[key]:[...p[key],{id:uid(),note:"",value:""}]}));
@@ -2870,6 +2904,21 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
   // can save — the whole point is that nothing gets saved without a deliberate confirm.
   const allConfirmed=["address","purchaseDate",...HUD_KEYS,"rehabBudget"].every(k=>locked[k]);
   const canSaveProperty=hudComplete&&allConfirmed;
+  // REsimpli fields are plain reference data — no lock/confirm gate, nothing here affects
+  // money. recordType isn't editable from this form at all (only "Import REsimpli Stages"
+  // sets it); editing stage/id/url by hand always marks the record as manually maintained
+  // from this point on, even if it previously came from an import.
+  const resimpliStageTrim=f.resimpliStage.trim();
+  const resimpliIdTrim=f.resimpliId.trim();
+  const resimpliUrlTrim=f.resimpliUrl.trim();
+  const resimpli=(resimpliStageTrim||resimpliIdTrim||resimpliUrlTrim||init?.resimpli)?{
+    leadId:resimpliIdTrim||null,
+    stage:resimpliStageTrim||null,
+    recordType:init?.resimpli?.recordType||null,
+    url:resimpliUrlTrim||null,
+    source:"manual",
+    updatedAt:new Date().toISOString(),
+  }:null;
   const [editingMonths,setEditingMonths]=useState(false);
   const [editingHolding,setEditingHolding]=useState(false);
 
@@ -2905,6 +2954,23 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
       <Lockable locked={locked.purchaseDate} onToggle={()=>toggleLock("purchaseDate")}>
         <DateInp label="Purchase Date" value={f.purchaseDate} onChange={s("purchaseDate")} helpText="Reference only — does not affect calculations"/>
       </Lockable>
+
+      {/* REsimpli — optional, reference only. Stage is free text with suggestions (not a
+          locked dropdown) since REsimpli's own stage names can drift or vary. */}
+      <div className="mb-3 p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60">
+        <div className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">REsimpli (optional)</div>
+        <div className="mb-3">
+          <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">REsimpli Stage</label>
+          <input list="resimpli-stage-suggestions" type="text" value={f.resimpliStage} onChange={e=>s("resimpliStage")(e.target.value)}
+            placeholder="Under Contract"
+            className="w-full border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-300 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"/>
+          <datalist id="resimpli-stage-suggestions">
+            {RESIMPLI_STAGES.map(st=><option key={st} value={st}/>)}
+          </datalist>
+        </div>
+        <Inp label="REsimpli ID" value={f.resimpliId} onChange={s("resimpliId")} placeholder="12345"/>
+        <Inp label="REsimpli URL" value={f.resimpliUrl} onChange={s("resimpliUrl")} placeholder="https://app.resimpli.com/..."/>
+      </div>
 
       {/* Cost to buy — itemized straight off the HUD/Closing Disclosure instead of one
           hand-totaled number, to cut down on transcription mistakes. Every line is required —
@@ -3054,7 +3120,7 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
       {!hudComplete&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Every Cost to Buy line needs a number or N/A before this can be saved.</p>}
       {hudComplete&&!allConfirmed&&<p className="text-[11px] text-red-500 dark:text-red-400 -mt-1 mb-2">Tap ✓ Confirm on every field above before this can be saved.</p>}
       <div className="flex gap-2 pt-2">
-        <Btn onClick={()=>canSaveProperty&&onSave({...f,purchasePrice:String(purchase),closingBuy,loanDrafts,id:draftPropId})} color={canSaveProperty?"blue":"ghost"} disabled={!canSaveProperty} full>Save Property</Btn>
+        <Btn onClick={()=>canSaveProperty&&onSave({...f,purchasePrice:String(purchase),closingBuy,loanDrafts,id:draftPropId,resimpli})} color={canSaveProperty?"blue":"ghost"} disabled={!canSaveProperty} full>Save Property</Btn>
         <Btn onClick={()=>confirmDiscard(isDirty,onClose)} color="ghost">Cancel</Btn>
       </div>
     </div>
@@ -3349,6 +3415,198 @@ const computeInverse = (prev, next) => {
   };
 };
 
+// A property's REsimpli stage, shown as a small badge — a muted "No stage" when there isn't
+// one, otherwise the stage text, clickable through to REsimpli when a url is on file.
+function ResimpliBadge({ resimpli }) {
+  if (!resimpli?.stage) return <span className="text-[10px] text-slate-300 dark:text-zinc-600">No stage</span>;
+  const chip = (
+    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
+      {resimpli.stage}
+    </span>
+  );
+  if (!resimpli.url) return chip;
+  return (
+    <a href={resimpli.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} title="Open in REsimpli"
+      className="inline-flex items-center gap-0.5 hover:opacity-80 transition-opacity">
+      {chip}<span className="text-[9px] text-indigo-400">↗</span>
+    </a>
+  );
+}
+
+// ─── REsimpli Stage Import ──────────────────────────────────────────────────
+// Minimal CSV parser (quoted fields, embedded commas/quotes/newlines) — this is Kyle's own
+// REsimpli export, not untrusted input from a third party, so a small hand-rolled parser is
+// fine rather than pulling in a library for one import screen.
+function parseCSV(text) {
+  const rows=[];
+  let row=[], field='', inQuotes=false;
+  for (let i=0;i<text.length;i++){
+    const c=text[i], next=text[i+1];
+    if (inQuotes) {
+      if (c==='"'&&next==='"') { field+='"'; i++; }
+      else if (c==='"') { inQuotes=false; }
+      else field+=c;
+    } else {
+      if (c==='"') inQuotes=true;
+      else if (c===',') { row.push(field); field=''; }
+      else if (c==='\n') { row.push(field); rows.push(row); row=[]; field=''; }
+      else if (c==='\r') { /* skip — \n carries the line break */ }
+      else field+=c;
+    }
+  }
+  if (field!==''||row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r=>r.length>1||(r[0]||'').trim()!=='');
+}
+
+// Columns matched by header name (case-insensitive), not position, so a reordered export
+// still works: address, resimpli_id, record_type, stage, url.
+function csvRowsToResimpliObjects(rows) {
+  if (!rows.length) return [];
+  const header=rows[0].map(h=>(h||'').trim().toLowerCase());
+  const col=name=>header.indexOf(name);
+  const c={address:col('address'),resimpli_id:col('resimpli_id'),record_type:col('record_type'),stage:col('stage'),url:col('url')};
+  const get=(r,i)=>i>=0?(r[i]||'').trim():'';
+  return rows.slice(1)
+    .filter(r=>r.some(cell=>(cell||'').trim()!==''))
+    .map(r=>({address:get(r,c.address),resimpli_id:get(r,c.resimpli_id),record_type:get(r,c.record_type),stage:get(r,c.stage),url:get(r,c.url)}));
+}
+
+// Matches each CSV row to at most one tracker property — an existing resimpli.leadId first,
+// then normalized street address — and never guesses: two or more candidates for the same
+// row go to `ambiguous` instead of either list, and nothing about them is written.
+function matchResimpliImport(properties, csvRows) {
+  const matched=[], noTrackerMatch=[], ambiguous=[];
+  const matchedPropIds=new Set();
+  csvRows.forEach(row=>{
+    let candidates=row.resimpli_id ? properties.filter(p=>p.resimpli?.leadId&&p.resimpli.leadId===row.resimpli_id) : [];
+    if (candidates.length===0) {
+      const key=normalizeAddressForMatch(row.address);
+      if (key) candidates=properties.filter(p=>normalizeAddressForMatch(p.address)===key);
+    }
+    if (candidates.length===1) { matched.push({property:candidates[0],row}); matchedPropIds.add(candidates[0].id); }
+    else if (candidates.length===0) noTrackerMatch.push(row);
+    else ambiguous.push({row,candidates});
+  });
+  const noCsvRow=properties.filter(p=>!matchedPropIds.has(p.id));
+  return {matched,noTrackerMatch,ambiguous,noCsvRow};
+}
+
+function ImportResimpliModal({ properties, onConfirm, onClose }) {
+  const [csvRows,setCsvRows]=useState(null);
+  const [fileName,setFileName]=useState("");
+  const [error,setError]=useState("");
+
+  const handleFile=e=>{
+    const file=e.target.files?.[0];
+    if (!file) return;
+    setError(""); setCsvRows(null); setFileName(file.name);
+    const reader=new FileReader();
+    reader.onload=()=>{
+      try {
+        const objs=csvRowsToResimpliObjects(parseCSV(String(reader.result||"")));
+        if (!objs.length) { setError("No data rows found in that CSV."); return; }
+        setCsvRows(objs);
+      } catch { setError("Couldn't read that file as CSV."); }
+    };
+    reader.onerror=()=>setError("Couldn't read that file.");
+    reader.readAsText(file);
+  };
+
+  const result=useMemo(()=>csvRows?matchResimpliImport(properties,csvRows):null,[csvRows,properties]);
+
+  const confirmImport=()=>{
+    if (!result||result.matched.length===0) return;
+    onConfirm(result.matched.map(({property,row})=>({
+      propId:property.id,
+      resimpli:{
+        leadId:row.resimpli_id||null,
+        stage:row.stage||null,
+        recordType:row.record_type?row.record_type.toLowerCase():null,
+        url:row.url||null,
+        source:"import",
+        updatedAt:new Date().toISOString(),
+      },
+    })));
+  };
+
+  const Section = ({title,count,color,children}) => (
+    <div className={`rounded-xl border p-3 ${color}`}>
+      <div className="text-[11px] font-bold uppercase tracking-widest mb-2">{title} ({count})</div>
+      {count===0 ? <p className="text-[11px] text-slate-400 dark:text-zinc-500">None</p> : children}
+    </div>
+  );
+
+  return (
+    <Modal title="Import REsimpli Stages" onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-[11px] text-slate-400 dark:text-zinc-500">
+          Upload a CSV with columns address, resimpli_id, record_type, stage, url. Matches to
+          tracker properties by REsimpli ID first, then by normalized address. Nothing is
+          saved until you confirm below.
+        </p>
+        <input type="file" accept=".csv,text/csv" onChange={handleFile}
+          className="w-full text-xs text-slate-600 dark:text-zinc-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-teal-600 file:text-white hover:file:bg-teal-700 file:cursor-pointer cursor-pointer"/>
+        {fileName&&!error&&<p className="text-[11px] text-slate-400 dark:text-zinc-500">{fileName}</p>}
+        {error&&<p className="text-[11px] text-red-500 dark:text-red-400">{error}</p>}
+
+        {result&&(
+          <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+            <Section title="Matched" count={result.matched.length} color="border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-400">
+              <div className="space-y-1">
+                {result.matched.map(({property,row})=>(
+                  <div key={property.id} className="flex justify-between gap-2 text-[11px]">
+                    <span className="text-slate-700 dark:text-zinc-200 truncate">{property.address}</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold shrink-0">{row.stage||"—"}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            {result.ambiguous.length>0&&(
+              <Section title="Ambiguous — skipped" count={result.ambiguous.length} color="border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-900/10 text-amber-600 dark:text-amber-400">
+                <div className="space-y-1.5">
+                  {result.ambiguous.map(({row,candidates},i)=>(
+                    <div key={i} className="text-[11px]">
+                      <div className="text-slate-700 dark:text-zinc-200">{row.address}</div>
+                      <div className="text-amber-600 dark:text-amber-400 pl-2">→ {candidates.map(c=>c.address).join(" · ")}</div>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            <Section title="CSV rows with no tracker property" count={result.noTrackerMatch.length} color="border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
+              <div className="space-y-1">
+                {result.noTrackerMatch.map((row,i)=>(
+                  <div key={i} className="flex justify-between gap-2 text-[11px]">
+                    <span className="text-slate-600 dark:text-zinc-300 truncate">{row.address||"(blank address)"}</span>
+                    <span className="text-slate-400 dark:text-zinc-500 shrink-0">{row.stage||"—"}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            <Section title="Tracker properties with no CSV row" count={result.noCsvRow.length} color="border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
+              <div className="space-y-1">
+                {result.noCsvRow.map(p=>(
+                  <div key={p.id} className="text-[11px] text-slate-600 dark:text-zinc-300 truncate">{p.address}</div>
+                ))}
+              </div>
+            </Section>
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          <Btn onClick={confirmImport} color={result&&result.matched.length>0?"blue":"ghost"} disabled={!result||result.matched.length===0} full>
+            Confirm Import{result?` (${result.matched.length})`:""}
+          </Btn>
+          <Btn onClick={onClose} color="ghost">Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Properties Page ──────────────────────────────────────────────────────────
 function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const readOnly=useReadOnly();
@@ -3370,6 +3628,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const [propSearch,setPropSearch]=useState("");
   const [propSortMode,setPropSortMode]=usePersistedState("nx-propSortMode","shortage");
   const [propSortDir,setPropSortDir]=usePersistedState("nx-propSortDir","asc");
+  const [propStageFilter,setPropStageFilter]=usePersistedState("nx-propStageFilter","all");
   const [inlineDraw,setInlineDraw]=useState(null); // {propId, loanId, date, amt, fee}
   const [fundsOpen,setFundsOpen]=usePersistedState("nx-propFundsOpen",true);
   const [menuOpen,setMenuOpen]=useState(null);
@@ -3437,7 +3696,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     // f.id is the same id the property form's embedded loan picker already showed this
     // property as (minted before the first save) — reuse it instead of generating a new
     // one, or loans queued for "this property" would end up pointing at the wrong id.
-    const p={...(existing??{id:f.id||uid(),loans:[]}),address:f.address,purchasePrice,rehabBudget,projectMonths,monthlyHolding,fundingNeeded:purchasePrice+rehabBudget,dateSold:existing?.dateSold??null,purchaseDate:f.purchaseDate||null,closingBuy:f.closingBuy||null};
+    const p={...(existing??{id:f.id||uid(),loans:[]}),address:f.address,purchasePrice,rehabBudget,projectMonths,monthlyHolding,fundingNeeded:purchasePrice+rehabBudget,dateSold:existing?.dateSold??null,purchaseDate:f.purchaseDate||null,closingBuy:f.closingBuy||null,resimpli:f.resimpli??null};
     update(d=>{
       const {lenders,unassigned,propLoanAdds}=routeLoanDrafts(d,f.loanDrafts,p.id);
       const finalP={...p,loans:[...p.loans,...(propLoanAdds[p.id]||[])]};
@@ -3461,6 +3720,17 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
 
   const saveOverageCheck = (propId,entry) => {
     update(d=>({...d,properties:d.properties.map(p=>p.id!==propId?p:{...p,overageChecks:[...(p.overageChecks||[]),{id:uid(),...entry}]})}));
+    setModal(null);
+  };
+
+  // Writes only property.resimpli on each matched property (by id, from the import preview's
+  // already-confirmed match list) — every other field on every property, matched or not,
+  // passes through untouched.
+  const importResimpliStages = updates => {
+    update(d=>({...d,properties:d.properties.map(p=>{
+      const u=updates.find(x=>x.propId===p.id);
+      return u?{...p,resimpli:u.resimpli}:p;
+    })}));
     setModal(null);
   };
 
@@ -3585,6 +3855,11 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       const q=propSearch.toLowerCase();
       return p.address?.toLowerCase().includes(q)||p.loans.some(l=>l.lenderName?.toLowerCase().includes(q));
     })
+    .filter(p=>{
+      if(propStageFilter==="all")return true;
+      if(propStageFilter==="__none__")return !p.resimpli?.stage;
+      return p.resimpli?.stage===propStageFilter;
+    })
     .sort((a,b)=>{
       const d=propSortDir==="asc"?1:-1;
       if(propSortMode==="manual"){
@@ -3599,6 +3874,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       if(propSortMode==="dateAcquired")return d*propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return d*streetSortKey(a.address).localeCompare(streetSortKey(b.address));
       if(propSortMode==="dateSold")return d*(a.dateSold||"0000").localeCompare(b.dateSold||"0000");
+      if(propSortMode==="stage")return d*stageSortKey(a).localeCompare(stageSortKey(b));
       return d*propSellDate(a).localeCompare(propSellDate(b));
     });
   const rankMap=Object.fromEntries(
@@ -3612,9 +3888,14 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return streetSortKey(a.address).localeCompare(streetSortKey(b.address));
       if(propSortMode==="dateSold")return (a.dateSold||"0000").localeCompare(b.dateSold||"0000");
+      if(propSortMode==="stage")return stageSortKey(a).localeCompare(stageSortKey(b));
       return propSellDate(a).localeCompare(propSellDate(b));
     }).map((p,i)=>[p.id,i+1])
   );
+  // Stages actually present on an active property, for the Filter by Stage options — only
+  // ones Kyle will actually see, not the whole fixed pipeline list regardless of use.
+  const stagesPresent=[...new Set(data.properties.filter(p=>!p.dateSold&&p.resimpli?.stage).map(p=>p.resimpli.stage))]
+    .sort((a,b)=>stageSortKey({resimpli:{stage:a}}).localeCompare(stageSortKey({resimpli:{stage:b}})));
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
 
@@ -3627,6 +3908,12 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Properties</h2>
         </div>
         <div className="flex items-center gap-2">
+          {!readOnly && (
+            <button onClick={()=>setModal({type:"resimpliImport"})}
+              className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all border border-slate-200 dark:border-zinc-700 whitespace-nowrap">
+              ⇪ Import REsimpli Stages
+            </button>
+          )}
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-lg p-0.5 gap-0.5">
             {[["condensed","≡"],["grid","▦"],["expanded","⊞"]].map(([v,icon])=>(
               <button key={v} onClick={()=>setViewMode(v)} title={v==="condensed"?"Condensed view":v==="grid"?"Card view":"Expanded view"}
@@ -3638,10 +3925,10 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         </div>
       </div>
 
-      {/* Sort + Search */}
+      {/* Sort + Filter + Search */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <SortDropdown value={propSortMode} onChange={setPropSortMode}
-          options={[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["address","A–Z"],["manual","✋ Manual (drag)"]]}/>
+          options={[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["address","A–Z"],["stage","REsimpli Stage"],["manual","✋ Manual (drag)"]]}/>
         {propSortMode!=="manual"&&(
           <button onClick={()=>setPropSortDir(d=>d==="asc"?"desc":"asc")}
             className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
@@ -3651,6 +3938,12 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         {propSortMode==="manual"&&(
           <span className="text-[11px] text-slate-400 dark:text-zinc-500 italic">Drag properties below to reorder</span>
         )}
+        <select value={propStageFilter} onChange={e=>setPropStageFilter(e.target.value)}
+          className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-teal-500 shrink-0">
+          <option value="all">All Stages</option>
+          {stagesPresent.map(st=><option key={st} value={st}>{st}</option>)}
+          <option value="__none__">No stage</option>
+        </select>
         <input type="text" value={propSearch} onChange={e=>setPropSearch(e.target.value)}
           placeholder="Search address or lender…" className={SEARCH_CLS}/>
       </div>
@@ -3758,11 +4051,13 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             case"Funded":     return d*(a.funded-b.funded);
             case"Needed":     return d*(a.needed-b.needed);
             case"Status":     return d*(a.short-b.short);
+            case"Stage":      return d*stageSortKey(a.prop).localeCompare(stageSortKey(b.prop));
             default:          return 0;
           }
         });
         const COLS=[
           {h:"Address",left:true},
+          {h:"Stage",  left:false},
           {h:"Days Owned",left:false},
           {h:"Loans",  left:false},
           {h:"Funded", left:false},
@@ -3780,6 +4075,9 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   <HoverTip tip={prop.address||"Unnamed"}>
                     <span className="truncate block">{prop.address?.split(',')[0]||"Unnamed"}</span>
                   </HoverTip>
+                </td>
+                <td className="py-2.5 px-4 text-right" onClick={e=>e.stopPropagation()}>
+                  <ResimpliBadge resimpli={prop.resimpli}/>
                 </td>
                 <td className="py-2.5 px-4 text-right tabular-nums text-slate-500 dark:text-zinc-400">
                   {daysOwned!=null?(
@@ -3931,6 +4229,12 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   {daysOwned!==null&&<span className="tabular-nums">{daysOwned}d owned</span>}
                 </div>
               </button>
+              {/* Outside the <button> — ResimpliBadge can render as an <a>, and nesting a
+                  link inside a button is invalid HTML (the browser would silently break the
+                  card's click target). */}
+              <div className="bg-white dark:bg-[#1C1F2B] px-4 pb-3 -mt-px rounded-b-2xl">
+                <ResimpliBadge resimpli={prop.resimpli}/>
+              </div>
               </SortableItem>
             );
           })}
@@ -3986,6 +4290,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                     {under&&<span className="text-red-600 dark:text-red-400 font-bold tabular-nums">-{h$(short)}</span>}
                   </div>
                 </div>
+                <div className="mb-2"><ResimpliBadge resimpli={prop.resimpli}/></div>
                 {needed>0&&!prop.dateSold&&(
                   <>
                     <div className="h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden mb-1.5 relative">
@@ -4179,6 +4484,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       {modal?.type==="quickDraw"&&<QuickDrawModal data={data} onSave={handleQuickDraw} onClose={()=>setModal(null)}/>}
       {modal?.type==="overageCheckPicker"&&<OverageCheckPropertyPickerModal properties={data.properties} onPick={prop=>setModal({type:"overageCheck",prop})} onClose={()=>setModal(null)}/>}
       {modal?.type==="overageCheck"&&<OverageCheckModal prop={modal.prop} onSave={entry=>saveOverageCheck(modal.prop.id,entry)} onClose={()=>setModal(null)}/>}
+      {modal?.type==="resimpliImport"&&<ImportResimpliModal properties={data.properties} onConfirm={importResimpliStages} onClose={()=>setModal(null)}/>}
     </div>
   );
 }
@@ -8294,6 +8600,7 @@ function PropertyDetailPage({ propId, data, update, onBack, navigate }) {
                 rehabBudget:f.rehabBudget!==""?parseFloat(f.rehabBudget)||0:p.rehabBudget,
                 monthlyHolding:f.monthlyHolding!==""?parseFloat(f.monthlyHolding)||500:p.monthlyHolding,
                 projectMonths:f.projectMonths!==""?parseFloat(f.projectMonths)||null:p.projectMonths,
+                resimpli:f.resimpli??null,
                 loans:[...p.loans,...(propLoanAdds[propId]||[])],
               });
               properties=properties.map(x=>x.id===propId?x:(propLoanAdds[x.id]?{...x,loans:[...x.loans,...propLoanAdds[x.id]]}:x));
