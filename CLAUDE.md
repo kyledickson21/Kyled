@@ -462,11 +462,24 @@ into what's treated as in-hand.
 ## REsimpli Stage Tracking (Properties Page)
 Reference-only metadata (`property.resimpli` — see Data Shape above) for where a deal sits in
 REsimpli's own pipeline. Never touches any money field, loan, lender, or draw.
-- **Display**: `ResimpliBadge` shows the stage as a small indigo chip, or muted "No stage" when
-  there isn't one; clickable through to `resimpli.url` when set. Shown on the Properties page
-  in all three view modes — a dedicated "Stage" column in condensed, a line under the card in
-  grid, a line under the header in expanded. It's deliberately NOT shown anywhere else
-  (PropertyDetailPage, Dashboard, etc.) — this was scoped to the Properties page only.
+- **Pipelines**: REsimpli has four pipelines, each with its own stage order — `RESIMPLI_PIPELINES`
+  (near `streetSortKey`, top of file) is the hardcoded default, verified against both the
+  REsimpli screens and the API's `orderIndex`: Lead (New Leads → … → Under Contract), Inventory
+  (New Inventory → … → Under Contract), Rental (New Rental → … → TURN/NEEDS RENTED), Sold
+  (Sold). `property.resimpli.recordType` ("lead"|"inventory"|"rental"|"sold") says which
+  pipeline a property is in — the stage name alone is never enough, since "Under Contract" is
+  used by both Lead and Inventory, and "Under Rehab" by both Inventory and Rental.
+  `pipelineForRecordType(recordType)` looks up a pipeline by key; `RESIMPLI_STAGES` is a flat,
+  deduplicated list of every stage across every pipeline, used only for the PropertyForm
+  datalist (a hand-typed stage has no recordType, so no single pipeline to scope it to).
+- **Display**: `ResimpliBadge` shows `resimpliStageLabel(resimpli)` as a small indigo chip, or
+  muted "No stage" when there isn't one; clickable through to `resimpli.url` when set.
+  `resimpliStageLabel` adds "(Lead)"/"(Inventory)"/etc. only when the bare stage name is
+  ambiguous across pipelines (`STAGE_NAME_PIPELINE_COUNT`) AND the pipeline is actually known
+  (recordType set) — otherwise just the stage name. Shown on the Properties page in condensed/
+  grid/expanded — a dedicated "Stage" column in condensed, a line under the card in grid, a
+  line under the header in expanded — and NOT shown anywhere else (PropertyDetailPage,
+  Dashboard, etc.), scoped to the Properties page only.
 - **Editing**: `PropertyForm` has a "REsimpli (optional)" section — Stage (plain text input
   with an HTML `<datalist>` of `RESIMPLI_STAGES` as suggestions, not a locked dropdown, since
   REsimpli's own stage names can drift), REsimpli ID, and URL. None of the three are
@@ -479,13 +492,30 @@ REsimpli's own pipeline. Never touches any money field, loan, lender, or draw.
   straight through — `PropertyForm` itself already computed the correct final value (preserved,
   updated, or `null`) from `init?.resimpli`, so neither caller needs its own merge logic.
 - **Sort**: `stageSortKey(prop)` (near `streetSortKey`, top of file) returns a sortable string —
-  known `RESIMPLI_STAGES` in pipeline order, then any other stage alphabetically, then "no
-  stage" always last — wired into `propSortMode==="stage"` in both places `PropertiesPage`
-  computes sort order (`visible`'s own sort AND the separate `rankMap` sort), so the two stay
-  in sync. The condensed table's clickable "Stage" column header reuses the same key.
+  pipeline first (Lead, Inventory, Rental, Sold, in that order, via `pipelineForRecordType`),
+  then stage within that pipeline's own order, then any stage REsimpli doesn't list
+  (alphabetically, within its pipeline), then a stage with no known pipeline (alphabetically),
+  then no stage at all (always last) — wired into `propSortMode==="stage"` in both places
+  `PropertiesPage` computes sort order (`visible`'s own sort AND the separate `rankMap` sort),
+  so the two stay in sync. The condensed table's clickable "Stage" column header reuses the
+  same key.
 - **Filter**: a plain `<select>` next to the sort controls — "All Stages", then only the
-  stages actually present on an active property (not the fixed `RESIMPLI_STAGES` list
-  regardless of use), then "No stage". Persisted via `usePersistedState("nx-propStageFilter")`.
+  (recordType, stage) pairs actually present on an active property, in `stageSortKey` order,
+  labeled via `resimpliStageLabel` (so "Under Contract (Lead)" and "Under Contract (Inventory)"
+  show as two distinct, correctly-filtering options when both are present), then "No stage".
+  The filter's value is a composite `"<recordType>::<stage>"` string (`"_"` standing in for no
+  recordType) — never the bare stage name, for the same ambiguity reason. Persisted via
+  `usePersistedState("nx-propStageFilter")`.
+- **Pipeline view**: a fourth Properties-page view mode (toggle icon "Ⅲ", next to condensed/
+  grid/expanded), mirroring REsimpli's own Inventory Grid (kanban). Built from `pipelineColumns`
+  (computed alongside `stagesPresent`/`visible`, so the existing search/stage filter apply
+  here too): one column per Inventory stage (always shown, even empty, in REsimpli's order),
+  then "Other Inventory" (unrecognized inventory stage), "Lead: Under Contract", "Rental",
+  "Sold", and "No stage" — all five hidden when empty. Each card shows the address, the
+  REsimpli link when on file, and the same funded/needed/shortage-or-surplus figures the other
+  views already compute inline; clicking a card opens the same property detail panel as every
+  other view. No drag-and-drop between columns and no write of any kind — REsimpli's stage is
+  read-only reference data here, exactly like the badge elsewhere on this page.
 - **Import** (`ImportResimpliModal`, "⇪ Import REsimpli Stages" button, gated `!readOnly`):
   accepts a CSV file (`parseCSV` — a small hand-rolled quoted-field parser, fine since this is
   Kyle's own export, not third-party input) with columns `address,resimpli_id,record_type,
