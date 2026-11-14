@@ -40,6 +40,13 @@ update(d => ({...d, properties: d.properties.map(p =>
 update(d => ({...d, properties: [{newField: value}]}))
 ```
 
+**Export Backup**: "Export Backup (JSON)" in the Settings menu (desktop sidebar and mobile
+drawer, gated `!readOnly`) downloads the exact `data` this session has loaded — unchanged, no
+transform or filtering — as `nexus-backup-<date>-<timestamp>.json`. This is the backup to
+restore from before running anything that writes to `nexus_data` in bulk (e.g. the REsimpli
+live sync, held on a separate branch) — see `exportBackup` near the top of the main `Tracker`
+component.
+
 ## Data Shape (Supabase blob)
 ```js
 {

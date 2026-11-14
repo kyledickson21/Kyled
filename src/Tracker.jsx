@@ -10820,6 +10820,21 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     }
   },[])
 
+  // Read-only — downloads the exact nexus_data blob this session has loaded, unchanged, as a
+  // timestamped JSON file. No transform, no filtering: this IS the backup to restore from if
+  // a future sync (or anything else) ever needs to be rolled back.
+  const exportBackup = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nexus-backup-${TODAY}-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const update = fn => {
     // Hard backstop for a bookkeeper (read-only) session — no write of any kind can reach
     // Supabase from here, no matter what's still clickable elsewhere in the tree.
@@ -11071,6 +11086,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
                 className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
                 Rate Comparison
               </button>
+              <button onClick={()=>{setSettingsOpen(false);exportBackup();}}
+                className="w-full flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
+                Export Backup (JSON)
+              </button>
               </>)}
               <div className="h-px bg-slate-100 dark:bg-zinc-700 mx-3 my-1"/>
               <button onClick={onSignOut}
@@ -11172,6 +11191,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               <button onClick={()=>{setMobileNavOpen(false);setNavStack([]);setPanelStack([]);setTab("HardMoneyCompare");}}
                 className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
                 Rate Comparison
+              </button>
+              <button onClick={()=>{setMobileNavOpen(false);exportBackup();}}
+                className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-left">
+                Export Backup (JSON)
               </button>
               </>)}
               {onHome&&(
