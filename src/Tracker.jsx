@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, createContext, useContext, Fragment } from "react";
 import { createPortal } from "react-dom";
-import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, createBookkeeperAccount, deleteLenderAccount, runResimpliSync } from './supabase'
+import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, createBookkeeperAccount, deleteLenderAccount, runResimpliSync, fetchBackupRows } from './supabase'
 import {
   RESIMPLI_STAGES, buildPipelineIndex, pipelineForRecordType, resimpliStageLabel, stageSortKey,
   normalizeAddressForMatch, matchResimpliRecords, assertOnlyResimpliChanged,
@@ -11013,11 +11013,17 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     }
   },[])
 
-  // Read-only — downloads the exact nexus_data blob this session has loaded, unchanged, as a
-  // timestamped JSON file. No transform, no filtering: this IS the backup to restore from if
-  // a future sync (or anything else) ever needs to be rolled back.
-  const exportBackup = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+  // Read-only — downloads every nexus_data row for this org, unchanged, as a timestamped JSON
+  // file. Pulls straight from Supabase at click time (fetchBackupRows), not the app's
+  // in-memory `data` state, which can briefly be a migrated/derived version of what's actually
+  // in the table (see applyMigrations below) rather than the DB's row verbatim — this IS the
+  // backup to restore from if a future sync (or anything else) ever needs to be rolled back.
+  const exportBackup = async () => {
+    let rows;
+    try { rows = await fetchBackupRows(); }
+    catch (e) { alert(`Export failed: ${e.message}`); return; }
+    const payload = { exportedAt: new Date().toISOString(), orgId: rows[0]?.org_id ?? null, rowCount: rows.length, rows };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

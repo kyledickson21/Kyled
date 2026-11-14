@@ -3,34 +3,32 @@
 // POST /api/resimpli-webhook?secret=<RESIMPLI_WEBHOOK_SECRET>
 // (or header `X-Resimpli-Webhook-Secret: <RESIMPLI_WEBHOOK_SECRET>`)
 //
-// An endpoint a REsimpli automation can call on a lead's stage change, so a
-// change shows up without waiting for the next scheduled sync. REsimpli
-// documents no request signature for its automations, so the shared secret in
-// the query string or header is the only gate here — checked against
-// RESIMPLI_WEBHOOK_SECRET, a separate secret from CRON_SECRET (used only for
-// the scheduled sync) and RESIMPLI_SYNC_SECRET (the database-layer secret —
-// see supabase/resimpli_sync.sql).
+// An endpoint a REsimpli automation can call on a lead's stage change, so a change shows up
+// without waiting for the next scheduled sync. REsimpli sends these only from automations a
+// person sets up by hand in REsimpli (max 10 per account) — there's no request signature, so
+// the shared secret in the query string or header is the only gate here, checked against
+// RESIMPLI_WEBHOOK_SECRET (separate from CRON_SECRET, used only for the scheduled sync, and
+// RESIMPLI_SYNC_SECRET, the database-layer secret — see supabase/resimpli_sync.sql).
 //
-// ⚠️ No REsimpli automation has been created to call this yet — per Kyle's
-// instruction, this repo creates the receiving endpoint only; setting up the
-// automation on REsimpli's side (and learning its real payload shape) is a
-// separate, explicit step for Kyle. The payload shape read below (`leadId`/
-// `id`, `address`, `stage`, `url`) is a best guess, same caveat as
-// _resimpli-client.mjs.
+// ⚠️ No REsimpli automation has been created to call this yet, and REsimpli's own webhook
+// payload shape is NOT verified (unlike the rest of the REsimpli contract — see
+// _resimpli-client.mjs). So the payload is treated as a HINT ONLY, never trusted directly:
+//   - if it contains a lead id (checked under several plausible field names, since the real
+//     shape is unknown), that id is used to re-fetch the real record via /lead/details and run
+//     a guarded single-property update from that, not from anything the payload itself claims
+//     about address/stage/etc.
+//   - if no id can be found in it at all, this just runs a full sync instead (same as the
+//     scheduled/manual one) — still correct, just not as fast as a targeted update.
+// The raw payload is logged (no secrets in it to redact) so its real shape can be confirmed
+// once a REsimpli automation actually calls this.
 //
-// Updates only the single matched property's resimpli — never creates a
-// property, and an ambiguous/unmatched payload goes to the review list (via
-// the same resimpli_sync_apply RPC used by the scheduled/manual sync) instead
-// of guessing.
+// Writes only the single matched property's resimpli when an id is given (or the full diff
+// when falling back to a full sync) — never creates a property, and never touches
+// resimpliReview on the single-lead path (nothing new to report there from one lead).
 
-import { createClient } from "@supabase/supabase-js";
+import { fetchLeadDetails, fetchRawPipelineLists, seedStatusMap, classifyOneRecord } from "./_resimpli-client.mjs";
 import { matchResimpliRecords } from "../src/resimpli-shared.mjs";
-
-const uid = () => Math.random().toString(36).slice(2, 9);
-
-function supabaseAnon() {
-  return createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
-}
+import { readProperties, applySync, buildResimpliChange, computeFullDiff } from "./_sync-core.mjs";
 
 function isAuthorized(req) {
   const expected = process.env.RESIMPLI_WEBHOOK_SECRET;
@@ -40,55 +38,58 @@ function isAuthorized(req) {
   return headerSecret === expected || querySecret === expected;
 }
 
+// Every plausible field name an unverified payload might use for the lead id.
+function extractLeadId(body) {
+  const id = body?.leadId ?? body?.lead_id ?? body?.id ?? body?._id ?? body?.recordId ?? null;
+  return id ? String(id) : null;
+}
+
+async function syncOneLead(leadId) {
+  const properties = await readProperties();
+  const existing = properties.find(p => p.resimpli?.leadId === leadId);
+  const leadData = await fetchLeadDetails(leadId);
+  const rawPipelineLists = await fetchRawPipelineLists();
+  const statusMap = seedStatusMap(rawPipelineLists);
+  const record = classifyOneRecord(
+    { _id: leadId, address: leadData.address, mainStatusId: leadData.mainStatusId ?? leadData.pipelineData?.mainStatusId, mainStatusTitle: leadData.mainStatusTitle },
+    statusMap,
+    existing?.resimpli?.recordType || null, // preserve what we already knew about this property's pipeline if REsimpli's gap (Under Contract) makes it ambiguous
+  );
+  if (!record) return { matched: false, reason: "noAddress" };
+
+  const result = matchResimpliRecords(properties, [record]);
+  if (result.matched.length !== 1) {
+    return { matched: false, reason: result.ambiguous.length ? "ambiguous" : "noPropertyMatch" };
+  }
+  const { property } = result.matched[0];
+  const now = new Date().toISOString();
+  const change = buildResimpliChange(property, record, now);
+  if (!change.changed) return { matched: true, propertyId: property.id, applied: false };
+  // review/pipelineOrder both omitted (undefined -> null in applySync) — a single lead has
+  // nothing new to report about either, so neither is touched.
+  await applySync({ changes: [change] });
+  return { matched: true, propertyId: property.id, applied: true };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
   if (!isAuthorized(req)) { res.status(401).json({ error: "Unauthorized" }); return; }
 
+  const body = req.body || {};
+  console.log("resimpli-webhook payload:", JSON.stringify(body)); // no secrets in this body to redact
+
   try {
-    const body = req.body || {};
-    const record = {
-      id: String(body.leadId ?? body.id ?? ""),
-      idType: "lead",
-      address: body.address || body.propertyAddress || "",
-      stage: body.stage || body.pipelineStage || body.status || null,
-      recordType: "lead",
-      url: body.url || null,
-    };
-
-    const supabase = supabaseAnon();
-    const syncSecret = process.env.RESIMPLI_SYNC_SECRET;
-    if (!syncSecret) throw new Error("RESIMPLI_SYNC_SECRET is not set");
-
-    const { data: rows, error: readErr } = await supabase.rpc("resimpli_sync_read", { secret: syncSecret });
-    if (readErr) throw new Error(`resimpli_sync_read failed: ${readErr.message}`);
-    const properties = (rows || []).map(r => ({ id: r.id, address: r.address, resimpli: r.resimpli || null }));
-
-    const result = matchResimpliRecords(properties, [record]);
-    const now = new Date().toISOString();
-
-    if (result.matched.length === 1) {
-      const { property } = result.matched[0];
-      const existing = property.resimpli || {};
-      const resimpli = {
-        leadId: record.id, moduleId: existing.moduleId || null,
-        stage: record.stage || null, recordType: record.recordType || null,
-        url: record.url || existing.url || null, source: "sync", updatedAt: now,
-      };
-      const { error: applyErr } = await supabase.rpc("resimpli_sync_apply", {
-        secret: syncSecret,
-        changes: [{ id: property.id, resimpli }],
-        review: [], // a single-lead webhook never touches the review list — only the full sync recomputes it
-        synced_at: now,
-      });
-      if (applyErr) throw new Error(`resimpli_sync_apply failed: ${applyErr.message}`);
-      res.status(200).json({ matched: true, propertyId: property.id });
+    const leadId = extractLeadId(body);
+    if (leadId) {
+      const result = await syncOneLead(leadId);
+      res.status(200).json(result);
       return;
     }
 
-    // Ambiguous or no match — don't guess. (The review list itself is only ever fully
-    // recomputed by the scheduled/manual sync, so a webhook hit that can't resolve cleanly
-    // is just dropped here with a 200 — it'll show up in the review list on the next sync.)
-    res.status(200).json({ matched: false, reason: result.ambiguous.length ? "ambiguous" : "noPropertyMatch" });
+    // No id anywhere in the payload — can't narrow to one record, so just run a full sync.
+    const { changes, review, pipelineOrder } = await computeFullDiff();
+    await applySync({ changes, review, pipelineOrder });
+    res.status(200).json({ matched: null, ranFullSync: true, applied: changes.length });
   } catch (e) {
     res.status(500).json({ error: e.message || "Webhook handling failed" });
   }

@@ -1,6 +1,6 @@
 {
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "crons": [
-    { "path": "/api/resimpli-sync", "schedule": "0 * * * *" }
+    { "path": "/api/resimpli-sync", "schedule": "0 9 * * *" }
   ]
 }
