@@ -41,10 +41,15 @@ update(d => ({...d, properties: [{newField: value}]}))
 ```
 
 **Export Backup**: "Export Backup (JSON)" in the Settings menu (desktop sidebar and mobile
-drawer, gated `!readOnly`) downloads the exact `data` this session has loaded — unchanged, no
-transform or filtering — as `nexus-backup-<date>-<timestamp>.json`. This is the backup to
-restore from before running anything that writes to `nexus_data` in bulk (e.g. the first
-REsimpli sync) — see `exportBackup` near the top of the main `Tracker` component.
+drawer, gated `!readOnly`) downloads `nexus-backup-<date>-<timestamp>.json`. It pulls fresh
+straight from Supabase (`fetchBackupRows()` in `supabase.js` — `select org_id, data,
+updated_at`) rather than the app's own in-memory `data` state, which can briefly be a
+migrated/derived version of the DB row (see `applyMigrations`, run once per session on load
+and saved back) rather than the row itself — the file bundles `exportedAt`/`orgId`/`rowCount`
+alongside the raw row(s). This is the backup to restore from before running anything that
+writes to `nexus_data` in bulk (e.g. the first REsimpli sync) — see `exportBackup` near the
+top of the main `Tracker` component. The real `org_id` value is `'nexus-homes'` (see `ORG_ID`
+in `supabase.js`), and there's exactly one row.
 
 ## Data Shape (Supabase blob)
 ```js
@@ -610,33 +615,51 @@ HOLD note at the end of this section.
   Bookkeeper section above) this repo has no deploy tooling for Supabase Edge Functions at all
   — those have to be hand-pasted into the Supabase dashboard. One deploy pipeline covers both
   the app and the sync.
-  - `api/_resimpli-client.mjs` — the REsimpli Open API v6 HTTP client. The base URL and
-    `getPipelineList` endpoint are **CONFIRMED** (Kyle gave the exact URL:
-    `POST https://api.resimpli.com/api/v6/openapi/getPipelineList`). **Every other path/response
-    shape — `fetchLeads()`'s list endpoint and its field names — is still UNVERIFIED**:
-    `developer.resimpli.com` could not be reached while building this, so those are inferred
-    from the confirmed facts, not a confirmed copy of the real contract. Confirm against the
-    real docs before trusting `fetchLeads()` against production data. What IS confirmed (from
-    Kyle directly): every call, reads included, is a **POST** — a GET returns 404 — and the
-    header is `Authorization: <key>`, **no** `Bearer ` prefix. `fetchPipelineOrder()` calls
-    `getPipelineList` for moduleType 1 (Lead)/6 (Inventory)/7 (Rental), sorts `mainStatusList`
-    by `orderIndex`, and fills in the "Under Contract" stage that endpoint always omits for Lead
-    and Inventory (and the Sold pipeline it has no module for at all) from the hardcoded
-    `RESIMPLI_PIPELINES` default — per Kyle's documented fallback, never guessed some other way.
-    Read-only: nothing in this file ever writes to REsimpli.
-  - `api/resimpli-sync.mjs` — `POST /api/resimpli-sync { dryRun }`. Two callers: Vercel Cron
-    (sends `GET` with `Authorization: Bearer $CRON_SECRET` — cron calls always apply for real,
-    no dry run, since there's no one to show a preview to) and the Properties page's "Sync Now"
-    button (`POST`, sends the Supabase access token, checked against the
-    `kyle@nexushomesoh.com` allowlist — same pattern as the existing `manage-lenders` edge
-    function — and honors `dryRun` from the body).
+  - `api/_resimpli-client.mjs` — the REsimpli Open API v6 HTTP client. **The entire contract is
+    now VERIFIED against live REsimpli calls** (base URL `https://api.resimpli.com/api/v6/openapi`,
+    every call is POST — reads included, a GET 404s — with a bare `Authorization: <key>`
+    header, 500 req/min rate limit): `/getUserInfo` (key check), `/lead/list` (the only way to
+    read Inventory/Rental/Sold — there's no per-module list endpoint, so it returns every
+    record across every module mixed together), `/lead/details`, `/getPipelineList` (moduleType
+    1/6/7 = Lead/Inventory/Rental; no Sold module). Classification keys off `mainStatusId` via a
+    status map built from `getPipelineList` (`buildStatusMap`/`fetchRawPipelineLists`), with a
+    one-call-per-pipeline backfill (`backfillUnderContract`) for the "Under Contract" gap
+    `getPipelineList` always has for Lead/Inventory, and `mainStatusTitle` text as a fallback
+    only for "Sold" (no module to query at all — `classifyOneRecord`). A null/blank address is
+    always skipped, never guessed; a record's `url` is always left `null` here so the caller
+    preserves whatever the CSV import already stored, exactly like `moduleId`. `pipelineOrderFromRaw`
+    builds the live `{key,label,stages}` pipeline order from the same `getPipelineList` data
+    buildStatusMap used, filling the Under Contract/Sold gaps from the hardcoded
+    `RESIMPLI_PIPELINES` default. Still read-only: nothing here ever writes to REsimpli.
+  - `api/_sync-core.mjs` — shared between the scheduled/manual sync and the webhook, so the two
+    can't drift on how a change/review/apply is built: `readProperties()` (wraps
+    `resimpli_sync_read`), `applySync()` (wraps `resimpli_sync_apply` — `review`/`pipelineOrder`
+    left undefined means "leave what's already stored untouched", used by the webhook's
+    single-lead path; the full sync always passes both explicitly), `buildResimpliChange()` (the
+    one moduleId/url-preserving rule both paths use), and `computeFullDiff()` (the full
+    properties-vs-REsimpli diff, used as-is by the scheduled/manual sync and by the webhook when
+    it can't narrow to one lead).
+  - `api/resimpli-sync.mjs` — `POST /api/resimpli-sync { dryRun }`. Three callers: Vercel Cron
+    (daily on the Hobby plan — see `vercel.json` — sends `GET` with
+    `Authorization: Bearer $CRON_SECRET`), an outside scheduler if Kyle wants more often without
+    upgrading to Vercel Pro (same header, GET or POST — the handler only checks the header, not
+    the method), and the Properties page's "Sync Now" button (`POST`, sends the Supabase access
+    token, checked against the `kyle@nexushomesoh.com` allowlist — same pattern as the existing
+    `manage-lenders` edge function — and honors `dryRun` from the body). A cron/scheduler call
+    always applies for real — no dry run, nothing to preview to.
   - `api/resimpli-webhook.mjs` — `POST /api/resimpli-webhook?secret=<RESIMPLI_WEBHOOK_SECRET>`
     (or header `X-Resimpli-Webhook-Secret`). An endpoint a REsimpli automation can call on a
-    single lead's stage change. REsimpli documents no request signature for automations, so the
-    shared secret is the only gate. **No REsimpli automation has been created to call this** —
-    this repo only builds the receiving endpoint; wiring it up on REsimpli's side is a separate
-    step for Kyle, and the payload field names read here (`leadId`/`address`/`stage`/`url`) are
-    an unverified guess like the HTTP client above.
+    single lead's stage change. REsimpli sends these only from automations set up by hand in
+    REsimpli (max 10 per account), with no request signature, so the shared secret is the only
+    gate. **No REsimpli automation has been created to call this yet**, and REsimpli's webhook
+    payload shape is NOT verified (unlike the rest of the contract above) — so the payload is
+    treated as a **hint only**: `extractLeadId` pulls a lead id from several plausible field
+    names if one's there, and `syncOneLead` re-fetches the real record via `/lead/details` and
+    runs a guarded single-property update from THAT, never trusting payload fields like
+    address/stage directly. If no id can be found anywhere in the payload at all, it just runs
+    `computeFullDiff()` + `applySync()` (a full sync) instead. The raw payload is logged (no
+    secrets in it to redact) so its real shape can be confirmed once an automation actually
+    calls this.
 - **Matching**: both the scheduled/manual sync and the webhook call the same shared
   `matchResimpliRecords` from `resimpli-shared.mjs` used by the CSV import — same leadId-first,
   then-normalized-address rules, same combined-address/directional handling, same
@@ -653,17 +676,22 @@ HOLD note at the end of this section.
   - `resimpli_sync_read(secret)` — returns only `{id, address, resimpli}` per property. No loan,
     lender, fund, draw, or money field is ever returned by it.
   - `resimpli_sync_apply(secret, changes, review, synced_at, pipeline_order)` — the **only**
-    write path (`pipeline_order` is optional/nullable — the webhook always passes null, since a
-    single lead has nothing new to report about pipeline order, and null leaves whatever's
-    already stored untouched rather than clearing it). It rebuilds the properties array,
-    copying every property through unchanged except that a property whose id appears in
+    write path (`review`/`pipeline_order` are each optional/nullable — the webhook's
+    single-lead path passes both as null, since one lead has nothing new to report about
+    either, and null leaves whatever's already stored untouched rather than clearing it). It
+    rebuilds the properties array IN THE SAME ORDER (the Manual drag-sort tab depends on
+    this), copying every property through unchanged except that a property whose id appears in
     `changes` gets `jsonb_set` applied to just its `resimpli` key, then separately sets
-    `data.resimpliReview`, `data.resimpliLastSyncedAt`, and `data.resimpliPipelineOrder`. No
-    property or loan can be added/removed/changed by it, and no field besides those four is
-    ever touched — that's enforced by how the function is written (an atomic
-    `UPDATE ... SET data = jsonb_set(...)` on the single `nexus_data` row), not by a separate
-    check, so a sync can never clobber a concurrent money edit via a stale read-modify-write of
-    the whole blob.
+    `data.resimpliReview`, `data.resimpliLastSyncedAt`, and `data.resimpliPipelineOrder`. Before
+    writing anything it: locks the row (`SELECT ... FOR UPDATE`, so a concurrent client save
+    can't interleave — see the concurrency note at the bottom of the SQL file), confirms
+    exactly one row exists for `org_id='nexus-homes'`, rejects a `changes` array with a
+    duplicate id or an id that isn't an actual property, and then re-verifies the rebuild
+    itself — property count unchanged, every position's non-resimpli fields AND id unchanged,
+    every other top-level key unchanged — raising an exception (writing nothing at all) if any
+    of that doesn't hold, rather than trusting the rebuild query to have done the right thing.
+    Tested directly against a local Postgres instance (every guard, including the row lock)
+    before being left for Kyle to review.
   - Both are `SECURITY DEFINER` (bypass RLS) but refuse (raise an exception, write nothing)
     unless their `secret` argument matches a value stored in a new `resimpli_sync_config` table
     — which has RLS enabled with **zero policies**, so nothing can read or write it through the
@@ -698,6 +726,11 @@ HOLD note at the end of this section.
 - **Env vars** (server-side only — `api/*.mjs` — never `VITE_`-prefixed, never imported by
   client code): `RESIMPLI_API_KEY`, `CRON_SECRET`, `RESIMPLI_WEBHOOK_SECRET`, and the new
   `RESIMPLI_SYNC_SECRET` proposed above. See `.env.example`.
+- **Cron schedule**: `vercel.json` runs the sync once daily at 9:00 UTC (4am ET) —
+  the Vercel Hobby plan only allows daily crons; an hourly schedule was tried first and failed
+  preview deploy. More often needs either Vercel Pro or an outside scheduler hitting
+  `/api/resimpli-sync` with the same `CRON_SECRET` bearer header (GET or POST both work) —
+  Kyle's call, not yet decided.
 - **Vercel Cron only runs on Production deployments, not Preview** — so even once deployed to a
   preview branch, the scheduled sync literally cannot fire until this is merged to the
   production branch. The manual "Sync Now" button and the webhook both work on Preview, though.
