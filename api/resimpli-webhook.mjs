@@ -27,7 +27,7 @@
 // resimpliReview on the single-lead path (nothing new to report there from one lead).
 
 import { fetchLeadDetails, fetchRawPipelineLists, seedStatusMap, classifyOneRecord } from "./_resimpli-client.mjs";
-import { matchResimpliRecords } from "../src/resimpli-shared.mjs";
+import { matchResimpliRecords, storedIdsFor } from "../src/resimpli-shared.mjs";
 import { readProperties, applySync, buildResimpliChange, computeFullDiff } from "./_sync-core.mjs";
 
 function isAuthorized(req) {
@@ -46,7 +46,10 @@ function extractLeadId(body) {
 
 async function syncOneLead(leadId) {
   const properties = await readProperties();
-  const existing = properties.find(p => p.resimpli?.leadId === leadId);
+  // Same broadened id check matchResimpliRecords uses (storedIdsFor) — not just leadId —
+  // so this hint lookup doesn't miss a property whose stored id for this lead lives in
+  // moduleId or only in its resimpli.url (see resimpli-shared.mjs).
+  const existing = properties.find(p => storedIdsFor(p).has(leadId));
   const leadData = await fetchLeadDetails(leadId);
   const rawPipelineLists = await fetchRawPipelineLists();
   const statusMap = seedStatusMap(rawPipelineLists);

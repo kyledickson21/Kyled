@@ -131,8 +131,8 @@ const DIRECTIONALS = new Set(["n", "s", "e", "w", "ne", "nw", "se", "sw", "north
 export function normalizeAddressForMatch(address) {
   if (!address) return "";
   let line = (address.split(",")[0] || "").toLowerCase();
-  line = line.replace(/\s*#.*$/, "");                               // "...ave #2" / "...ave # 52pt" -> "...ave"
-  line = line.replace(/\b(apt|apartment|unit|suite|ste)\b.*$/, "");  // "...ave apt 2" -> "...ave "
+  line = line.replace(/\s*#.*$/, "");                                     // "...ave #2" / "...ave # 52pt" -> "...ave"
+  line = line.replace(/\b(apt|apartment|unit|suite|ste|lot)\b.*$/, "");    // "...ave apt 2" / "...hwy 62 sw lot 7" -> "...ave "/"...hwy 62 sw "
   line = line.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
   line = line.split(" ")
     .filter(w => !DIRECTIONALS.has(w))
@@ -156,32 +156,88 @@ export function expandCombinedAddress(address) {
   return [`${num1} ${rest}`, `${num2} ${rest}`];
 }
 
-// Every normalized address key a property should be matched against — more
-// than one only for a combined address like "3126 & 3134 Wessex Ct".
+// Every normalized address key a plain address string should be matched against — more than
+// one only for a combined address like "3126 & 3134 Wessex Ct". Shared by both sides of a
+// match: a tracker property can be a combined address (propertyAddressKeys), and so can a
+// REsimpli record (recordAddressKeys) — REsimpli sometimes has one inventory record covering
+// the same two-lot address Kyle tracks as one property, and without expanding both sides the
+// combined record's single run-together key ("3126 3134 wessex ct") never equals either of the
+// property's two expanded keys.
+function addressKeysFor(address) {
+  return expandCombinedAddress(address).map(normalizeAddressForMatch).filter(Boolean);
+}
 export function propertyAddressKeys(property) {
-  return expandCombinedAddress(property?.address).map(normalizeAddressForMatch).filter(Boolean);
+  return addressKeysFor(property?.address);
+}
+export function recordAddressKeys(record) {
+  return addressKeysFor(record?.address);
+}
+
+// Every REsimpli id a property has on file, from every place one could be stored: the
+// explicit leadId/moduleId fields, plus any id parsed off a stored resimpli.url's query
+// string (inventoryId, leadsId, soldId, leadId — REsimpli's own module-specific param names).
+// A CSV-imported inventory row stores its inventoryId in resimpli.leadId (moduleId is left
+// unset) AND in its URL, so this has to check all of these, not just leadId/moduleId, for a
+// property's stored inventory id to ever line up with anything. Returns a Set of strings.
+const URL_ID_PARAMS = ["inventoryId", "leadsId", "soldId", "leadId"];
+function idsFromUrl(url) {
+  if (!url) return [];
+  try {
+    const params = new URL(url).searchParams;
+    return URL_ID_PARAMS.map(k => params.get(k)).filter(Boolean);
+  } catch { return []; }
+}
+export function storedIdsFor(property) {
+  const ids = new Set();
+  if (property?.resimpli?.leadId) ids.add(String(property.resimpli.leadId));
+  if (property?.resimpli?.moduleId) ids.add(String(property.resimpli.moduleId));
+  idsFromUrl(property?.resimpli?.url).forEach(id => ids.add(String(id)));
+  return ids;
+}
+
+// When 2+ distinct REsimpli records are each the unique match for the same property (the
+// reverse-collision case below), picks the one to actually use instead of giving up to review,
+// in two steps — stop at the first one that settles it:
+//   1. A record whose id is among the property's own stored ids (see storedIdsFor) — the
+//      record IS the one this property is already linked to, whatever REsimpli module it's
+//      filed under. Matched regardless of idType (classifyOneRecord always reports "lead",
+//      even for what's really an inventory/rental record by CSV-stored id).
+//   2. Otherwise, a single "inventory" record among the candidates — REsimpli's current,
+//      actionable record for a property that also still has a stale lead record on file
+//      (Kyle's call: prefer Inventory over a plain Lead).
+// Returns null (still ambiguous, nothing picked) if neither step finds exactly one winner.
+function pickWinner(recordsForProp, property) {
+  const storedIds = storedIdsFor(property);
+  const idMatches = recordsForProp.filter(r => r.id != null && storedIds.has(String(r.id)));
+  if (idMatches.length === 1) return idMatches[0];
+  const inventoryMatches = recordsForProp.filter(r => r.recordType === "inventory");
+  if (inventoryMatches.length === 1) return inventoryMatches[0];
+  return null;
 }
 
 // Matches a list of external REsimpli records against tracker properties.
-// Each record: {id, idType: "lead"|"module", address, stage, recordType, url}.
-// `idType`/`id` are optional — pass id:null/idType:null when the record has
-// no REsimpli id at all (shouldn't normally happen, but handled safely).
+// Each record: {id, idType: "lead"|"module", address, stage, recordType, url}. `idType` is
+// carried through for reference only and never gates matching — see storedIdsFor/pickWinner
+// above, matching by id no longer requires it to line up with how the id was stored.
+// `id`/`address` are optional — pass id:null when the record has no REsimpli id at all
+// (shouldn't normally happen, but handled safely).
 //
 // Matching, in order, per record:
-//   1. An existing resimpli.leadId or resimpli.moduleId on a property that
-//      equals this record's id (matched against the SAME id type only — a
-//      lead id is never compared against a stored moduleId or vice versa).
-//   2. Falling back to normalized address, tried against every one of a
-//      property's address keys (see propertyAddressKeys — handles combined
-//      addresses).
+//   1. Any of the property's own stored ids (storedIdsFor — leadId, moduleId, or an id parsed
+//      from its stored URL) equal to this record's id.
+//   2. Falling back to normalized address, with BOTH sides expanded for a combined address
+//      ("3126 & 3134 Wessex Ct") — a record matches a property if any of the record's
+//      expanded/normalized address keys equals any of the property's (recordAddressKeys /
+//      propertyAddressKeys), so REsimpli having one combined-address record for what Kyle
+//      tracks as one combined-address property matches cleanly instead of neither key
+//      equaling the other.
 // A record matching 2+ properties this way is ambiguous and skipped.
 //
-// After the per-record pass, properties are checked for the reverse
-// collision: a single tracker property (most commonly a combined address)
-// that was the UNIQUE match for 2+ DIFFERENT records is also ambiguous —
-// REsimpli apparently has two separate records for what Kyle tracks as one
-// property, and nothing here picks a winner. All of that property's matches
-// move from `matched` into `ambiguous` instead.
+// After the per-record pass, properties are checked for the reverse collision: a single
+// tracker property (most commonly a combined address) that was the UNIQUE match for 2+
+// DIFFERENT records. Rather than giving up immediately, pickWinner (above) tries to settle it
+// by id first, then by preferring a lone Inventory record over a Lead — only when neither
+// settles it do all of that property's matches move from `matched` into `ambiguous` instead.
 //
 // Returns {matched, ambiguous, noPropertyMatch, noRecordMatch}:
 //   matched:         [{property, record}]
@@ -190,19 +246,23 @@ export function propertyAddressKeys(property) {
 //   noPropertyMatch: [record]      — records with zero matching properties
 //   noRecordMatch:   [property]    — properties with zero matching (non-ambiguous) records
 export function matchResimpliRecords(properties, records) {
-  const byLeadId = new Map(), byModuleId = new Map();
+  const byAnyId = new Map(); // id string -> [property, ...] (normally length 1)
   properties.forEach(p => {
-    if (p.resimpli?.leadId) byLeadId.set(p.resimpli.leadId, p);
-    if (p.resimpli?.moduleId) byModuleId.set(p.resimpli.moduleId, p);
+    storedIdsFor(p).forEach(id => {
+      if (!byAnyId.has(id)) byAnyId.set(id, []);
+      byAnyId.get(id).push(p);
+    });
   });
 
   const perRecordCandidates = records.map(record => {
     let candidates = [];
-    if (record.id && record.idType === "lead" && byLeadId.has(record.id)) candidates = [byLeadId.get(record.id)];
-    else if (record.id && record.idType === "module" && byModuleId.has(record.id)) candidates = [byModuleId.get(record.id)];
+    if (record.id != null) {
+      const idMatches = byAnyId.get(String(record.id));
+      if (idMatches && idMatches.length) candidates = idMatches;
+    }
     if (candidates.length === 0) {
-      const key = normalizeAddressForMatch(record.address);
-      if (key) candidates = properties.filter(p => propertyAddressKeys(p).includes(key));
+      const keys = recordAddressKeys(record);
+      if (keys.length) candidates = properties.filter(p => propertyAddressKeys(p).some(pk => keys.includes(pk)));
     }
     return { record, candidates };
   });
@@ -223,9 +283,16 @@ export function matchResimpliRecords(properties, records) {
     if (recordsForProp.length === 1) {
       matched.push({ property, record: recordsForProp[0] });
       matchedPropIds.add(propId);
+      return;
+    }
+    // Same property, 2+ distinct records (e.g. a combined address where REsimpli has a
+    // separate record for each half, or a stale lead alongside a current inventory record) —
+    // try to settle it instead of giving up immediately.
+    const winner = pickWinner(recordsForProp, property);
+    if (winner) {
+      matched.push({ property, record: winner });
+      matchedPropIds.add(propId);
     } else {
-      // Same property, 2+ distinct records (e.g. a combined address where
-      // REsimpli has a separate record for each half) — can't pick, review instead.
       recordsForProp.forEach(record => ambiguous.push({ record, candidates: [property] }));
     }
   });

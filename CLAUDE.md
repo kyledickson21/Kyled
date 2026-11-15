@@ -543,25 +543,50 @@ REsimpli's own pipeline. Never touches any money field, loan, lender, or draw.
 - **leadId vs. moduleId**: the Open API can read/list Leads but **cannot list the Inventory,
   Rental, or Sold modules** — so `resimpli.leadId` (set by the live sync, or by a CSV row whose
   `record_type` is `lead`) and `resimpli.moduleId` (set only by a CSV row whose `record_type`
-  is `inventory`/`rental`/`sold`) are stored and matched **separately**, never compared against
-  each other. A CSV row carries only one id type per row; importing one never clobbers the
-  other id already on file for that property (see `confirmImport` in `ImportResimpliModal`,
-  and the same preserve-the-other-field pattern in `PropertyForm`'s save path and in
-  `api/resimpli-sync.mjs`'s diff computation). The live sync can only ever discover/refresh
-  `leadId` — a property whose REsimpli record only has a `moduleId` stays matched on address
-  until the lead is created/found in REsimpli too.
+  is `inventory`/`rental`/`sold`) are still stored **separately** (a CSV row carries only one
+  id type per row; importing one never clobbers the other id already on file for that
+  property — see `confirmImport` in `ImportResimpliModal`, and the same preserve-the-other-
+  field pattern in `PropertyForm`'s save path and in `_sync-core.mjs`'s `buildResimpliChange`).
+  But **matching itself no longer requires them to line up**: `storedIdsFor(property)` (in
+  `resimpli-shared.mjs`) collects every id a property has on file — `leadId`, `moduleId`, AND
+  any id parsed from the property's stored `resimpli.url` query string (`inventoryId`,
+  `leadsId`, `soldId`, `leadId`) — and `matchResimpliRecords` matches a REsimpli record against
+  ANY of them, regardless of the record's own `idType`. This matters because a CSV-imported
+  inventory row stores its `inventoryId` in `leadId` (not `moduleId`) and in the URL, while
+  `classifyOneRecord` (the live sync's classifier) always reports `idType:"lead"` with the
+  REsimpli lead `_id` — without this, a property's stored inventory id would never match
+  anything the live sync reads back for it. The live sync can still only ever discover/refresh
+  `leadId` directly — a property matched only via a `moduleId`/URL id stays matched on address
+  (or on that id, once found) until/unless the lead is created/found in REsimpli too.
 - **Combined addresses** (e.g. "3126 & 3134 Wessex Ct") and **directionals**:
   `normalizeAddressForMatch` drops directionals (N/S/E/W/NE/NW/SE/SW and the spelled-out forms)
-  wherever they appear in the street line, not just leading, and strips unit/apt/suite/#
-  tokens — so "902 Dayton Ave Nw # 52pt" and "902 Dayton Ave #52" normalize identically. This
-  is deliberate even though it can make two genuinely different addresses collide (e.g. "123 N
-  Main St" vs "123 S Main St") — when that happens, the normal 2+-candidates ambiguity check
-  already sends them to review instead of guessing, which is exactly the wanted behavior.
-  `expandCombinedAddress`/`propertyAddressKeys` split a tracker property like "3126 & 3134
-  Wessex Ct" into its two individual addresses for matching: if REsimpli has **one** matching
-  record, the property matches cleanly; if REsimpli has **two** (one per half), both move to
-  `ambiguous` instead of either being picked — see `matchResimpliRecords`'s second pass in
-  `resimpli-shared.mjs`.
+  wherever they appear in the street line, not just leading, and strips unit/apt/suite/ste/
+  **lot**/# tokens — so "902 Dayton Ave Nw # 52pt" and "902 Dayton Ave #52" normalize
+  identically, and so does "100 Main St SW Lot 7" against "100 Main St # 7" (`lot` was added
+  to the same strip-this-and-everything-after list as `apt`/`unit`/`suite`/`ste`, after a real
+  property went unmatched because REsimpli used `Lot 7` where the tracker's CSV-imported
+  address used `# 7`). This is deliberate even though it can make two genuinely different
+  addresses collide (e.g. "123 N Main St" vs "123 S Main St") — when that happens, the normal
+  2+-candidates ambiguity check already sends them to review instead of guessing, which is
+  exactly the wanted behavior. `expandCombinedAddress` is applied to **both sides** of a
+  match — `propertyAddressKeys` for a tracker property, `recordAddressKeys` for a REsimpli
+  record — and a match is made whenever ANY of one side's expanded/normalized keys equals ANY
+  of the other's. Both-sides expansion matters because REsimpli can have a SINGLE record whose
+  own address is combined ("3126 & 3134 Wessex Ct") — normalizing that as one run-together key
+  ("3126 3134 wessex ct") never equaled either half of a combined tracker property's two
+  separately-expanded keys, so it used to go unmatched; now both sides expand the same way and
+  it matches cleanly. REsimpli having **two separate** records, one per half, still moves both
+  to `ambiguous` instead of either being picked — see `matchResimpliRecords`'s reverse-
+  collision pass below.
+- **Reverse-collision tie-break**: when 2+ distinct REsimpli records each independently
+  resolve to the SAME property as their one address/id match (REsimpli has a stale Lead
+  record AND a current Inventory record for what's really one property, say), `pickWinner`
+  (in `resimpli-shared.mjs`) tries to settle it instead of sending straight to review — first
+  by id (a record whose id is among the property's own `storedIdsFor`, regardless of the
+  record's `idType`), then, if that doesn't settle it, by preferring a single `"inventory"`
+  record over anything else (a plain Lead doesn't win over Inventory — Kyle's call). Only
+  when NEITHER settles it (e.g. two leads, or two inventory records, with no id match) do all
+  of that property's candidate records move to `resimpliReview` as `ambiguous`.
 - **Rental folds into Inventory for sort/filter/grouping** — there's no separate Rental
   position or column anywhere properties are sorted, filtered, or grouped by stage.
   `effectiveGroupingResimpli(resimpli)` (in `resimpli-shared.mjs`) maps a `"rental"`-recordType
