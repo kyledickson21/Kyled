@@ -101,5 +101,5 @@ export async function computeFullDiff() {
     })),
   ];
 
-  return { changes, review, now, pipelineOrder };
+  return { changes, review, now, pipelineOrder, matchedCount: result.matched.length };
 }

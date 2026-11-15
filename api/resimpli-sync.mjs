@@ -60,10 +60,11 @@ export default async function handler(req, res) {
   else if (!(await isAuthorizedManualCaller(req))) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   try {
-    const { changes, review, pipelineOrder } = await computeFullDiff();
+    const { changes, review, pipelineOrder, matchedCount } = await computeFullDiff();
     if (dryRun) {
       res.status(200).json({
         dryRun: true,
+        matched: matchedCount,
         changes: changes.map(({ id, address, oldStage, newStage }) => ({ id, address, oldStage, newStage })),
         review: review.map(({ kind, record, candidateAddresses }) => ({ kind, record, candidateAddresses })),
         pipelineOrderFetched: !!pipelineOrder,
@@ -72,7 +73,9 @@ export default async function handler(req, res) {
     }
 
     const syncedAt = await applySync({ changes, review, pipelineOrder });
-    res.status(200).json({ dryRun: false, applied: changes.length, reviewCount: review.length, syncedAt, pipelineOrderUpdated: !!pipelineOrder });
+    // matched/changed/review counts, logged by the GitHub Actions workflow on every scheduled
+    // run — no secrets or PII in any of these, just counts.
+    res.status(200).json({ dryRun: false, matched: matchedCount, changed: changes.length, review: review.length, syncedAt, pipelineOrderUpdated: !!pipelineOrder });
   } catch (e) {
     res.status(500).json({ error: e.message || "Sync failed" });
   }

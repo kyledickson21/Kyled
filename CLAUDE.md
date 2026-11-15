@@ -728,9 +728,16 @@ HOLD note at the end of this section.
   `RESIMPLI_SYNC_SECRET` proposed above. See `.env.example`.
 - **Cron schedule**: `vercel.json` runs the sync once daily at 9:00 UTC (4am ET) —
   the Vercel Hobby plan only allows daily crons; an hourly schedule was tried first and failed
-  preview deploy. More often needs either Vercel Pro or an outside scheduler hitting
-  `/api/resimpli-sync` with the same `CRON_SECRET` bearer header (GET or POST both work) —
-  Kyle's call, not yet decided.
+  preview deploy. `/api/resimpli-sync` is also triggered every 15 minutes by
+  **`.github/workflows/resimpli-sync.yml`** (GitHub Actions, on Kyle's own account — no Vercel
+  plan upgrade needed), which just does a guarded `curl -X POST` with the same
+  `Authorization: Bearer $CRON_SECRET` header the Vercel Cron path checks — it carries no
+  REsimpli/Supabase logic itself; every actual write still only happens if the endpoint's own
+  auth check and `resimpli_sync_apply()`'s hard self-check (see above) both pass, exactly as
+  they would for the daily Vercel Cron run. No-ops entirely if the `CRON_SECRET` **repository
+  secret** isn't set on GitHub (Settings → Secrets and variables → Actions — same value as the
+  `CRON_SECRET` env var on Vercel), fails the whole job loudly on a non-2xx response, and logs
+  only `matched`/`changed`/`review` counts (no addresses, no secrets).
 - **Vercel Cron only runs on Production deployments, not Preview** — so even once deployed to a
   preview branch, the scheduled sync literally cannot fire until this is merged to the
   production branch. The manual "Sync Now" button and the webhook both work on Preview, though.
