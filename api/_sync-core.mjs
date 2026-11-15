@@ -98,16 +98,19 @@ export async function computeFullDiff() {
   const changes = result.matched
     .map(({ property, record }) => buildResimpliChange(property, record, now))
     .filter(c => c.changed);
-  const review = [
-    ...result.ambiguous.map(({ record, candidates }) => ({
-      id: uid(), kind: "ambiguous", record,
-      candidateAddresses: candidates.map(c => c.address),
-      detectedAt: now,
-    })),
-    ...result.noPropertyMatch.map(record => ({
-      id: uid(), kind: "noPropertyMatch", record, candidateAddresses: [], detectedAt: now,
-    })),
-  ];
+  // Kyle's call: the sync only pulls data for properties already in the tracker. A REsimpli
+  // record that doesn't match any tracker property (noPropertyMatch) is just REsimpli's own
+  // pipeline noise from this app's point of view — with ~3,500 REsimpli records against a much
+  // smaller tracker, that bucket runs into the thousands, and none of it is actionable the way
+  // an ambiguous match is (nothing to pick between, nothing to review — it was never going to
+  // become a tracker property). So it's dropped entirely, not stored. Ambiguous matches (2+
+  // tracker properties for one record, or 2+ records for one property) are still kept — those
+  // ARE about an existing tracker property, and still need Kyle to pick.
+  const review = result.ambiguous.map(({ record, candidates }) => ({
+    id: uid(), kind: "ambiguous", record,
+    candidateAddresses: candidates.map(c => c.address),
+    detectedAt: now,
+  }));
 
   return { changes, review, now, pipelineOrder, matchedCount: result.matched.length };
 }

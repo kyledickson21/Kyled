@@ -186,10 +186,15 @@ in `supabase.js`), and there's exactly one row.
   resimpliLastSyncedAt: null, // ISO timestamp of the live sync's last successful run (scheduled,
                               // manual "Sync Now", or webhook) — shown on the Properties page.
                               // Not touched by the CSV import.
-  resimpliReview: [],  // REsimpli records the live sync couldn't confidently match to a tracker
-                       // property — shown in a dismissible "⚠️ REsimpli Review" card on the
-                       // Properties page. {id, kind:"ambiguous"|"noPropertyMatch", record,
-                       // candidateAddresses, detectedAt}. Fully recomputed by every scheduled/
+  resimpliReview: [],  // REsimpli records that are ambiguously matched to a tracker property
+                       // (2+ candidates either way) — shown in a dismissible "⚠️ REsimpli
+                       // Review" card on the Properties page. {id, kind:"ambiguous", record,
+                       // candidateAddresses, detectedAt}. A REsimpli record with NO matching
+                       // tracker property at all is dropped, not stored here — Kyle's call:
+                       // the sync only pulls data for properties already in the tracker, and
+                       // with ~3,500 REsimpli records against a much smaller tracker, that
+                       // bucket would run into the thousands and isn't actionable anyway
+                       // (nothing to pick between). Fully recomputed by every scheduled/
                        // manual sync run (so a resolved ambiguity naturally drops off); a
                        // single-lead webhook hit that can't resolve is just dropped, not added
                        // here — only a full sync run maintains this list. See "REsimpli Live
@@ -689,9 +694,14 @@ HOLD note at the end of this section.
   `matchResimpliRecords` from `resimpli-shared.mjs` used by the CSV import — same leadId-first,
   then-normalized-address rules, same combined-address/directional handling, same
   never-guess-on-ambiguity behavior.
-- **Review list**: unmatched/ambiguous REsimpli records go to `data.resimpliReview` (see Data
-  Shape above), shown in a dismissible "⚠️ REsimpli Review" card at the top of the Properties
-  page (`ResimpliReviewCard`, visible to everyone — pure reference data — but the Dismiss button
+- **Review list**: only **ambiguous** matches go to `data.resimpliReview` (see Data Shape
+  above) — a REsimpli record with no matching tracker property at all is dropped by
+  `computeFullDiff()` in `_sync-core.mjs`, never stored (Kyle's call: the sync only pulls data
+  for properties already in the tracker; `noPropertyMatch` is REsimpli's own pipeline noise
+  from this app's point of view, and at REsimpli's real record count that bucket would run
+  into the thousands with nothing for Kyle to actually do about any of it). Shown in a
+  dismissible "⚠️ REsimpli Review" card at the top of the Properties page
+  (`ResimpliReviewCard`, visible to everyone — pure reference data — but the Dismiss button
   is gated `!readOnly`). The scheduled/manual sync fully recomputes this list every run, so a
   since-resolved ambiguity naturally drops off; the webhook never adds to it (a single-lead hit
   that can't resolve cleanly is just dropped — it'll show up on the next full sync instead).
