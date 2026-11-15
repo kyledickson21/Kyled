@@ -41,7 +41,15 @@ export async function applySync({ changes, review, pipelineOrder }) {
     synced_at: now,
     pipeline_order: pipelineOrder ?? null,
   });
-  if (error) throw new Error(`resimpli_sync_apply failed: ${error.message}`);
+  if (error) {
+    // The RPC's own exception text is a pure structural description (property counts,
+    // "a field other than resimpli changed", an invalid secret, etc.) — never an address or
+    // any other PII, and never a secret value — so it's safe to log as-is. Logged here (not
+    // just thrown) so a blocked run shows up clearly in the Vercel function logs regardless of
+    // which caller (cron, the GitHub Actions trigger, "Sync Now", or the webhook) hit it.
+    console.error("resimpli_sync_apply RPC failed:", error.message);
+    throw new Error(`resimpli_sync_apply failed: ${error.message}`);
+  }
   return now;
 }
 

@@ -159,8 +159,16 @@ begin
   -- Rebuild properties, preserving array order explicitly (WITH ORDINALITY + ORDER BY) — a
   -- plain jsonb_agg over a LEFT JOIN has no inherent order, and the Manual (drag) sort tab
   -- depends on this array's order matching what Kyle last arranged.
+  --
+  -- jsonb_set is STRICT: if `c.value->'resimpli'` is SQL NULL (the `resimpli` key is missing
+  -- from that change entirely, as opposed to being present with an explicit JSON null) jsonb_set
+  -- itself returns NULL, which would silently poison that one property's rebuilt value and trip
+  -- self-check #2 below — aborting the ENTIRE sync over one malformed/empty change, every run,
+  -- until someone notices and fixes it by hand. coalesce(..., 'null'::jsonb) makes a missing or
+  -- null resimpli behave the same as an explicit `resimpli: null` (clearing it, not blocking the
+  -- whole batch) — the safer failure mode for something that could otherwise recur indefinitely.
   select jsonb_agg(
-           case when c.value is not null then jsonb_set(p.value, '{resimpli}', c.value->'resimpli') else p.value end
+           case when c.value is not null then jsonb_set(p.value, '{resimpli}', coalesce(c.value->'resimpli', 'null'::jsonb)) else p.value end
            order by p.ord
          )
     into new_properties

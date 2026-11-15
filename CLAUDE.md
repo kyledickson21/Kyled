@@ -691,7 +691,16 @@ HOLD note at the end of this section.
     every other top-level key unchanged — raising an exception (writing nothing at all) if any
     of that doesn't hold, rather than trusting the rebuild query to have done the right thing.
     Tested directly against a local Postgres instance (every guard, including the row lock)
-    before being left for Kyle to review.
+    before being left for Kyle to review. `jsonb_set` is itself STRICT, so building a change's
+    `resimpli` value via a bare `c.value->'resimpli'` would return SQL NULL — and silently
+    poison that property's rebuild, tripping the mismatch self-check and blocking the ENTIRE
+    sync — for a change whose `resimpli` key is missing or JSON null (e.g. a lead whose stage
+    just cleared). Wrapped in `coalesce(c.value->'resimpli', 'null'::jsonb)` so that case just
+    clears that one property's `resimpli` instead of blocking every future run. `applySync()`
+    in `_sync-core.mjs` logs this RPC's exception text via `console.error` on any failure (pure
+    structural text — property counts, which check failed, an invalid secret — never an
+    address or a secret value) so a blocked run shows up clearly in the Vercel function logs,
+    whichever caller (cron, the GitHub Actions trigger, "Sync Now", or the webhook) hit it.
   - Both are `SECURITY DEFINER` (bypass RLS) but refuse (raise an exception, write nothing)
     unless their `secret` argument matches a value stored in a new `resimpli_sync_config` table
     — which has RLS enabled with **zero policies**, so nothing can read or write it through the
