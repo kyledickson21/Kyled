@@ -2,7 +2,8 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef, createContext, u
 import { createPortal } from "react-dom";
 import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, createBookkeeperAccount, deleteLenderAccount, runResimpliSync, fetchBackupRows } from './supabase'
 import {
-  RESIMPLI_STAGES, buildPipelineIndex, pipelineForRecordType, resimpliStageLabel, stageSortKey,
+  RESIMPLI_STAGES, buildPipelineIndex, pipelineForRecordType, resimpliStageLabel,
+  groupedStageSortKey, effectiveGroupingResimpli,
   normalizeAddressForMatch, matchResimpliRecords, assertOnlyResimpliChanged,
 } from './resimpli-shared.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
@@ -3970,7 +3971,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       if(propSortMode==="dateAcquired")return d*propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return d*streetSortKey(a.address).localeCompare(streetSortKey(b.address));
       if(propSortMode==="dateSold")return d*(a.dateSold||"0000").localeCompare(b.dateSold||"0000");
-      if(propSortMode==="stage")return d*stageSortKey(a,pipelineIndex).localeCompare(stageSortKey(b,pipelineIndex));
+      if(propSortMode==="stage")return d*groupedStageSortKey(a,pipelineIndex).localeCompare(groupedStageSortKey(b,pipelineIndex));
       return d*propSellDate(a).localeCompare(propSellDate(b));
     });
   const rankMap=Object.fromEntries(
@@ -3984,7 +3985,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return streetSortKey(a.address).localeCompare(streetSortKey(b.address));
       if(propSortMode==="dateSold")return (a.dateSold||"0000").localeCompare(b.dateSold||"0000");
-      if(propSortMode==="stage")return stageSortKey(a,pipelineIndex).localeCompare(stageSortKey(b,pipelineIndex));
+      if(propSortMode==="stage")return groupedStageSortKey(a,pipelineIndex).localeCompare(groupedStageSortKey(b,pipelineIndex));
       return propSellDate(a).localeCompare(propSellDate(b));
     }).map((p,i)=>[p.id,i+1])
   );
@@ -3996,29 +3997,29 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
   const stagesPresent=[...new Map(
     data.properties.filter(p=>!p.dateSold&&p.resimpli?.stage)
       .map(p=>[`${p.resimpli.recordType||"_"}::${p.resimpli.stage}`,{recordType:p.resimpli.recordType||null,stage:p.resimpli.stage}])
-  ).values()].sort((a,b)=>stageSortKey({resimpli:a},pipelineIndex).localeCompare(stageSortKey({resimpli:b},pipelineIndex)));
+  ).values()].sort((a,b)=>groupedStageSortKey({resimpli:a},pipelineIndex).localeCompare(groupedStageSortKey({resimpli:b},pipelineIndex)));
   // Properties page's REsimpli-style kanban (Pipeline view) — one column per Inventory stage
   // (always shown, even empty), then the non-Inventory buckets (hidden when empty), built from
   // `visible` so the existing search/stage filter already apply. Display-only: no drag/write.
+  // Rental folds into the Inventory columns (effectiveGroupingResimpli) — there's no separate
+  // Rental column; a rental property lands in whichever Inventory-stage column it maps to.
   const invStages=pipelineForRecordType("inventory",pipelineIndex).stages;
   const pipelineColumns=(()=>{
     const invCols=invStages.map(stage=>({key:`inv::${stage}`,label:stage,items:[]}));
     const otherInv={key:"inv::other",label:"Other Inventory",items:[]};
     const leadCol={key:"lead",label:"Lead: Under Contract",items:[]};
-    const rentalCol={key:"rental",label:"Rental",items:[]};
     const soldCol={key:"sold",label:"Sold",items:[]};
     const noneCol={key:"none",label:"No stage",items:[]};
     visible.forEach(prop=>{
       const rt=prop.resimpli?.recordType;
-      if(rt==="inventory"){
-        const idx=invStages.indexOf(prop.resimpli?.stage);
+      if(rt==="inventory"||rt==="rental"){
+        const idx=invStages.indexOf(effectiveGroupingResimpli(prop.resimpli).stage);
         (idx!==-1?invCols[idx]:otherInv).items.push(prop);
       } else if(rt==="lead") leadCol.items.push(prop);
-      else if(rt==="rental") rentalCol.items.push(prop);
       else if(rt==="sold") soldCol.items.push(prop);
       else noneCol.items.push(prop);
     });
-    return [...invCols,otherInv,leadCol,rentalCol,soldCol,noneCol].filter(c=>invStages.includes(c.label)||c.items.length>0);
+    return [...invCols,otherInv,leadCol,soldCol,noneCol].filter(c=>invStages.includes(c.label)||c.items.length>0);
   })();
   const activeCount=data.properties.filter(p=>!p.dateSold).length;
   const totalCount=data.properties.length;
@@ -4184,7 +4185,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
             case"Funded":     return d*(a.funded-b.funded);
             case"Needed":     return d*(a.needed-b.needed);
             case"Status":     return d*(a.short-b.short);
-            case"Stage":      return d*stageSortKey(a.prop,pipelineIndex).localeCompare(stageSortKey(b.prop,pipelineIndex));
+            case"Stage":      return d*groupedStageSortKey(a.prop,pipelineIndex).localeCompare(groupedStageSortKey(b.prop,pipelineIndex));
             default:          return 0;
           }
         });

@@ -497,9 +497,12 @@ REsimpli's own pipeline. Never touches any money field, loan, lender, or draw.
   CSV import, the scheduled sync, the webhook receiver, and the manual "Sync Now" button all
   agree on exactly the same pipeline/stage order, address-normalization rules, and matching
   algorithm. Exports: `RESIMPLI_PIPELINES`, `RESIMPLI_STAGES`, `pipelineForRecordType`,
-  `resimpliStageLabel`, `stageSortKey`, `normalizeAddressForMatch`, `expandCombinedAddress`,
-  `propertyAddressKeys`, `matchResimpliRecords`, `assertOnlyResimpliChanged`. Don't
-  re-implement any of this elsewhere — import from here.
+  `resimpliStageLabel`, `stageSortKey`, `effectiveGroupingResimpli`, `groupedStageSortKey`,
+  `normalizeAddressForMatch`, `expandCombinedAddress`, `propertyAddressKeys`,
+  `matchResimpliRecords`, `assertOnlyResimpliChanged`. Don't re-implement any of this
+  elsewhere — import from here. `effectiveGroupingResimpli`/`groupedStageSortKey` are used
+  only by `Tracker.jsx` (see "Rental folds into Inventory" below) — the server sync never
+  imports them, so none of this changes sync behavior.
 - **Pipelines**: REsimpli has four pipelines, each with its own stage order —
   `RESIMPLI_PIPELINES` is the hardcoded default, verified against both the REsimpli screens and
   the API's `orderIndex`: Lead (New Leads → … → Under Contract), Inventory (New Inventory → … →
@@ -554,33 +557,55 @@ REsimpli's own pipeline. Never touches any money field, loan, lender, or draw.
   record, the property matches cleanly; if REsimpli has **two** (one per half), both move to
   `ambiguous` instead of either being picked — see `matchResimpliRecords`'s second pass in
   `resimpli-shared.mjs`.
-- **Sort**: `stageSortKey(prop)` returns a sortable string — pipeline first (Lead, Inventory,
-  Rental, Sold, in that order, via `pipelineForRecordType`), then stage within that pipeline's
-  own order, then any stage REsimpli doesn't list (alphabetically, within its pipeline), then a
-  stage with no known pipeline (alphabetically), then no stage at all (always last) — wired
-  into `propSortMode==="stage"` in both places `PropertiesPage` computes sort order
-  (`visible`'s own sort AND the separate `rankMap` sort), so the two stay in sync. The condensed
-  table's clickable "Stage" column header reuses the same key.
+- **Rental folds into Inventory for sort/filter/grouping** — there's no separate Rental
+  position or column anywhere properties are sorted, filtered, or grouped by stage.
+  `effectiveGroupingResimpli(resimpli)` (in `resimpli-shared.mjs`) maps a `"rental"`-recordType
+  property onto its Inventory-pipeline equivalent, matched case-insensitively with extra
+  whitespace collapsed: `New Rental`→`New Inventory`, `Under Rehab`→`Under Rehab`, `Ready to
+  Rent`/`DSCR in process`→`Rehab Complete`, and any OTHER rental stage (`Rented`, `Lease Ending
+  Soon`, `Eviction In Progress`, `TURN/NEEDS RENTED`, or anything not explicitly listed) also
+  falls back to `Rehab Complete`. This is purely a sort/filter/grouping position — it never
+  touches stored data, and it never changes what a stage is LABELED: `resimpliStageLabel`/
+  `pipelineForRecordType`/`stageSortKey` themselves are untouched and still reason about the
+  real `"rental"` recordType, so `ResimpliBadge` and the filter dropdown's option text keep
+  showing a property's actual REsimpli stage (e.g. still "Rented (Rental)" when that name is
+  ambiguous) — only where it sorts/groups changes. `groupedStageSortKey(prop, index)` wraps
+  `stageSortKey` with this mapping; use it (not the plain `stageSortKey`) for anything
+  sort/filter/group-related on the Properties page.
+- **Sort**: `groupedStageSortKey(prop)` returns a sortable string — pipeline first (Lead,
+  Inventory (now absorbing Rental), Sold, in that order, via `pipelineForRecordType`), then
+  stage within that pipeline's own order, then any stage REsimpli doesn't list (alphabetically,
+  within its pipeline), then a stage with no known pipeline (alphabetically), then no stage at
+  all (always last) — wired into `propSortMode==="stage"` in both places `PropertiesPage`
+  computes sort order (`visible`'s own sort AND the separate `rankMap` sort), so the two stay in
+  sync. The condensed table's clickable "Stage" column header reuses the same key.
 - **Filter**: a plain `<select>` next to the sort controls — "All Stages", then only the
-  (recordType, stage) pairs actually present on an active property, in `stageSortKey` order,
-  labeled via `resimpliStageLabel` (so "Under Contract (Lead)" and "Under Contract (Inventory)"
-  show as two distinct, correctly-filtering options when both are present), then "No stage".
-  The filter's value is a composite `"<recordType>::<stage>"` string (`"_"` standing in for no
-  recordType) — never the bare stage name, for the same ambiguity reason. Persisted via
-  `usePersistedState("nx-propStageFilter")`.
+  (recordType, stage) pairs actually present on an active property, in `groupedStageSortKey`
+  order (so a rental property's filter option now sorts near its mapped Inventory stage, not in
+  a separate Rental block), labeled via `resimpliStageLabel` using the property's REAL
+  recordType/stage (so "Under Contract (Lead)" and "Under Contract (Inventory)" still show as
+  two distinct, correctly-filtering options, and a rental stage still reads as e.g. "Rented
+  (Rental)") — then "No stage". The filter's value is a composite `"<recordType>::<stage>"`
+  string (`"_"` standing in for no recordType) built from the property's real recordType/stage,
+  never the grouped one — never the bare stage name either, for the same ambiguity reason.
+  Persisted via `usePersistedState("nx-propStageFilter")`.
 - **Pipeline view**: a fourth Properties-page view mode (toggle icon "Ⅲ", next to condensed/
   grid/expanded), mirroring REsimpli's own Inventory Grid (kanban). Built from `pipelineColumns`
   (computed alongside `stagesPresent`/`visible`, so the existing search/stage filter apply
   here too): one column per Inventory stage (always shown, even empty, in REsimpli's order,
-  via `pipelineForRecordType("inventory").stages`), then "Other Inventory" (unrecognized
-  inventory stage), "Lead: Under Contract", "Rental", "Sold", and "No stage" — all five hidden
-  when empty. Each card shows the address, the REsimpli link when on file, and the same
-  funded/needed/shortage-or-surplus figures the other views already compute inline; clicking a
-  card opens the same property detail panel as every other view. No drag-and-drop between
-  columns and no write of any kind — REsimpli's stage is read-only reference data here, exactly
-  like the badge elsewhere on this page. Once the live sync (below) starts storing the live
-  pipeline order, this view (and sort/filter above) will use that instead, falling back to the
-  hardcoded `RESIMPLI_PIPELINES` default.
+  via `pipelineForRecordType("inventory").stages`), then "Other Inventory" (a rental or
+  inventory property whose mapped/actual stage doesn't match any of those seven — shouldn't
+  normally happen for rental, since `effectiveGroupingResimpli` always resolves to one of them
+  or falls back to "Rehab Complete"), "Lead: Under Contract", "Sold", and "No stage" — all four
+  hidden when empty. **There is no separate Rental column** — a `"rental"`-recordType property
+  is routed into whichever Inventory column `effectiveGroupingResimpli` maps it to, exactly
+  like a real Inventory property. Each card shows the address, the REsimpli link when on file,
+  and the same funded/needed/shortage-or-surplus figures the other views already compute
+  inline; clicking a card opens the same property detail panel as every other view. No
+  drag-and-drop between columns and no write of any kind — REsimpli's stage is read-only
+  reference data here, exactly like the badge elsewhere on this page. Once the live sync
+  (below) starts storing the live pipeline order, this view (and sort/filter above) will use
+  that instead, falling back to the hardcoded `RESIMPLI_PIPELINES` default.
 - **Import** (`ImportResimpliModal`, reached via the global Actions (+) menu → "Import
   REsimpli Stages (fallback)", gated `!readOnly` same as every other item in that menu — moved
   off the Properties-page toolbar once the live sync below does this automatically, so it's no

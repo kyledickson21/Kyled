@@ -74,6 +74,39 @@ export function stageSortKey(prop, index = DEFAULT_PIPELINE_INDEX) {
   return `${pipeline.order}${sIdx !== -1 ? `0${String(sIdx).padStart(2, "0")}` : `1${stage.toLowerCase()}`}`;
 }
 
+// Rental folds into the Inventory pipeline for SORT/FILTER/GROUP purposes only — there's no
+// separate Rental column/position in the Properties page's sort order, stage filter, or
+// Pipeline view. This never changes what's stored, and never changes a stage's displayed
+// label (resimpliStageLabel/pipelineForRecordType above are untouched and still reason about
+// the real "rental" recordType for badge text) — only where a rental-recordType property
+// sorts or groups. Matched case-insensitively with extra whitespace collapsed, per Kyle.
+const RENTAL_TO_INVENTORY_STAGE = {
+  "new rental": "New Inventory",
+  "under rehab": "Under Rehab",
+  "ready to rent": "Rehab Complete",
+  "dscr in process": "Rehab Complete",
+};
+const normalizeStageKey = s => (s || "").trim().replace(/\s+/g, " ").toLowerCase();
+
+// Returns the {recordType, stage} to sort/filter/group by — identical to the input for every
+// recordType except "rental", which maps to its Inventory-pipeline equivalent per
+// RENTAL_TO_INVENTORY_STAGE above. Any rental stage not explicitly listed there (Rented, Lease
+// Ending Soon, Eviction In Progress, TURN/NEEDS RENTED, or anything else REsimpli might use)
+// falls back to "Rehab Complete" — Kyle's catch-all for "any other rental stage on a property
+// that's still open in the tracker."
+export function effectiveGroupingResimpli(resimpli) {
+  if (resimpli?.recordType !== "rental") return resimpli;
+  const mapped = RENTAL_TO_INVENTORY_STAGE[normalizeStageKey(resimpli.stage)] || "Rehab Complete";
+  return { ...resimpli, recordType: "inventory", stage: mapped };
+}
+
+// stageSortKey, but folding rental into Inventory first (see effectiveGroupingResimpli) — use
+// this for the Properties page's sort-by-stage and stage filter; use the plain stageSortKey
+// (or resimpliStageLabel) anywhere actual pipeline identity still matters, like the badge.
+export function groupedStageSortKey(prop, index = DEFAULT_PIPELINE_INDEX) {
+  return stageSortKey({ resimpli: effectiveGroupingResimpli(prop?.resimpli) }, index);
+}
+
 const ADDRESS_SUFFIX_MAP = {
   street: "st", avenue: "ave", road: "rd", drive: "dr", court: "ct",
   circle: "cir", lane: "ln", boulevard: "blvd", place: "pl", way: "way",
