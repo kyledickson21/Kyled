@@ -41,11 +41,15 @@ update(d => ({...d, properties: [{newField: value}]}))
 ```
 
 **Export Backup**: "Export Backup (JSON)" in the Settings menu (desktop sidebar and mobile
-drawer, gated `!readOnly`) downloads the exact `data` this session has loaded — unchanged, no
-transform or filtering — as `nexus-backup-<date>-<timestamp>.json`. This is the backup to
-restore from before running anything that writes to `nexus_data` in bulk (e.g. the REsimpli
-live sync, held on a separate branch) — see `exportBackup` near the top of the main `Tracker`
-component.
+drawer, gated `!readOnly`) downloads `nexus-backup-<date>-<timestamp>.json`. It pulls fresh
+straight from Supabase (`fetchBackupRows()` in `supabase.js` — `select org_id, data,
+updated_at`) rather than the app's own in-memory `data` state, which can briefly be a
+migrated/derived version of the DB row (see `applyMigrations`, run once per session on load
+and saved back) rather than the row itself — the file bundles `exportedAt`/`orgId`/`rowCount`
+alongside the raw row(s). This is the backup to restore from before running anything that
+writes to `nexus_data` in bulk (e.g. the REsimpli live sync, held on a separate branch) — see
+`exportBackup` near the top of the main `Tracker` component. The real `org_id` value is
+`'nexus-homes'` (see `ORG_ID` in `supabase.js`), and there's exactly one row.
 
 ## Data Shape (Supabase blob)
 ```js

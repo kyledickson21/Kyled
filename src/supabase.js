@@ -17,6 +17,22 @@ export async function loadData() {
   return { data: data.data, updatedAt: data.updated_at }
 }
 
+// For "Export Backup (JSON)" — a fresh, direct read of every nexus_data row for this org,
+// straight from Supabase, not the app's in-memory `data` state. The in-memory state can
+// briefly be a migrated/derived version of what's actually in the table (see applyMigrations
+// in Tracker.jsx, run once per session on load and saved back) rather than the DB's current
+// row verbatim, so the backup pulls its own copy instead of trusting whatever's already
+// loaded. Returns every row for org_id (normally exactly one) with org_id/data/updated_at
+// untouched, straight off the table.
+export async function fetchBackupRows() {
+  const { data, error } = await supabase
+    .from('nexus_data')
+    .select('org_id, data, updated_at')
+    .eq('org_id', ORG_ID)
+  if (error) throw error
+  return data
+}
+
 // Optimistic concurrency: if `expectedUpdatedAt` is given, the write only lands when
 // nobody else has saved since we last read. If another tab/device/session saved in the
 // meantime, `updated_at` no longer matches, zero rows are updated, and we surface that as
