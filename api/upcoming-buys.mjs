@@ -111,7 +111,12 @@ export function classifyBuyLead(lead, details, today) {
   const amount = parseCashAmount(cashText);
   const dateFromAnalytics = etEpochToDateStr(closingDateEpochOf(details));
   const dateFromContract = normalizeDateText(findCustomAnswer(details, QUESTION_CLOSING_DATE_ON_CONTRACT));
-  const date = soonestDate(dateFromAnalytics, dateFromContract);
+  // Normally the soonest of the two. But when the contract-date answer has already slipped
+  // into the past while REsimpli's own analytics date is still today or later, treat that as
+  // the deal having been extended — use the analytics date instead of excluding the lead (and
+  // still show both dates on the card below, same as every other case where they differ).
+  const contractIsStale = dateFromContract && isPastDate(dateFromContract, today) && dateFromAnalytics && !isPastDate(dateFromAnalytics, today);
+  const date = contractIsStale ? dateFromAnalytics : soonestDate(dateFromAnalytics, dateFromContract);
 
   // Shows both source dates when they differ — e.g. a stale contract date that's already past
   // while REsimpli's own analytics date is still upcoming — so Kyle can see the full picture

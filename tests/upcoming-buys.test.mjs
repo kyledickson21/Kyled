@@ -83,7 +83,11 @@ test("a past closing date goes to Needs Info (Garston-shaped)", () => {
   assert.match(result.needsInfo.reason, /already in the past/);
 });
 
-test("3434 Reaver-shaped: contract date past, analytics date future -> Needs Info showing BOTH dates", () => {
+test("3434 Reaver-shaped: a past contract date with a today-or-later analytics date is treated as an extension — scheduled on the analytics date, showing both", () => {
+  // Kyle's 11/16 2:32pm follow-up: when the Closing Date on Contract answer has already
+  // slipped into the past but REsimpli's own analyticsInfo.closingDate is still today or
+  // later, use the analytics date instead of excluding the lead to Needs Info — it reads as
+  // the deal having been extended, not as a dead lead.
   const lead = { _id: "lead6", address: "3434 Reaver" };
   const details = {
     investmentTitle: "Fix and Flip",
@@ -92,11 +96,36 @@ test("3434 Reaver-shaped: contract date past, analytics date future -> Needs Inf
     analyticsInfo: { closingDate: Date.UTC(2026, 10, 20, 5, 0, 0) },
   };
   const result = classifyBuyLead(lead, details, "2026-11-16");
-  assert.ok(result.needsInfo, "soonest-of picks the past contract date, so this must be excluded, not auto-scheduled on the future analytics date");
+  assert.ok(result.row, "should be scheduled, not excluded to Needs Info");
+  assert.equal(result.row.date, "2026-11-20", "uses the analytics date, not the stale contract date");
+  assert.equal(result.row.dateFromAnalytics, "2026-11-20");
+  assert.equal(result.row.dateFromContract, "2026-10-28");
+  assert.equal(result.row.amount, 25000);
+});
+
+test("a past contract date is NOT extended when the analytics date is also past (or missing) — still Needs Info", () => {
+  const lead = { _id: "lead6b", address: "Dead Deal Ln" };
+  const details = {
+    investmentTitle: "Fix and Flip",
+    questions: { preferenceAnswers: [{ questionId: CASH_Q, value: "$25,000" }, { questionId: CONTRACT_DATE_Q, value: "10/28/2026" }] },
+    analyticsInfo: { closingDate: Date.UTC(2026, 9, 1, 4, 0, 0) }, // Oct 1, also past
+  };
+  const result = classifyBuyLead(lead, details, "2026-11-16");
+  assert.ok(result.needsInfo, "both dates past -> excluded, the extension rule must not apply");
   assert.equal(result.needsInfo.dateFromContract, "2026-10-28");
-  assert.equal(result.needsInfo.dateFromAnalytics, "2026-11-20");
-  assert.match(result.needsInfo.reason, /2026-10-28/);
-  assert.match(result.needsInfo.reason, /analytics 2026-11-20, contract 2026-10-28/, "the reason must surface both dates, per Kyle's request");
+  assert.equal(result.needsInfo.dateFromAnalytics, "2026-10-01");
+});
+
+test("the soonest-date rule still applies when the contract date is upcoming (not stale)", () => {
+  const lead = { _id: "lead6c", address: "Normal St" };
+  const details = {
+    investmentTitle: "Rental",
+    questions: { preferenceAnswers: [{ questionId: CASH_Q, value: "$12,000" }, { questionId: CONTRACT_DATE_Q, value: "12/01/2026" }] },
+    analyticsInfo: { closingDate: Date.UTC(2026, 11, 15, 5, 0, 0) }, // Dec 15, later than the contract date
+  };
+  const result = classifyBuyLead(lead, details, "2026-11-16");
+  assert.ok(result.row);
+  assert.equal(result.row.date, "2026-12-01", "contract date isn't stale (it's upcoming), so the plain soonest-of rule still picks it");
 });
 
 test("no closing date anywhere goes to Needs Info with a clear reason", () => {

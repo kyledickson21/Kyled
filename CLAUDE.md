@@ -912,15 +912,20 @@ of rolling it" checkbox, set from `WhiteboardSellCard`).
   silently out of scope, never "needs info". The pure per-lead decision is
   `classifyBuyLead(lead, details, today)`, returning `{row}` / `{needsInfo}` / `{skip:true}`.
   Amount parses the "Cash Needed for Closing" custom question (`parseCashAmount` — robust
-  free-text $ parsing) and date is the soonest of `analyticsInfo.closingDate` (ms epoch;
+  free-text $ parsing). Date is normally the soonest of `analyticsInfo.closingDate` (ms epoch;
   converted via the real America/New_York timezone, not a hardcoded UTC offset, so DST doesn't
   shift the day — `etEpochToDateStr`) and the "Closing Date on Contract" custom question
   (`normalizeDateText` — handles `YYYY-MM-DD`, `MM/DD/YYYY`, and `"Mon D, YYYY"`/
-  `"Month D, YYYY"`, e.g. `"Nov 21, 2026"`). A missing/unparseable cash figure, a missing date,
-  or a date already past goes to "needs info" with BOTH source dates shown whenever they
-  differ (e.g. a stale contract-date answer that's already past while REsimpli's own analytics
-  date is still upcoming) — never the forecast, and never silently picks the future date
-  instead.
+  `"Month D, YYYY"`, e.g. `"Nov 21, 2026"`) — **except** when the contract-date answer has
+  already slipped into the past while `analyticsInfo.closingDate` is still today or later
+  (`contractIsStale` in `classifyBuyLead`): that's treated as the deal having been extended, so
+  the analytics date is used instead of excluding the lead (3434 Reaver: contract date 10/28
+  already past, REsimpli's own analytics date 11/20 still upcoming → scheduled on 11/20, not
+  sent to Needs Info). Either way, whenever the two source dates differ, the resulting row (or
+  needsInfo entry) carries BOTH (`dateFromAnalytics`/`dateFromContract`), and
+  `WhiteboardBuyCard` shows both with "— using \<date\>" so Kyle sees the full picture rather
+  than either date being silently dropped. A missing/unparseable cash figure, a missing date,
+  or a date still past after the extension check goes to "needs info", never the forecast.
 - **Forecast view**: a 45d/90d window toggle; `computeForecastSummary` (`whiteboard-
   forecast.mjs`) returns the running balance per day plus first shortfall, largest shortfall,
   and the date it's positive again, shown as stat tiles. A day's balance goes negative in red.
@@ -951,10 +956,11 @@ of rolling it" checkbox, set from `WhiteboardSellCard`).
   being subtracted, free-text cash and "Nov 21, 2026"-style date parsing, the ET-midnight
   conversion across a DST boundary both directions (epoch→date and the Sheet's wall-clock
   string→UTC), soonest-date selection, a past-or-missing date routing to Needs Info (including
-  the "both dates differ" case), the `/lead/details` wrapper unwrap and `preferenceAnswers`
-  lookup, `investmentTitle` filtering (including the "no type at all" and wholesale cases), the
-  draw-inclusive monthly payment exceeding the old flat estimate, and the window-filtered
-  totals. All 45 pass as of this writing.
+  the "both dates differ" case and the stale-contract-date-is-an-extension case, 3434 Reaver),
+  the `/lead/details` wrapper unwrap and `preferenceAnswers` lookup, `investmentTitle`
+  filtering (including the "no type at all" and wholesale cases), the draw-inclusive monthly
+  payment exceeding the old flat estimate, and the window-filtered totals. All 47 pass as of
+  this writing.
 - **Setup still needed before this is usable**: `MERCURY_API_TOKEN` (a read-only Mercury API
   token for the Master account) and `GOOGLE_SERVICE_ACCOUNT_JSON` (the full service-account
   JSON key, shared as a Viewer on the Office Dashboard Sheet) — both server-side-only env vars
