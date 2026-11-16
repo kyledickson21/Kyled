@@ -3833,6 +3833,11 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       return s+Math.round((l.principal||0)*(l.interestRate||0)/100/12);
     },0);
   };
+  // Total private money currently on a property — active (not-yet-closed) private loans
+  // only, principal plus any committed draw facility, same "money on the house" shape the
+  // funded/needed bars elsewhere on this page already use, just filtered to loanType
+  // "private" (hard money excluded).
+  const privateMoneyOn=prop=>prop.loans.filter(l=>!l.endDate&&l.loanType==="private").reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
   // Once the live sync has run at least once, data.resimpliPipelineOrder carries REsimpli's
   // real, live-fetched pipeline order — use it everywhere a hardcoded default would otherwise
   // be used (sort, filter, badge labels, Pipeline view). Undefined until then, in which case
@@ -3865,6 +3870,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         return d*(shortOf(b)-shortOf(a))||(a.id||"").localeCompare(b.id||"");
       }
       if(propSortMode==="rehabPriority")return d*(rehabBurn(b)-rehabBurn(a));
+      if(propSortMode==="privateMoney")return d*(privateMoneyOn(b)-privateMoneyOn(a))||(a.id||"").localeCompare(b.id||"");
       if(propSortMode==="dateAcquired")return d*propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return d*streetSortKey(a.address).localeCompare(streetSortKey(b.address));
       if(propSortMode==="dateSold")return d*(a.dateSold||"0000").localeCompare(b.dateSold||"0000");
@@ -3879,6 +3885,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       }
       if(propSortMode==="shortage"){const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};return shortOf(b)-shortOf(a)||(a.id||"").localeCompare(b.id||"");}
       if(propSortMode==="rehabPriority")return rehabBurn(b)-rehabBurn(a);
+      if(propSortMode==="privateMoney")return privateMoneyOn(b)-privateMoneyOn(a)||(a.id||"").localeCompare(b.id||"");
       if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
       if(propSortMode==="address")return streetSortKey(a.address).localeCompare(streetSortKey(b.address));
       if(propSortMode==="dateSold")return (a.dateSold||"0000").localeCompare(b.dateSold||"0000");
@@ -3956,7 +3963,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
       {/* Sort + Filter + Search */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <SortDropdown value={propSortMode} onChange={setPropSortMode}
-          options={[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["estClose","Est. Close"],["dateAcquired","Acquired"],["address","A–Z"],["stage","REsimpli Stage"],["manual","✋ Manual (drag)"]]}/>
+          options={[["shortage","Shortage"],["rehabPriority","🔥 Priority"],["privateMoney","💰 Private $"],["estClose","Est. Close"],["dateAcquired","Acquired"],["address","A–Z"],["stage","REsimpli Stage"],["manual","✋ Manual (drag)"]]}/>
         {propSortMode!=="manual"&&(
           <button onClick={()=>setPropSortDir(d=>d==="asc"?"desc":"asc")}
             className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
