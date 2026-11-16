@@ -7,7 +7,13 @@
 // available sale/closing date: primarily the Dashboard Bot Office Dashboard Google Sheet
 // (tab "Properties", column "Sell_ClosingDate" — REsimpli's own sell-side Expected Closing
 // Date), with a fallback to REsimpli's analyticsInfo.assignmentContractDate when the sheet has
-// no date for that property, and "needs info" when neither does.
+// no date for that property, and "needs info" when neither does. If the Sheet itself can't be
+// read at all (missing/invalid GOOGLE_SERVICE_ACCOUNT_JSON, a bad sheet id/range, or any other
+// Sheets API error — confirmed live, Nov 16: "GOOGLE_SERVICE_ACCOUNT_JSON is not set"), that's
+// logged and reported back as `sheetConnected:false` with `sheetError` — every property still
+// gets a shot at the REsimpli fallback (readSheetDateMap/resolveSellDateRow below), and only
+// lands in "needs info" if the fallback also comes up empty. The Whiteboard shows a
+// board-level note naming the missing env var when sheetConnected is false.
 //
 // Deliberately takes the property list as input rather than reading nexus_data itself — the
 // Whiteboard UI (Tracker.jsx) already has the live property data in the browser (including
@@ -46,7 +52,7 @@ async function isAuthorizedCaller(req) {
 // Builds {normalizedAddress -> {date, rowLeadId}} from the "Properties" tab, matching the
 // Sell_ClosingDate column by header name when the header row has it, else falling back to
 // column H (index 7) by position, per the sheet layout Kyle described.
-function buildSheetDateMap(rows) {
+export function buildSheetDateMap(rows) {
   const map = new Map();
   if (!rows.length) return map;
   const header = rows[0].map(h => (h || "").trim().toLowerCase());
@@ -122,47 +128,80 @@ async function fetchLastRefresh() {
   return null;
 }
 
+// Reads the Properties sheet and builds the date map, or reports why it couldn't — a missing/
+// invalid GOOGLE_SERVICE_ACCOUNT_JSON, a bad sheet id/range, or any other Sheets API error.
+// Kept separate from the per-property loop below so a sheet failure degrades to "sheet not
+// connected" (REsimpli fallback still runs for every property) instead of aborting the whole
+// request — see the Nov 16 4:34pm fix: the sheet failing used to skip the REsimpli fallback
+// entirely and send every property straight to Needs Info.
+async function readSheetDateMap() {
+  try {
+    const sheetRows = await fetchSheetValues(SHEET_ID, "Properties!A:H");
+    return { dateMap: buildSheetDateMap(sheetRows), connected: true, error: null };
+  } catch (e) {
+    console.error("sell-dates: Properties sheet unreadable (sheet disconnected, falling back to REsimpli for every property):", e.message);
+    return { dateMap: new Map(), connected: false, error: e.message || "Sheet unreadable" };
+  }
+}
+
+// The REsimpli fallback for one property — its own Expected Profit Date
+// (analyticsInfo.assignmentContractDate). Tried whenever the sheet had no date for a property,
+// whether because that property genuinely has no sheet row/date, or because the sheet itself
+// couldn't be read at all.
+async function resimpliFallbackDate(prop) {
+  if (!prop.leadId) return null;
+  try {
+    const details = await fetchLeadDetails(prop.leadId);
+    const epoch = details?.analyticsInfo?.assignmentContractDate ?? null;
+    return etEpochToDateStr(epoch);
+  } catch (e) {
+    console.error(`sell-dates: REsimpli fallback failed for leadId ${prop.leadId}:`, e.message);
+    return null;
+  }
+}
+
+// The pure per-property decision, given what's already been looked up — a sheet hit (or
+// null), the REsimpli fallback date (or null), and whether the sheet itself was reachable at
+// all. Extracted so this can be unit-tested directly without mocking the Sheets/REsimpli HTTP
+// calls. Returns the same {id,address,date,source[,reason]} row shape the handler returns.
+export function resolveSellDateRow(prop, { sheetHit, fallbackDate, sheetConnected }) {
+  if (sheetHit) return { id: prop.id, address: prop.address, date: sheetHit.date, source: "sheet" };
+  if (fallbackDate) return { id: prop.id, address: prop.address, date: fallbackDate, source: "resimpli-fallback" };
+  return {
+    id: prop.id, address: prop.address, date: null, source: null,
+    reason: sheetConnected ? "No sheet date and no REsimpli fallback date" : "Sheet not connected (GOOGLE_SERVICE_ACCOUNT_JSON) and no REsimpli fallback date",
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
   if (!(await isAuthorizedCaller(req))) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const properties = Array.isArray(req.body?.properties) ? req.body.properties : [];
   try {
-    const sheetRows = await fetchSheetValues(SHEET_ID, "Properties!A:H");
-    const dateMap = buildSheetDateMap(sheetRows);
-    const lastRefresh = await fetchLastRefresh();
+    const { dateMap, connected: sheetConnected, error: sheetError } = await readSheetDateMap();
+    // Staleness is meaningless with no sheet connection — skip the extra call rather than let
+    // it fail too (fetchLastRefresh already self-degrades to null, but there's nothing to ask).
+    const lastRefresh = sheetConnected ? await fetchLastRefresh() : null;
     const isStale = lastRefresh ? (Date.now() - new Date(lastRefresh).getTime()) / 36e5 > STALE_HOURS : null;
 
     const results = [];
     for (const prop of properties) {
       const byId = prop.leadId ? dateMap.get(`id:${String(prop.leadId)}`) : null;
       const byAddress = dateMap.get(normalizeAddressForMatch(prop.address));
-      const hit = byId || byAddress;
-      if (hit) {
-        results.push({ id: prop.id, address: prop.address, date: hit.date, source: "sheet" });
-        continue;
-      }
-      // Fallback: REsimpli's own Expected Profit Date (analyticsInfo.assignmentContractDate)
-      if (prop.leadId) {
-        try {
-          const details = await fetchLeadDetails(prop.leadId);
-          const epoch = details?.analyticsInfo?.assignmentContractDate ?? null;
-          const date = etEpochToDateStr(epoch);
-          if (date) {
-            results.push({ id: prop.id, address: prop.address, date, source: "resimpli-fallback" });
-            continue;
-          }
-        } catch (e) {
-          console.error(`sell-dates: REsimpli fallback failed for leadId ${prop.leadId}:`, e.message);
-        }
-      }
-      results.push({ id: prop.id, address: prop.address, date: null, source: null, reason: "No sheet date and no REsimpli fallback date" });
+      const sheetHit = byId || byAddress;
+      // Fallback: REsimpli's own Expected Profit Date — always tried once the sheet has no
+      // date for this property, regardless of WHY (no row for it, or the sheet is down).
+      const fallbackDate = sheetHit ? null : await resimpliFallbackDate(prop);
+      results.push(resolveSellDateRow(prop, { sheetHit, fallbackDate, sheetConnected }));
     }
-    res.status(200).json({ ok: true, rows: results, lastRefresh, isStale });
+    res.status(200).json({ ok: true, rows: results, lastRefresh, isStale, sheetConnected, sheetError });
   } catch (e) {
     console.error("sell-dates failed:", e.message);
     // Degrades gracefully per the HARD RULES — every property goes to "needs info" with a
-    // reason, rather than the Whiteboard crashing because the Sheet/REsimpli call failed.
+    // reason, rather than the Whiteboard crashing. This is the last-resort path for a genuinely
+    // unexpected error (not a sheet-connection failure, which readSheetDateMap already handles
+    // without aborting the REsimpli fallback above).
     res.status(200).json({ ok: false, reason: e.message || "sell-dates failed", rows: properties.map(p => ({ id: p.id, address: p.address, date: null, source: null, reason: "sell-dates lookup failed" })) });
   }
 }

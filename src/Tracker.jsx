@@ -8575,6 +8575,11 @@ function WhiteboardPage({ data, update }) {
         </>)}
       </div>
 
+      {sellDatesResult.sheetConnected===false && (
+        <div className="mb-4 rounded-xl px-3 py-2 text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+          ⚠️ Sell-dates sheet not connected (server env var <code className="font-mono">GOOGLE_SERVICE_ACCOUNT_JSON</code> missing or invalid{sellDatesResult.sheetError?`: ${sellDatesResult.sheetError}`:""}) — using REsimpli fallback dates only.
+        </div>
+      )}
       {sellDatesResult.lastRefresh && (
         <div className={`mb-4 rounded-xl px-3 py-2 text-[11px] font-semibold ${sellDatesResult.isStale?"bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800":"text-slate-400 dark:text-zinc-500"}`}>
           {sellDatesResult.isStale?"⚠️ ":""}Sell-dates sheet last checked {new Date(sellDatesResult.lastRefresh).toLocaleString()}

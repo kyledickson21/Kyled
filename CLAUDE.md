@@ -866,13 +866,24 @@ of rolling it" checkbox, set from `WhiteboardSellCard`).
   via a service-account JWT (`GOOGLE_SERVICE_ACCOUNT_JSON`, `api/_google-sheets-client.mjs` —
   Node's built-in `crypto` signs the JWT, no googleapis dependency added), reusing
   `normalizeAddressForMatch` from `resimpli-shared.mjs`. Falls back to REsimpli's
-  `analyticsInfo.assignmentContractDate` when the sheet has no date; "needs info" when neither
-  does. The sheet's "Dashboard Status" tab has a cell literally labeled "Last Checked" with an
-  adjacent value like `"2026-11-16 14:11:12"` (no "T", no timezone — a plain America/New_York
-  wall-clock string, confirmed against live data) — parsed via
+  `analyticsInfo.assignmentContractDate` when the sheet has no date for a property; "needs
+  info" only when neither has one. **If the Sheet itself can't be read at all** (missing/
+  invalid `GOOGLE_SERVICE_ACCOUNT_JSON`, confirmed live: `"GOOGLE_SERVICE_ACCOUNT_JSON is not
+  set"`, or any other Sheets API error) — a bug fixed Nov 16 4:34pm: this used to abort the
+  whole request and send every selling property straight to Needs Info, skipping the REsimpli
+  fallback entirely. `readSheetDateMap()` now catches that failure on its own, and the
+  per-property loop still tries the REsimpli fallback for every property regardless of why the
+  sheet had no date for it (`resolveSellDateRow(prop, {sheetHit, fallbackDate,
+  sheetConnected})` — the pure decision, unit-tested directly); a property lands in Needs Info
+  only when the fallback also has nothing. The response carries `sheetConnected`/`sheetError`,
+  and the Whiteboard shows an amber board-level note naming `GOOGLE_SERVICE_ACCOUNT_JSON` when
+  `sheetConnected` is false. The sheet's "Dashboard Status" tab has a cell literally labeled
+  "Last Checked" with an adjacent value like `"2026-11-16 14:11:12"` (no "T", no timezone — a
+  plain America/New_York wall-clock string, confirmed against live data) — parsed via
   `etLocalStringToUtcIso` (`whiteboard-forecast.mjs`, the DST-correct reverse of
   `etEpochToDateStr`) and shown on the Whiteboard page as "last checked \<time\> (Xh ago)",
-  flagged amber when over 26h old. The sell card's day is `saleDate` + 1 business day (the
+  flagged amber when over 26h old (skipped entirely while the sheet is disconnected — nothing
+  to check). The sell card's day is `saleDate` + 1 business day (the
   existing inflow-clearing rule, applied once up front since this card is placed automatically
   rather than dragged); amount = `sellCashAmount()` (`whiteboard-forecast.mjs`) = purchase
   price − every active hard loan's principal (draws excluded — cash close) − every **checked**
@@ -949,18 +960,19 @@ of rolling it" checkbox, set from `WhiteboardSellCard`).
   in `monthlyLoanPayment()`'s scope and still isn't.
 - **Tests**: a real test suite, checked into the repo at `tests/*.test.mjs`, run via
   `npm test` (`node --test tests/*.test.mjs`, Node's built-in test runner — no new dependency).
-  45 tests across `loan-schedule-shared.test.mjs`, `whiteboard-forecast.test.mjs`,
-  `upcoming-buys.test.mjs`, `resimpli-client.test.mjs`, and `resimpli-shared.test.mjs` (the
-  REsimpli matcher tests, now checked in rather than scratch-only) — covering, among other
-  things, the exact Red Bank $78,089.68 sanity check, a checked private lender's principal
-  being subtracted, free-text cash and "Nov 21, 2026"-style date parsing, the ET-midnight
-  conversion across a DST boundary both directions (epoch→date and the Sheet's wall-clock
-  string→UTC), soonest-date selection, a past-or-missing date routing to Needs Info (including
-  the "both dates differ" case and the stale-contract-date-is-an-extension case, 3434 Reaver),
-  the `/lead/details` wrapper unwrap and `preferenceAnswers` lookup, `investmentTitle`
-  filtering (including the "no type at all" and wholesale cases), the draw-inclusive monthly
-  payment exceeding the old flat estimate, and the window-filtered totals. All 47 pass as of
-  this writing.
+  54 tests across `loan-schedule-shared.test.mjs`, `whiteboard-forecast.test.mjs`,
+  `upcoming-buys.test.mjs`, `resimpli-client.test.mjs`, `resimpli-shared.test.mjs` (the
+  REsimpli matcher tests, now checked in rather than scratch-only), and `sell-dates.test.mjs`
+  — covering, among other things, the exact Red Bank $78,089.68 sanity check, a checked
+  private lender's principal being subtracted, free-text cash and "Nov 21, 2026"-style date
+  parsing, the ET-midnight conversion across a DST boundary both directions (epoch→date and
+  the Sheet's wall-clock string→UTC), soonest-date selection, a past-or-missing date routing to
+  Needs Info (including the "both dates differ" case and the stale-contract-date-is-an-
+  extension case, 3434 Reaver), the sell-dates sheet-unreachable-but-REsimpli-fallback-still-
+  works case, the `/lead/details` wrapper unwrap and `preferenceAnswers` lookup,
+  `investmentTitle` filtering (including the "no type at all" and wholesale cases), the
+  draw-inclusive monthly payment exceeding the old flat estimate, and the window-filtered
+  totals. All 54 pass as of this writing.
 - **Setup still needed before this is usable**: `MERCURY_API_TOKEN` (a read-only Mercury API
   token for the Master account) and `GOOGLE_SERVICE_ACCOUNT_JSON` (the full service-account
   JSON key, shared as a Viewer on the Office Dashboard Sheet) — both server-side-only env vars
