@@ -78,6 +78,30 @@ export function etEpochToDateStr(epochMs) {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
+// The reverse of etEpochToDateStr — converts a "YYYY-MM-DD HH:MM:SS" (or with a "T" in place
+// of the space) wall-clock timestamp, assumed to be America/New_York local time with no
+// timezone marker (the Office Dashboard Sheet's "Last Checked" cell, confirmed by Kyle), to a
+// UTC ISO string. DST-correct: re-derives the real UTC↔ET offset at that instant via Intl
+// (formatToParts, never a hardcoded 4/5-hour guess), the same technique etEpochToDateStr uses
+// in the other direction.
+export function etLocalStringToUtcIso(str) {
+  if (!str) return null;
+  const m = String(str).trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const [y, mo, d, h, mi, s] = m.slice(1).map(Number);
+  const guess = Date.UTC(y, mo - 1, d, h, mi, s);
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const parts = fmt.formatToParts(new Date(guess));
+  const get = type => Number(parts.find(p => p.type === type)?.value);
+  const hour24 = get("hour") === 24 ? 0 : get("hour"); // some Intl implementations give "24" for midnight
+  const shownInET = Date.UTC(get("year"), get("month") - 1, get("day"), hour24, get("minute"), get("second"));
+  const offsetMs = guess - shownInET;
+  return new Date(guess + offsetMs).toISOString();
+}
+
 // Earliest of any number of YYYY-MM-DD date strings (nulls/blanks ignored). Returns null when
 // none are given — the caller routes that to "Needs info" rather than guessing a date.
 export function soonestDate(...dates) {
@@ -92,6 +116,16 @@ export function soonestDate(...dates) {
 export function isPastDate(dateStr, today) {
   if (!dateStr) return false;
   return dateStr < today;
+}
+
+// Filters a list of day-bearing items down to the ones whose day falls inside dayCols — used
+// so a headline total (Total In/Out) never includes a card scheduled beyond the visible
+// 45/90-day forecast window, matching what the running balance itself already counts.
+// `dayOf` defaults to reading `.day` directly; pass it explicitly when the item's settlement
+// day isn't that field verbatim (e.g. a manual card whose day needs wbEffectiveDate first).
+export function withinWindow(items, dayCols, dayOf = item => item.day) {
+  const set = new Set(dayCols);
+  return items.filter(item => set.has(dayOf(item)));
 }
 
 // Running cash balance across a day window, given a starting balance and a map of

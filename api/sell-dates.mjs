@@ -26,7 +26,7 @@
 import { fetchSheetValues } from "./_google-sheets-client.mjs";
 import { fetchLeadDetails } from "./_resimpli-client.mjs";
 import { normalizeAddressForMatch } from "../src/resimpli-shared.mjs";
-import { etEpochToDateStr } from "../src/whiteboard-forecast.mjs";
+import { etEpochToDateStr, etLocalStringToUtcIso } from "../src/whiteboard-forecast.mjs";
 
 const SHEET_ID = "1sLr3xx99bjWgE8njqfg84arzgHUmHoJaetmSji6TDD8";
 const ADMIN_EMAIL = "kyle@nexushomesoh.com";
@@ -89,17 +89,30 @@ function normalizeSheetDate(raw) {
   return null;
 }
 
-// Looks for a recognizable "last refresh" timestamp on the "Dashboard Status" tab — scans
-// every cell for one that parses as an ISO/epoch timestamp, since the exact cell address isn't
-// verified. Returns null (staleness simply not shown) rather than guessing wrong.
+// Looks for the "Last Checked" timestamp on the "Dashboard Status" tab — confirmed by Kyle to
+// be a cell literally labeled "Last Checked" with an adjacent value like "2026-11-16 14:11:12"
+// (no "T", no timezone marker — a plain America/New_York wall-clock string). Falls back to a
+// generic scan for anything timestamp-shaped in case the label text or layout ever differs.
+// Returns null (staleness simply not shown) rather than guessing wrong.
 async function fetchLastRefresh() {
   try {
     const rows = await fetchSheetValues(SHEET_ID, "Dashboard Status");
     for (const row of rows) {
+      const labelIdx = row.findIndex(c => (c || "").trim().toLowerCase() === "last checked");
+      if (labelIdx !== -1 && row[labelIdx + 1]) {
+        const parsed = etLocalStringToUtcIso(row[labelIdx + 1]);
+        if (parsed) return parsed;
+      }
+    }
+    for (const row of rows) {
       for (const cell of row) {
         if (!cell) continue;
         const s = String(cell).trim();
-        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) return new Date(s).toISOString();
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*[Zz]|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s).toISOString();
+        if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(s)) {
+          const parsed = etLocalStringToUtcIso(s);
+          if (parsed) return parsed;
+        }
         if (/^\d{10,13}$/.test(s)) return new Date(Number(s) > 1e12 ? Number(s) : Number(s) * 1000).toISOString();
       }
     }

@@ -10,7 +10,7 @@ import {
   TODAY, daysBetween, yearDays, drawGross, defaultLenderPaymentSettings, resolveLenderSettings,
   calcBalance, calcMonthlyPaidPortion, calcIntEarned, hardPaymentSchedule,
 } from './loan-schedule-shared.mjs'
-import { nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary } from './whiteboard-forecast.mjs'
+import { nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary, withinWindow } from './whiteboard-forecast.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -8108,6 +8108,17 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
   );
 }
 
+// The real amount due on `first` for this loan — the History-tab schedule's own entry for
+// that month (principal plus any funded draws, prorated exactly like the schedule), not the
+// flat principal*rate/12 estimate monthlyLoanPayment() gives. Falls back to that flat estimate
+// when the schedule has no entry yet for that month (e.g. still inside a grace period), so a
+// loan that would otherwise show a card here doesn't just silently lose it.
+const scheduledLoanPaymentFor = (loan, data, first) => {
+  const sched = hardPaymentSchedule(loan, data, first);
+  const last = sched[sched.length - 1];
+  return last && last.rawDate === first ? last.amount : monthlyLoanPayment(loan);
+};
+
 // Read-only cards auto-generated from every active monthly-pay loan (hard money's monthly
 // interest, or any other monthly_fixed loan) — one per loan for each 1st-of-the-month date
 // in view, since that's always the bill date (arrears). Purely computed each render, never
@@ -8129,7 +8140,7 @@ const upcomingLoanPayments = (data, dayCols) => {
         propId: l._propId,
         address: l._addr,
         lenderName: l.lenderName,
-        amount: monthlyLoanPayment(l),
+        amount: scheduledLoanPaymentFor(l, data, first),
         day: first,
       });
     }
@@ -8313,9 +8324,14 @@ function WhiteboardPage({ data, update }) {
   const [buysResult,setBuysResult] = useState({loading:true, rows:[], needsInfo:[]});
 
   // Which tracker properties are selling: resimpli stage Under Contract on the sell side
-  // (Inventory pipeline specifically — not the sort/grouping-folded rental mapping).
+  // (Inventory pipeline specifically — not the sort/grouping-folded rental mapping). Live data
+  // can carry recordType:null for an inventory property even once the sync's own
+  // classification gap is fixed (an old sync run, or a hand-edited record) — a stored
+  // resimpli.url containing "/inventory/" is also treated as inventory, since REsimpli's own
+  // inventory record links always carry that in the path.
+  const isInventoryResimpli = p => p.resimpli?.recordType==="inventory" || (p.resimpli?.url||"").includes("/inventory/");
   const sellingProps = useMemo(() => (data.properties||[]).filter(p =>
-    !p.dateSold && p.resimpli?.recordType==="inventory" && p.resimpli?.stage==="Under Contract"
+    !p.dateSold && isInventoryResimpli(p) && p.resimpli?.stage==="Under Contract"
   ), [data.properties]);
   const sellingPropsKey = sellingProps.map(p=>p.id).join(",");
 
@@ -8355,7 +8371,13 @@ function WhiteboardPage({ data, update }) {
     const hardLoans = active.filter(l=>l.loanType==="hard");
     const privateLoans = active.filter(l=>l.loanType==="private");
     const hardPrincipalTotal = hardLoans.reduce((s,l)=>s+(l.principal||0),0);
-    const hardInterestPaidTotal = hardLoans.reduce((s,l)=>s+calcIntEarned(l, dateInfo.date, data),0);
+    // Real monthly-paid interest only — calcIntEarned's "closing"-paymentType branch returns
+    // interest still ACCRUING toward closing (not yet paid), which must never be added back
+    // here (see the sell-amount formula's own "never interest paid at closing" rule); summing
+    // hardPaymentSchedule's actual due-by-date payments directly is correct for every payment
+    // type (monthly_rate/monthly_fixed/monthly_rate_split get their real schedule; "closing"
+    // correctly contributes $0, since none of its interest is paid until the sale itself).
+    const hardInterestPaidTotal = hardLoans.reduce((s,l)=>s+hardPaymentSchedule(l, data, dateInfo.date).reduce((s2,p)=>s2+p.amount,0),0);
     const checkedPrivatePrincipalTotal = privateLoans.filter(l=>payingBack[prop.id]?.[l.id]).reduce((s,l)=>s+(l.principal||0),0);
     const amount = sellCashAmount({ purchasePrice: prop.purchasePrice||0, hardPrincipalTotal, checkedPrivatePrincipalTotal, hardInterestPaidTotal });
     sellCardsInfo.push({
@@ -8468,9 +8490,14 @@ function WhiteboardPage({ data, update }) {
   // or this total wouldn't match what the day columns actually add up to. A bill dragged onto
   // a day counts here exactly like any other dated card. Due Now shows its own total on its
   // own box for bills that haven't been given a day yet.
-  const scheduledCards = cards.filter(c=>c.day);
-  const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0) + sellCardsInfo.reduce((s,c)=>s+(c.amount||0),0);
-  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + autoCards.reduce((s,c)=>s+(c.amount||0),0) + buyCardsInfo.reduce((s,c)=>s+(c.amount||0),0);
+  // Only count a card toward the totals when its actual settlement day (wbEffectiveDate — the
+  // same day netFor/the running balance already use) falls inside the visible 45/90-day
+  // window — a card dated beyond it isn't part of this forecast and shouldn't inflate the
+  // headline In/Out figures. withinWindow (whiteboard-forecast.mjs) is the same pure filter
+  // used/tested for this, so the totals can't drift from what the day columns themselves add up to.
+  const scheduledCards = withinWindow(cards.filter(c=>c.day), dayCols, wbEffectiveDate);
+  const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0) + withinWindow(sellCardsInfo, dayCols).reduce((s,c)=>s+(c.amount||0),0);
+  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + withinWindow(autoCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(buyCardsInfo, dayCols).reduce((s,c)=>s+(c.amount||0),0);
   const [sbInput,setSbInput] = useState(String(startingBalanceManual||""));
   useEffect(()=>{ setSbInput(String(startingBalanceManual||"")); }, [startingBalanceManual]);
 
@@ -8547,6 +8574,13 @@ function WhiteboardPage({ data, update }) {
           </div>
         </>)}
       </div>
+
+      {sellDatesResult.lastRefresh && (
+        <div className={`mb-4 rounded-xl px-3 py-2 text-[11px] font-semibold ${sellDatesResult.isStale?"bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800":"text-slate-400 dark:text-zinc-500"}`}>
+          {sellDatesResult.isStale?"⚠️ ":""}Sell-dates sheet last checked {new Date(sellDatesResult.lastRefresh).toLocaleString()}
+          {" "}({Math.round((Date.now()-new Date(sellDatesResult.lastRefresh).getTime())/36e5)}h ago){sellDatesResult.isStale?" — more than 26h old, sell dates may be out of date":""}
+        </div>
+      )}
 
       {needsInfoAll.length>0 && (
         <div className="mb-4 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 p-3">
@@ -10203,13 +10237,18 @@ function DashboardPage({ data, update, onNavigateTab }) {
   ).filter(x => x.eligible).sort((a, b) => b.remaining - a.remaining);
   const drawsAvailable = drawsAvailableList.reduce((s, x) => s + x.remaining, 0);
 
-  const hardMonthly = allActiveLoans.filter(l => l.loanType === "hard").reduce((s, l) => s + monthlyLoanPayment(l), 0);
-  const hardMonthlyLoans = allActiveLoans.filter(l => l.loanType === "hard" && monthlyLoanPayment(l) > 0);
-
   // Next 1st-of-the-month hard money payment date (recurring, always recomputed from today)
   const [nfY, nfM, nfD] = TODAY.split("-").map(Number);
   const nextFirstDate = nfD <= 1 ? new Date(nfY, nfM - 1, 1) : new Date(nfY, nfM, 1);
+  const nextFirstStr = `${nextFirstDate.getFullYear()}-${String(nextFirstDate.getMonth()+1).padStart(2,"0")}-${String(nextFirstDate.getDate()).padStart(2,"0")}`;
   const daysToNextFirst = Math.floor((nextFirstDate - new Date(TODAY)) / 864e5);
+
+  // scheduledLoanPaymentFor (declared near upcomingLoanPayments, Whiteboard section) gives
+  // the real History-tab schedule amount for a given 1st-of-month date — principal plus any
+  // funded draws, prorated exactly like the schedule — instead of the flat principal*rate/12
+  // estimate monthlyLoanPayment() gives on its own.
+  const hardMonthly = allActiveLoans.filter(l => l.loanType === "hard").reduce((s, l) => s + scheduledLoanPaymentFor(l, data, nextFirstStr), 0);
+  const hardMonthlyLoans = allActiveLoans.filter(l => l.loanType === "hard" && monthlyLoanPayment(l) > 0);
 
   // Unified upcoming-due schedule: fixed-maturity loans + recurring hard money interest
   const dueSchedule = [

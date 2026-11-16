@@ -26,7 +26,7 @@
 // when falling back to a full sync) — never creates a property, and never touches
 // resimpliReview on the single-lead path (nothing new to report there from one lead).
 
-import { fetchLeadDetails, fetchRawPipelineLists, seedStatusMap, classifyOneRecord } from "./_resimpli-client.mjs";
+import { fetchLeadDetails, fetchRawPipelineLists, seedStatusMap, applyKnownUnderContractIds, classifyOneRecord } from "./_resimpli-client.mjs";
 import { matchResimpliRecords, storedIdsFor } from "../src/resimpli-shared.mjs";
 import { readProperties, applySync, buildResimpliChange, computeFullDiff } from "./_sync-core.mjs";
 
@@ -52,7 +52,7 @@ async function syncOneLead(leadId) {
   const existing = properties.find(p => storedIdsFor(p).has(leadId));
   const leadData = await fetchLeadDetails(leadId);
   const rawPipelineLists = await fetchRawPipelineLists();
-  const statusMap = seedStatusMap(rawPipelineLists);
+  const statusMap = applyKnownUnderContractIds(seedStatusMap(rawPipelineLists));
   const record = classifyOneRecord(
     { _id: leadId, address: leadData.address, mainStatusId: leadData.mainStatusId ?? leadData.pipelineData?.mainStatusId, mainStatusTitle: leadData.mainStatusTitle },
     statusMap,

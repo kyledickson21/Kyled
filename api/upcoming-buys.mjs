@@ -11,13 +11,11 @@
 // blank cash figure, go to "needsInfo" instead of the forecast — never guessed, never written
 // to nexus_data (this is pure read-through from REsimpli; nothing here is persisted).
 //
-// ⚠️ /lead/details' custom-question-answer shape is NOT independently verified against a live
-// call in this session (same caveat as resimpli-webhook.mjs's payload) — findCustomAnswer
-// below searches every plausible location for a {questionId, answer} pair rather than
-// hardcoding one path, and a lead whose answer can't be found this way lands in needsInfo
-// with a clear reason instead of silently becoming $0. Confirm the real shape against a live
-// response once this is deployed, and simplify findCustomAnswer if it turns out to live in
-// one consistent place.
+// Verified against live data (Kyle, Nov 16): `details` (from fetchLeadDetails, which now
+// unwraps the real {statusCode,data:{leadData}} response — see _resimpli-client.mjs) carries
+// `investmentTitle` at its top level, and custom-question answers live at
+// `details.questions.preferenceAnswers[]` as `{questionId, value}`. findCustomAnswer checks
+// that confirmed path first, with the old guessed shapes kept only as a harmless fallback.
 
 import { fetchAllRecords, fetchLeadDetails } from "./_resimpli-client.mjs";
 import { parseCashAmount, etEpochToDateStr, soonestDate, isPastDate } from "../src/whiteboard-forecast.mjs";
@@ -39,15 +37,17 @@ async function isAuthorizedCaller(req) {
   return data.user.email === ADMIN_EMAIL;
 }
 
-// Searches every plausible shape a custom question's answer might come back in from
-// /lead/details — see the file header caveat. Returns the raw answer value (string/number) or
-// null if nothing matching questionId is found anywhere searched.
-function findCustomAnswer(details, questionId) {
-  const arrays = [
-    details?.customQuestions, details?.customFieldAnswers, details?.customFields,
-    details?.leadData?.customQuestions, details?.leadData?.customFieldAnswers, details?.leadData?.customFields,
-    details?.pipelineData?.customQuestions, details?.leadData?.pipelineData?.customQuestions,
-  ].filter(Array.isArray);
+// Reads one custom question's answer from the confirmed real shape —
+// details.questions.preferenceAnswers[], an array of {questionId, value} — falling back to a
+// few other plausible shapes (never hit in practice, kept only as a defensive net) if REsimpli
+// ever changes the wrapper again. Returns the raw answer value (string/number) or null.
+export function findCustomAnswer(details, questionId) {
+  const preferenceAnswers = details?.questions?.preferenceAnswers;
+  if (Array.isArray(preferenceAnswers)) {
+    const hit = preferenceAnswers.find(q => String(q?.questionId ?? "") === questionId);
+    if (hit) return hit.value ?? null;
+  }
+  const arrays = [details?.customQuestions, details?.customFieldAnswers, details?.customFields, details?.pipelineData?.customQuestions].filter(Array.isArray);
   for (const arr of arrays) {
     const hit = arr.find(q => String(q?.questionId ?? q?._id ?? q?.id ?? "") === questionId);
     if (hit) return hit.answer ?? hit.value ?? hit.response ?? hit.text ?? null;
@@ -55,31 +55,76 @@ function findCustomAnswer(details, questionId) {
   return null;
 }
 
-function investmentTypeOf(details, lead) {
-  return details?.investmentType || details?.leadData?.investmentType || details?.investment_type
-    || lead?.investmentType || lead?.investment_type || null;
+// Confirmed real field: details.investmentTitle (top level of the unwrapped leadData).
+export function investmentTypeOf(details) {
+  return details?.investmentTitle || null;
 }
 
 function closingDateEpochOf(details) {
-  return details?.analyticsInfo?.closingDate ?? details?.leadData?.analyticsInfo?.closingDate ?? null;
+  return details?.analyticsInfo?.closingDate ?? null;
 }
 
-// The contract-date custom question's own text format isn't verified either — handles the
-// common forms (already YYYY-MM-DD, or MM/DD/YYYY) and returns null for anything else, which
-// just means that date simply doesn't contribute to the soonest-of comparison.
-function normalizeDateText(raw) {
+const MONTH_NAMES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+// The contract-date custom question's text isn't constrained to one format — handles
+// YYYY-MM-DD, MM/DD/YYYY, and "Mon D, YYYY" / "Month D, YYYY" (e.g. "Nov 21, 2026",
+// "November 21, 2026", with or without the comma). Returns null for anything else, which just
+// means that date simply doesn't contribute to the soonest-of comparison. Parsed by hand
+// (never via `new Date(str)`) so the result doesn't depend on the server process's local
+// timezone for a non-ISO, date-only string.
+export function normalizeDateText(raw) {
   if (!raw) return null;
   const s = String(raw).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (mdy) { const [, m, d, y] = mdy; return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
+  const monthName = s.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})/);
+  if (monthName) {
+    const [, mon, d, y] = monthName;
+    const idx = MONTH_NAMES.indexOf(mon.slice(0, 3).toLowerCase());
+    if (idx !== -1) return `${y}-${String(idx + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
   return null;
 }
 
-const todayStr = () => {
+export const todayStr = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+// The pure per-lead decision: given one REsimpli lead (the /lead/list item — just used for its
+// id/address) and its already-fetched, already-unwrapped /lead/details object, decide whether
+// it's a scheduled buy, a "needs info" exclusion, or silently out of scope (wrong investment
+// type) — extracted out of the handler below so it can be unit-tested directly with synthetic
+// `details` objects, no network/REsimpli mocking required. Returns exactly one of
+// {row} | {needsInfo} | {skip:true}.
+export function classifyBuyLead(lead, details, today) {
+  const address = lead.address || "(no address)";
+  const leadId = String(lead._id);
+  // Only Fix and Flip / Rental are in scope at all — wholesale, any other investment type,
+  // and a lead with no investment type set are all silently out of scope (not a "needs info"
+  // item; there was never anything to forecast here).
+  const investmentType = investmentTypeOf(details);
+  if (!IN_SCOPE_INVESTMENT_TYPES.test(investmentType || "")) return { skip: true };
+
+  const cashText = findCustomAnswer(details, QUESTION_CASH_NEEDED);
+  const amount = parseCashAmount(cashText);
+  const dateFromAnalytics = etEpochToDateStr(closingDateEpochOf(details));
+  const dateFromContract = normalizeDateText(findCustomAnswer(details, QUESTION_CLOSING_DATE_ON_CONTRACT));
+  const date = soonestDate(dateFromAnalytics, dateFromContract);
+
+  // Shows both source dates when they differ — e.g. a stale contract date that's already past
+  // while REsimpli's own analytics date is still upcoming — so Kyle can see the full picture
+  // and decide by hand instead of either date being silently dropped.
+  const bothDatesNote = (dateFromAnalytics && dateFromContract && dateFromAnalytics !== dateFromContract)
+    ? ` (analytics ${dateFromAnalytics}, contract ${dateFromContract})` : "";
+
+  if (amount == null) return { needsInfo: { leadId, address, reason: "Cash Needed for Closing is missing or unparseable", dateFromAnalytics, dateFromContract } };
+  if (!date) return { needsInfo: { leadId, address, reason: "No closing date found (neither analyticsInfo.closingDate nor the contract-date question)", dateFromAnalytics, dateFromContract } };
+  if (isPastDate(date, today)) return { needsInfo: { leadId, address, reason: `Closing date ${date} is already in the past${bothDatesNote}`, dateFromAnalytics, dateFromContract } };
+
+  return { row: { leadId, address, amount, date, dateFromAnalytics, dateFromContract } };
+}
 
 export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") { res.status(405).json({ error: "GET or POST only" }); return; }
@@ -92,30 +137,16 @@ export default async function handler(req, res) {
     const today = todayStr();
 
     for (const lead of underContract) {
-      const address = lead.address || "(no address)";
       let details;
       try {
         details = await fetchLeadDetails(lead._id);
       } catch (e) {
-        needsInfo.push({ leadId: String(lead._id), address, reason: `Could not fetch lead details: ${e.message}` });
+        needsInfo.push({ leadId: String(lead._id), address: lead.address || "(no address)", reason: `Could not fetch lead details: ${e.message}` });
         continue;
       }
-      const investmentType = investmentTypeOf(details, lead);
-      // Only Fix and Flip / Rental are in scope at all — anything else is silently out of
-      // scope (not a "needs info" item; there was never anything to forecast here).
-      if (investmentType && !IN_SCOPE_INVESTMENT_TYPES.test(investmentType)) continue;
-
-      const cashText = findCustomAnswer(details, QUESTION_CASH_NEEDED);
-      const amount = parseCashAmount(cashText);
-      const dateFromAnalytics = etEpochToDateStr(closingDateEpochOf(details));
-      const dateFromContract = normalizeDateText(findCustomAnswer(details, QUESTION_CLOSING_DATE_ON_CONTRACT));
-      const date = soonestDate(dateFromAnalytics, dateFromContract);
-
-      if (amount == null) { needsInfo.push({ leadId: String(lead._id), address, reason: "Cash Needed for Closing is missing or unparseable" }); continue; }
-      if (!date) { needsInfo.push({ leadId: String(lead._id), address, reason: "No closing date found (neither analyticsInfo.closingDate nor the contract-date question)" }); continue; }
-      if (isPastDate(date, today)) { needsInfo.push({ leadId: String(lead._id), address, reason: `Closing date ${date} is already in the past` }); continue; }
-
-      rows.push({ leadId: String(lead._id), address, amount, date, dateFromAnalytics, dateFromContract });
+      const result = classifyBuyLead(lead, details, today);
+      if (result.row) rows.push(result.row);
+      else if (result.needsInfo) needsInfo.push(result.needsInfo);
     }
     res.status(200).json({ ok: true, rows, needsInfo });
   } catch (e) {
