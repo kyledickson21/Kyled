@@ -119,3 +119,30 @@ export async function runResimpliSync({ dryRun }) {
   if (!res.ok) throw new Error(json.error || res.statusText)
   return json
 }
+
+// Whiteboard cash-flow forecast's three read-only server functions (api/*.mjs, same
+// same-origin-fetch + Supabase-bearer-token pattern as runResimpliSync above). Each one
+// degrades gracefully on its own (returns ok:false with a reason) rather than throwing, so a
+// missing env var or a failed external call never breaks the Whiteboard page — callers check
+// `ok` instead of relying on a catch block here.
+export async function fetchMercuryBalance() {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/api/mercury-balance', { headers: { Authorization: `Bearer ${session?.access_token}` } })
+  return res.json()
+}
+
+export async function fetchSellDates(properties) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/api/sell-dates', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ properties }),
+  })
+  return res.json()
+}
+
+export async function fetchUpcomingBuys() {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/api/upcoming-buys', { headers: { Authorization: `Bearer ${session?.access_token}` } })
+  return res.json()
+}

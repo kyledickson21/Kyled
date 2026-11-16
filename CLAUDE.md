@@ -20,6 +20,12 @@ src/
   supabase.js    ← loadData() / saveData() / subscribeToChanges() + lender-account edge functions
   main.jsx       ← entry point
   index.css      ← Tailwind base
+  resimpli-shared.mjs      ← pure REsimpli pipeline/stage/matching logic, shared with api/*.mjs
+  loan-schedule-shared.mjs ← pure loan balance/interest/billing-schedule math, shared with api/*.mjs
+  whiteboard-forecast.mjs  ← pure Whiteboard forecast arithmetic/date logic, shared with api/*.mjs
+api/
+  resimpli-sync.mjs, resimpli-webhook.mjs, _resimpli-client.mjs, _sync-core.mjs ← REsimpli live sync
+  mercury-balance.mjs, sell-dates.mjs, upcoming-buys.mjs, _google-sheets-client.mjs ← Whiteboard forecast
 ```
 
 ## Branch & Deploy
@@ -815,6 +821,163 @@ HOLD note at the end of this section.
   `claude/build-deploy-app-BIdEz`. The `CRON_SECRET` **GitHub repository secret** is not set
   yet, so `.github/workflows/resimpli-sync.yml`'s 15-minute trigger no-ops until it is — the
   daily Vercel Cron and the manual "Sync Now" button both work regardless.
+
+## Whiteboard Cash-Flow Forecast
+Built on branch `whiteboard-cashflow-forecast` (off `claude/build-deploy-app-BIdEz`), Kyle
+approved 11/16 — **not merged to the live branch yet**, pending his review of the preview.
+Auto-generated, read-only sell/buy cards layered onto the existing manual Whiteboard (see
+"Whiteboard" tab in the component map) — nothing here writes loans/balances/rates/terms/
+payouts/lenders/properties; the only new persisted field is `whiteboard.payingBack`
+(`{[propId]: {[loanId]: true}}`, a per-property "pay this private loan back at closing instead
+of rolling it" checkbox, set from `WhiteboardSellCard`).
+- **Pure logic lives in `src/loan-schedule-shared.mjs`** (the real hard-money billing schedule
+  — `hardPaymentSchedule`, `calcBalance`, `calcMonthlyPaidPortion`, `calcIntEarned`, plus their
+  small dependencies, extracted verbatim from Tracker.jsx the same way `resimpli-shared.mjs`
+  was) and **`src/whiteboard-forecast.mjs`** (sell-amount arithmetic, REsimpli text/date
+  parsing, running-balance/shortfall math) — both dependency-free `.mjs` modules, unit-tested
+  with plain Node, imported by Tracker.jsx and by the server-side `api/*.mjs` functions below.
+  `addHardPayments` (inside `computeHistoryEvents`) is now a thin wrapper around
+  `hardPaymentSchedule` — same History-tab output as before, `loanId` still keyed off the
+  schedule's `rawDate` (unshifted 1st-of-month), not the weekend-shifted `date`, so no
+  existing event's identity changed.
+- **Loan card fix**: `calcIntEarned(l, asOf, data)` takes an optional third `data` arg — when
+  passed, a `monthly_rate`/`monthly_fixed` loan's figure sums the real `hardPaymentSchedule`
+  (draws included) instead of the old principal-only continuous accrual. Every pre-existing
+  call site still omits `data` and is unchanged; only the Properties page's expanded loan row
+  (the one Kyle flagged) passes it. Other `calcIntEarned` call sites (LenderDetailPage totals,
+  AllLoansPage, LoanDetailPage, Dashboard) were deliberately left on the old estimate — out of
+  the requested scope.
+- **Starting cash — Mercury**: `api/mercury-balance.mjs` reads `MERCURY_API_TOKEN` and returns
+  the "Master" checking account's (••3564) balance. Falls back to the existing manual
+  `whiteboard.startingBalance` input (with an on-screen note) if the token's missing or the
+  call fails — never crashes. Mercury's exact response shape here is built from their public
+  docs, not verified against a live call from this session.
+- **Money in — selling**: tracker properties under contract to sell. `isInventoryResimpli(p)`
+  (Tracker.jsx, Whiteboard section) treats a property as Inventory when either
+  `resimpli.recordType==="inventory"` OR `resimpli.url` contains `"/inventory/"` — live data
+  showed a property can be a real sell-side Inventory record with `recordType` still `null`
+  (an old sync run, or the gap `backfillUnderContract` below didn't always close), so the URL
+  check catches those too. Combined with `resimpli.stage==="Under Contract"` (the literal
+  sell-side pipeline stage, not the rental-folded sort/group mapping). `api/sell-dates.mjs`
+  takes `{id,address,leadId}` for each from the browser (the Whiteboard already has live
+  property data; this endpoint's only job is a credential-gated lookup) and matches them
+  against the Dashboard Bot Office Dashboard Google Sheet (id
+  `1sLr3xx99bjWgE8njqfg84arzgHUmHoJaetmSji6TDD8`, tab "Properties", column `Sell_ClosingDate`)
+  via a service-account JWT (`GOOGLE_SERVICE_ACCOUNT_JSON`, `api/_google-sheets-client.mjs` —
+  Node's built-in `crypto` signs the JWT, no googleapis dependency added), reusing
+  `normalizeAddressForMatch` from `resimpli-shared.mjs`. Falls back to REsimpli's
+  `analyticsInfo.assignmentContractDate` when the sheet has no date for a property; "needs
+  info" only when neither has one. **If the Sheet itself can't be read at all** (missing/
+  invalid `GOOGLE_SERVICE_ACCOUNT_JSON`, confirmed live: `"GOOGLE_SERVICE_ACCOUNT_JSON is not
+  set"`, or any other Sheets API error) — a bug fixed Nov 16 4:34pm: this used to abort the
+  whole request and send every selling property straight to Needs Info, skipping the REsimpli
+  fallback entirely. `readSheetDateMap()` now catches that failure on its own, and the
+  per-property loop still tries the REsimpli fallback for every property regardless of why the
+  sheet had no date for it (`resolveSellDateRow(prop, {sheetHit, fallbackDate,
+  sheetConnected})` — the pure decision, unit-tested directly); a property lands in Needs Info
+  only when the fallback also has nothing. The response carries `sheetConnected`/`sheetError`,
+  and the Whiteboard shows an amber board-level note naming `GOOGLE_SERVICE_ACCOUNT_JSON` when
+  `sheetConnected` is false. The sheet's "Dashboard Status" tab has a cell literally labeled
+  "Last Checked" with an adjacent value like `"2026-11-16 14:11:12"` (no "T", no timezone — a
+  plain America/New_York wall-clock string, confirmed against live data) — parsed via
+  `etLocalStringToUtcIso` (`whiteboard-forecast.mjs`, the DST-correct reverse of
+  `etEpochToDateStr`) and shown on the Whiteboard page as "last checked \<time\> (Xh ago)",
+  flagged amber when over 26h old (skipped entirely while the sheet is disconnected — nothing
+  to check). The sell card's day is `saleDate` + 1 business day (the
+  existing inflow-clearing rule, applied once up front since this card is placed automatically
+  rather than dragged); amount = `sellCashAmount()` (`whiteboard-forecast.mjs`) = purchase
+  price − every active hard loan's principal (draws excluded — cash close) − every **checked**
+  private loan's principal (unchecked, including the 0%-rate internal Nexus lines, assumed to
+  roll) + hard-money interest already paid through the sale date — summed directly from
+  `hardPaymentSchedule(loan, data, saleDate)`'s own payments (NOT `calcIntEarned`, which for a
+  `paymentType:"closing"` hard loan returns interest still accruing toward closing, not yet
+  paid — adding that back would double-count interest the sell formula must never include, per
+  its own "never interest paid at closing" rule). `WhiteboardSellCard`'s expandable breakdown
+  lists each piece plus a "paying back?" checkbox per private loan.
+- **REsimpli sync — Inventory "Under Contract" classification**: `getPipelineList`'s own gap
+  (no "Under Contract" status for Lead/Inventory — see "REsimpli Live Sync" above) is bridged
+  by `backfillUnderContract`, which calls `/lead/details` on a sample record — that call used
+  the same wrapper-unwrap bug fixed below, so it silently found nothing for Inventory on at
+  least one real sync run, leaving `recordType:null` on under-contract sell properties.
+  `applyKnownUnderContractIds` (`api/_resimpli-client.mjs`, used by both the full sync's
+  `buildStatusMap` and the webhook's single-lead path) now also seeds two confirmed, hardcoded
+  `mainStatusId`s — `6aa4dcfad18014f8fc6397f5` (Lead pipeline's Under Contract) and
+  `6aa4dcfad18014f8fc6397d4` (Inventory pipeline's own, distinct Under Contract) — but only to
+  fill a gap neither the raw pipeline lists nor the live backfill already resolved, so it never
+  overrides a real discovered mapping.
+- **`/lead/details`' real response shape — now verified against live data** (Kyle, Nov 16):
+  `{statusCode, data:{leadData}}`, not the `{leadData}` shape every caller originally guessed —
+  `unwrapLeadDetails`/`fetchLeadDetails` (`api/_resimpli-client.mjs`) fixed to unwrap
+  `data.leadData` first (old guessed paths kept only as a harmless fallback). This was silently
+  breaking the webhook's single-lead classification too (an address-less record always failed
+  `classifyOneRecord`'s guard), not just the sync's backfill above. The unwrapped `leadData`'s
+  custom-question answers live at `leadData.questions.preferenceAnswers[]` as
+  `{questionId, value}` (`findCustomAnswer`, `api/upcoming-buys.mjs`), and its investment type
+  is the top-level `leadData.investmentTitle` field (`investmentTypeOf`) — NOT a field named
+  `investmentType`, which doesn't exist and was silently always `null`, letting every lead
+  (wholesale included) through.
+- **Money out — buying**: `api/upcoming-buys.mjs` reads REsimpli leads via the existing
+  `fetchAllRecords`/`fetchLeadDetails` helpers, filtered to `mainStatusId
+  "6aa4dcfad18014f8fc6397f5"` (Under Contract) and `investmentTitle` matching Fix and Flip or
+  Rental — a lead with no investment type set, or any other value (wholesale included), is
+  silently out of scope, never "needs info". The pure per-lead decision is
+  `classifyBuyLead(lead, details, today)`, returning `{row}` / `{needsInfo}` / `{skip:true}`.
+  Amount parses the "Cash Needed for Closing" custom question (`parseCashAmount` — robust
+  free-text $ parsing). Date is normally the soonest of `analyticsInfo.closingDate` (ms epoch;
+  converted via the real America/New_York timezone, not a hardcoded UTC offset, so DST doesn't
+  shift the day — `etEpochToDateStr`) and the "Closing Date on Contract" custom question
+  (`normalizeDateText` — handles `YYYY-MM-DD`, `MM/DD/YYYY`, and `"Mon D, YYYY"`/
+  `"Month D, YYYY"`, e.g. `"Nov 21, 2026"`) — **except** when the contract-date answer has
+  already slipped into the past while `analyticsInfo.closingDate` is still today or later
+  (`contractIsStale` in `classifyBuyLead`): that's treated as the deal having been extended, so
+  the analytics date is used instead of excluding the lead (3434 Reaver: contract date 10/28
+  already past, REsimpli's own analytics date 11/20 still upcoming → scheduled on 11/20, not
+  sent to Needs Info). Either way, whenever the two source dates differ, the resulting row (or
+  needsInfo entry) carries BOTH (`dateFromAnalytics`/`dateFromContract`), and
+  `WhiteboardBuyCard` shows both with "— using \<date\>" so Kyle sees the full picture rather
+  than either date being silently dropped. A missing/unparseable cash figure, a missing date,
+  or a date still past after the extension check goes to "needs info", never the forecast.
+- **Forecast view**: a 45d/90d window toggle; `computeForecastSummary` (`whiteboard-
+  forecast.mjs`) returns the running balance per day plus first shortfall, largest shortfall,
+  and the date it's positive again, shown as stat tiles. A day's balance goes negative in red.
+  The headline Total In/Out tiles only count a card whose actual settlement day
+  (`wbEffectiveDate`) falls inside the visible window — `withinWindow` (`whiteboard-
+  forecast.mjs`) is the one shared, tested filter both the totals and (indirectly, via
+  `netFor`) the running balance use, so they can't drift from each other. A "Needs Info" panel
+  lists every excluded sell/buy deal and why. Auto cards (`WhiteboardSellCard`/
+  `WhiteboardBuyCard`, alongside the existing `WhiteboardPaymentCard`) are visually distinct
+  from manual cards and can't be edited or dragged.
+- **Hard-money monthly payment amounts now include funded draw interest** — both the
+  Dashboard's "💸 Hard Money — Due 1st of Month" card and the Whiteboard's 1st-of-month auto
+  loan-payment cards used `monthlyLoanPayment(loan)` (a flat `principal × rate ÷ 12` estimate
+  that ignores any rehab draw facility entirely). `scheduledLoanPaymentFor(loan, data, first)`
+  (Whiteboard section, used by both) instead takes `hardPaymentSchedule(loan, data, first)`'s
+  own entry for that exact 1st-of-month date — the same draw-inclusive, lender-setting-aware
+  math the History tab already uses — falling back to the old flat `monthlyLoanPayment()`
+  estimate only when the schedule has no entry yet for that month (e.g. still inside a grace
+  period), so a loan that would otherwise show a card here never just silently loses it. A
+  loan marked paid-at-closing (`paymentType:"closing"`) is unaffected either way — it was never
+  in `monthlyLoanPayment()`'s scope and still isn't.
+- **Tests**: a real test suite, checked into the repo at `tests/*.test.mjs`, run via
+  `npm test` (`node --test tests/*.test.mjs`, Node's built-in test runner — no new dependency).
+  54 tests across `loan-schedule-shared.test.mjs`, `whiteboard-forecast.test.mjs`,
+  `upcoming-buys.test.mjs`, `resimpli-client.test.mjs`, `resimpli-shared.test.mjs` (the
+  REsimpli matcher tests, now checked in rather than scratch-only), and `sell-dates.test.mjs`
+  — covering, among other things, the exact Red Bank $78,089.68 sanity check, a checked
+  private lender's principal being subtracted, free-text cash and "Nov 21, 2026"-style date
+  parsing, the ET-midnight conversion across a DST boundary both directions (epoch→date and
+  the Sheet's wall-clock string→UTC), soonest-date selection, a past-or-missing date routing to
+  Needs Info (including the "both dates differ" case and the stale-contract-date-is-an-
+  extension case, 3434 Reaver), the sell-dates sheet-unreachable-but-REsimpli-fallback-still-
+  works case, the `/lead/details` wrapper unwrap and `preferenceAnswers` lookup,
+  `investmentTitle` filtering (including the "no type at all" and wholesale cases), the
+  draw-inclusive monthly payment exceeding the old flat estimate, and the window-filtered
+  totals. All 54 pass as of this writing.
+- **Setup still needed before this is usable**: `MERCURY_API_TOKEN` (a read-only Mercury API
+  token for the Master account) and `GOOGLE_SERVICE_ACCOUNT_JSON` (the full service-account
+  JSON key, shared as a Viewer on the Office Dashboard Sheet) — both server-side-only env vars
+  on Vercel, see `.env.example`. Until both are set, the Whiteboard still works exactly as
+  before (manual starting balance, no auto sell/buy cards, no "needs info" panel).
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top

@@ -122,8 +122,8 @@ async function backfillUnderContract(map, items) {
     const sample = items.find(i => i.mainStatusId && map.get(i.mainStatusId)?.recordType === recordType);
     if (!sample) continue; // no classified record in this pipeline yet to bootstrap from — leave the gap, text fallback below still catches it for display purposes
     try {
-      const details = await resimpliPost("/lead/details", { leadId: sample._id });
-      const mainStatusList = details.leadData?.pipelineData?.mainStatusList || details.pipelineData?.mainStatusList || [];
+      const details = unwrapLeadDetails(await resimpliPost("/lead/details", { leadId: sample._id }));
+      const mainStatusList = details?.pipelineData?.mainStatusList || [];
       mainStatusList.forEach(s => {
         if (s._id && !map.has(s._id)) map.set(s._id, { recordType, stage: s.title, orderIndex: s.orderIndex ?? 0 });
       });
@@ -133,12 +133,34 @@ async function backfillUnderContract(map, items) {
   }
 }
 
+// Known mainStatusIds for the Lead and Inventory pipelines' own "Under Contract" status,
+// confirmed against live data (Kyle) — a hardcoded fallback for the gap backfillUnderContract
+// tries to bootstrap dynamically above. Applied last, and only to fill a still-missing gap, so
+// it never overrides anything the live backfill (or the raw pipeline lists) already resolved.
+// Distinct ids: Lead's Under Contract (also used by upcoming-buys.mjs to find Active Leads
+// under contract to buy) is a different status than Inventory's Under Contract (the sell side).
+const KNOWN_UNDER_CONTRACT_IDS = {
+  "6aa4dcfad18014f8fc6397f5": { recordType: "lead", stage: "Under Contract" },
+  "6aa4dcfad18014f8fc6397d4": { recordType: "inventory", stage: "Under Contract" },
+};
+
+// Fills the known-id fallback into a status map for any still-missing gap, never overriding an
+// id the map already resolved some other way. Exported so the webhook's single-lead path (which
+// has no bulk item list to run backfillUnderContract against) gets the same fallback.
+export function applyKnownUnderContractIds(map) {
+  for (const [id, entry] of Object.entries(KNOWN_UNDER_CONTRACT_IDS)) {
+    if (!map.has(id)) map.set(id, { ...entry, orderIndex: 0 });
+  }
+  return map;
+}
+
 // Builds the full mainStatusId -> {recordType, stage, orderIndex} map for one sync run, from
-// the already-fetched raw pipeline lists plus the Under Contract backfill above.
+// the already-fetched raw pipeline lists plus the Under Contract backfill above, plus the
+// known-id fallback for any gap neither of those filled.
 export async function buildStatusMap(rawPipelineLists, items) {
   const map = seedStatusMap(rawPipelineLists);
   await backfillUnderContract(map, items);
-  return map;
+  return applyKnownUnderContractIds(map);
 }
 
 // Builds REsimpli's live pipeline/stage order in the same {key, label, stages} shape as the
@@ -166,9 +188,19 @@ export function pipelineOrderFromRaw(rawPipelineLists) {
 // payload fields directly (the payload's own shape isn't verified). Returns leadData
 // (address, mainStatusTitle, mainStatusId, pipelineData, ...) or the raw response if the
 // "leadData" wrapper isn't there.
+// The real /lead/details response is {statusCode, data:{leadData}} — confirmed against live
+// data (Kyle, Nov 16). json.leadData (the old path here) was always undefined, so every caller
+// of this function was getting the whole {statusCode,data} wrapper back instead of the lead
+// itself — fixed to unwrap data.leadData first, falling back to the old (wrong but harmless)
+// paths in case REsimpli ever changes the wrapper shape again. Exported as its own pure
+// function so this unwrap logic can be unit-tested without a network call.
+export function unwrapLeadDetails(json) {
+  return json?.data?.leadData ?? json?.leadData ?? json;
+}
+
 export async function fetchLeadDetails(leadId) {
   const json = await resimpliPost("/lead/details", { leadId });
-  return json.leadData || json;
+  return unwrapLeadDetails(json);
 }
 
 // Classifies one raw record (a /lead/list item, or the leadData from /lead/details) into the

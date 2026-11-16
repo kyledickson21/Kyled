@@ -1,11 +1,16 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, createContext, useContext, Fragment } from "react";
 import { createPortal } from "react-dom";
-import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, createBookkeeperAccount, deleteLenderAccount, runResimpliSync, fetchBackupRows } from './supabase'
+import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLenderAccount, createBookkeeperAccount, deleteLenderAccount, runResimpliSync, fetchBackupRows, fetchMercuryBalance, fetchSellDates, fetchUpcomingBuys } from './supabase'
 import {
   RESIMPLI_STAGES, buildPipelineIndex, pipelineForRecordType, resimpliStageLabel,
   groupedStageSortKey, effectiveGroupingResimpli,
   normalizeAddressForMatch, matchResimpliRecords, assertOnlyResimpliChanged,
 } from './resimpli-shared.mjs'
+import {
+  TODAY, daysBetween, yearDays, drawGross, defaultLenderPaymentSettings, resolveLenderSettings,
+  calcBalance, calcMonthlyPaidPortion, calcIntEarned, hardPaymentSchedule,
+} from './loan-schedule-shared.mjs'
+import { nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary, withinWindow } from './whiteboard-forecast.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -13,12 +18,6 @@ import { CSS } from "@dnd-kit/utilities";
 const load = loadData
 const save = saveData
 
-// toISOString() converts to UTC first, so in the evening in a US timezone it can already be
-// "tomorrow" in UTC while it's still today locally — use local date parts instead.
-const TODAY = (() => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-})();
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
 // closing doc exactly, nothing hidden by rounding. $$c is the one exception: a compact
@@ -45,110 +44,13 @@ const streetSortKey = address => {
 // sync (api/*.mjs) so the CSV import, the scheduled sync, and the webhook receiver all agree
 // on exactly the same pipeline/stage order and matching rules.
 
-const daysBetween = (d1, d2) => {
-  if (!d1||!d2) return 0;
-  return Math.max(0, Math.floor((new Date(d2)-new Date(d1))/864e5));
-};
 const nextDay = d => { const [y,m,day]=d.split('-').map(Number); const dt=new Date(y,m-1,day+1); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
-const yearDays = l => l?.loanType==="hard" ? 360 : 365;
 
-// Per-lender hard-money billing settings, editable on the lender's own page and applied
-// to every loan from that lender. Defaults reproduce the app's existing behavior exactly
-// (a loan's own loanType decides the defaults), so nothing changes for a lender until it's
-// explicitly customized — see the History tab's addHardPayments for how these are used.
-const defaultLenderPaymentSettings = loanType => ({
-  graceMonth: loanType==="hard",   // skip the first month before billing starts (only used
-                                    // when prorateStubAtClosing is off)
-  prorateStubAtClosing: false,      // prorated interest from closing through the end of that
-                                     // month is charged at closing instead of rolled into a
-                                     // later payment
-  firstFullMonthAtClosing: false,   // on top of the stub, ALSO prepay the next full calendar
-                                     // month at closing (only meaningful with the stub above)
-  dayCountBasis: loanType==="hard" ? 360 : 365,
-  // Private lenders default to an even $ amount every month (rate÷12, same figure whether
-  // the month has 28 or 31 days) so a monthly or split-rate loan's payment can be set up as
-  // a fixed autopay. Hard money keeps the actual-days-that-month default.
-  monthlyMethod: loanType==="hard" ? "perDiem" : "flat", // "perDiem" (actual days that month) or "flat" (rate/12 every time)
-  drawFee: 0,                       // flat $ fee added for each draw captured in a payment
-});
-const resolveLenderSettings = (data, lenderName, loanType) => {
-  const rec = (data?.lenders||[]).find(l=>l.name===lenderName);
-  return {...defaultLenderPaymentSettings(loanType), ...(rec?.paymentSettings||{})};
-};
-
-const calcBalance = (l, asOf=TODAY) => {
-  if (!l?.startDate||!l?.principal) return l?.principal??0;
-  const pt = l.paymentType||"closing";
-  if (pt==="monthly_rate"||pt==="monthly_fixed") return l.principal; // payoff = principal only
-  if (l.interestType === "fixed") return l.principal + (l.interestRate || 0);
-  const end = l.endDate && l.endDate<=asOf ? l.endDate : asOf;
-  if (l.startDate>end) return l.principal;
-  if (pt==="monthly_rate_split") {
-    // The two halves of a split loan are billed under different day-count conventions —
-    // the monthly cash is an even flat amount (a 360-day/30-day-month convention), while
-    // everything else in this app accrues on actual days ÷ 365. Treating the closing
-    // portion as its own independent rate (total − monthly rate) accrued on actual/365
-    // lets those conventions drift apart over any span that isn't a clean number of whole
-    // months. Instead: accrue the FULL rate on actual/365 (the true total owed), then
-    // subtract whatever's actually been collected via the real monthly payments — so the
-    // two pieces always add back up to exactly the full rate, with the day-count mismatch
-    // absorbed into the closing payoff rather than silently lost or double-counted.
-    const totalOwed = l.principal*(l.interestRate||0)/100*(daysBetween(l.startDate,end)/yearDays(l));
-    return l.principal + Math.max(0, totalOwed - calcMonthlyPaidPortion(l,asOf));
-  }
-  return l.principal + l.principal*(l.interestRate||0)/100*(daysBetween(l.startDate,end)/yearDays(l));
-};
-
-// How much of a split-rate loan's interest has actually been collected in cash via the
-// monthly-paid portion as of a given date — the real flat-billed schedule (see
-// addHardPayments), not a theoretical accrual — 0 for every other loan type. Assumes the
-// default Flat billing method (even $ amount every full month, the first partial month
-// prorated on a 360-day/30-day-month basis); a lender switched to Per-Diem for a split
-// loan is a rare enough combination that this is an estimate for that case, not the
-// literal billed cents, rather than plumbing lender payment settings through every one of
-// this helper's call sites.
-const calcMonthlyPaidPortion = (l, asOf=TODAY) => {
-  // A split only means anything against a % rate — a Fixed $ loan has no "portion of the
-  // rate" to divide, so treat it as unsplit (this combination shouldn't be creatable from
-  // either edit screen anymore, but this keeps old/imported data from double-counting).
-  if (!l?.startDate||!l?.principal||l.paymentType!=="monthly_rate_split"||l.interestType==="fixed") return 0;
-  const end = l.endDate&&l.endDate<=asOf ? l.endDate : asOf;
-  if (l.startDate>end) return 0;
-  const rate = l.splitMonthlyRate||0;
-  const flatMonthly = l.principal*rate/1200;
-  const [sy,sm] = l.startDate.split('-').map(Number);
-  let cy=sy, cm=sm+1; if(cm>12){cm=1;cy+=1;}
-  let prevDate = l.startDate, total = 0, first = true;
-  while (true) {
-    const dateStr = `${cy}-${String(cm).padStart(2,'0')}-01`;
-    if (dateStr>end) break;
-    if (first) {
-      const [dy,dm] = dateStr.split('-').map(Number);
-      let py=dy, pm=dm-1; if(pm<1){pm=12;py-=1;}
-      const isFullMonth = prevDate===`${py}-${String(pm).padStart(2,'0')}-01`;
-      total += isFullMonth ? flatMonthly : l.principal*rate/100*(daysBetween(prevDate,dateStr)/360);
-      first = false;
-    } else {
-      total += flatMonthly;
-    }
-    prevDate = dateStr;
-    cm+=1; if(cm>12){cm=1;cy+=1;}
-  }
-  return Math.round(total*100)/100;
-};
-
-const calcIntEarned = (l, asOf=TODAY) => {
-  if (!l?.startDate||!l?.principal) return 0;
-  const pt = l.paymentType||"closing";
-  const end = l.endDate&&l.endDate<=asOf ? l.endDate : asOf;
-  const days = daysBetween(l.startDate, end);
-  if (pt==="monthly_rate") return Math.round((l.principal||0)*(l.interestRate||0)/100/yearDays(l)*days*100)/100;
-  if (pt==="monthly_fixed") return Math.round((l.monthlyPayment||0)*days/30.44*100)/100;
-  // Total earned either way — the monthly-paid portion (real cash already received) plus
-  // whatever's still accruing onto the balance, due at closing.
-  if (pt==="monthly_rate_split") return Math.round((calcMonthlyPaidPortion(l,asOf)+(calcBalance(l,asOf)-(l.principal||0)))*100)/100;
-  return Math.round((calcBalance(l,asOf)-(l.principal||0))*100)/100;
-};
+// TODAY / daysBetween / yearDays / drawGross / defaultLenderPaymentSettings /
+// resolveLenderSettings / calcBalance / calcMonthlyPaidPortion / calcIntEarned /
+// hardPaymentSchedule now live in ./loan-schedule-shared.mjs (imported above), so this money
+// math can be unit-tested with plain Node and reused by the Whiteboard cash-flow forecast
+// without a second, potentially-drifting copy of it.
 
 const effectiveMonths = prop => {
   if (prop?.projectMonths!=null&&prop.projectMonths!=="") return Math.max(0.5,parseFloat(prop.projectMonths)||2);
@@ -211,11 +113,6 @@ const updateLoanById = (d, loanId, patch) => ({
   properties: d.properties.map(p => ({...p, loans: p.loans.map(l => l.id===loanId ? {...l,...patch} : l)})),
   unassigned: (d.unassigned||[]).map(l => l.id===loanId ? {...l,...patch} : l),
 });
-
-// A draw's `amount` is the NET that actually hits the account — whatever the lender takes
-// as a `fee` is on top of that, not out of it, so what's actually drawn against the
-// committed facility (and what interest accrues on) is amount + fee, never amount - fee.
-const drawGross = d => (d.amount||0)+(d.fee||0);
 
 const drawRemaining = loan => {
   if (!loan?.drawFacility) return 0;
@@ -4481,7 +4378,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                   <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
                     {prop.loans.map(loan=>{
                       const bal=calcBalance(loan);
-                      const earned=calcIntEarned(loan);
+                      const earned=calcIntEarned(loan,TODAY,data); // data passed so a monthly_rate/monthly_fixed loan's figure includes draw interest (matches the History tab's real billing schedule)
                       const monthly=monthlyLoanPayment(loan);
                       const drawn=(loan.drawFacility?.draws||[]).reduce((s,d)=>s+drawGross(d),0);
                       return (
@@ -6272,145 +6169,22 @@ function computeHistoryEvents(data) {
       raw.push({date:c.date,sx:"d",etype:"overageCheck",property:prop.address,propId:prop.id,amount:c.amount||0,source:c.source,notes:c.notes||"",loanId:`overage-${c.id}`});
     });
   });
-  // Same calendar date N months later, with the day clamped to that month's length
-  // (Jan 31 + 1 month -> Feb 28/29, not an overflow into March).
-  const monthsLater = (y,m,d,n) => {
-    let nm = m + n;
-    const ny = y + Math.floor((nm-1)/12);
-    nm = ((nm-1)%12)+1;
-    const lastDay = new Date(ny, nm, 0).getDate();
-    return `${ny}-${String(nm).padStart(2,'0')}-${String(Math.min(d,lastDay)).padStart(2,'0')}`;
-  };
-  // Interest is requested/prorated as of the 1st, but the bank doesn't move money on a
-  // weekend — if the 1st is a Sat/Sun, it actually posts the next Monday. Purely a
-  // display-date shift for the bookkeeper; proration always uses the 1st itself.
-  const firstBusinessDay = dateStr => {
-    const [y,m,d] = dateStr.split('-').map(Number);
-    const dow = new Date(y,m-1,d).getDay();
-    const add = dow===6 ? 2 : dow===0 ? 1 : 0;
-    const dt = new Date(y,m-1,d+add);
-    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
-  };
   // Recurring monthly interest payments, due the 1st of every month the loan was active
   // — generated for the loan's whole life (past through today) so bookkeepers can map
   // every payment, not just the loan's start/close events. Any loan can be set up with
-  // monthly-paid interest, private or hard money, so this isn't restricted by loanType
-  // (a loanType==="hard" restriction here previously caused every monthly-paid PRIVATE
-  // loan to be silently skipped). Actual billing mechanics (grace period, day-count basis,
-  // flat vs. per-diem monthly amount, whether the first month is prepaid at closing, a
-  // per-draw fee) come from the lender's own Payment Settings — editable on their page —
-  // and default to exactly this function's original behavior when unset.
+  // monthly-paid interest, private or hard money, so this isn't restricted by loanType.
+  // Actual billing mechanics (grace period, day-count basis, flat vs. per-diem monthly
+  // amount, whether the first month is prepaid at closing, a per-draw fee) come from the
+  // lender's own Payment Settings — editable on their page. The real schedule math lives in
+  // hardPaymentSchedule (loan-schedule-shared.mjs) — this is now a thin wrapper translating
+  // its {date, rawDate, amount} rows into History's event shape. `loanId` is keyed off
+  // `rawDate` (the unshifted 1st-of-month bill date), not the weekend-shifted `date`, exactly
+  // as this function always did — changing that would change every existing event's identity.
   const addHardPayments = (loan, propAddress, propId) => {
-    if (!loan.startDate) return;
     const pt = loan.paymentType||"closing";
-    if (pt!=="monthly_rate"&&pt!=="monthly_fixed"&&pt!=="monthly_rate_split") return;
-    const endBound = loan.endDate || TODAY;
-    const [sy,sm,sd] = loan.startDate.split('-').map(Number);
-    const settings = resolveLenderSettings(data, loan.lenderName, loan.loanType);
-    // A split loan (e.g. an equity-line lender) only pays the matched portion of the rate
-    // monthly — the rest accrues onto the balance and is settled at closing instead, so
-    // these recurring cash payments should bill against that portion, not the full rate.
     const billRate = pt==="monthly_rate_split" ? (loan.splitMonthlyRate||0) : (loan.interestRate||0);
-    const dailyRate = billRate/100/settings.dayCountBasis;
-    const flatMonthly = pt==="monthly_fixed" ? (loan.monthlyPayment||0) : (loan.principal||0)*billRate/1200;
-    // One-time $ fee for each draw whose date falls in [periodStart, periodEnd) — half-open
-    // so a draw dated exactly on a schedule boundary is counted in exactly one period.
-    const feeFor = (periodStart, periodEndExclusive) =>
-      (loan.drawFacility?.draws||[]).filter(d=>d.date&&d.date>=periodStart&&d.date<periodEndExclusive).length*(settings.drawFee||0);
-    const pushPayment = (dateStr, amount) => {
-      amount = Math.round(amount*100)/100; // to the cent, not the whole dollar — needed to match a bank statement
-      if (amount>0) {
-        raw.push({date:firstBusinessDay(dateStr), sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount, principal:loan.principal||0, property:propAddress, propId, rate:billRate, loanId:`${loan.id}-pay-${dateStr}`});
-      }
-    };
-
-    if (settings.prorateStubAtClosing) {
-      // The prorated stub (closing day through end of that month) is charged at closing,
-      // outside the recurring cycle. On top of that, up to one extra calendar month can be
-      // skipped before regular billing starts: firstFullMonthAtClosing means that month is
-      // ALSO prepaid at closing, while graceMonth means it's simply not charged at all (a
-      // true grace period) — the two are independent and can combine. Either way, the
-      // regular cycle only covers calendar months that weren't already accounted for, and
-      // always bills in arrears — the 1st pays for the month that just ended, same as every
-      // other lender — so a skipped month can mean the following 1st has nothing due at all.
-      const skip = 1 + (settings.firstFullMonthAtClosing?1:0) + (settings.graceMonth?1:0);
-      let cy=sy, cm=sm+skip; while(cm>12){cm-=12;cy+=1;}
-      let prevDate = `${cy}-${String(cm).padStart(2,'0')}-01`; // start of the first period not already prepaid
-      while (true) {
-        const periodStart = `${cy}-${String(cm).padStart(2,'0')}-01`;
-        // Arrears means the bill posts a month AFTER the period it covers — so whether an
-        // entry belongs in History has to check the bill date against endBound, not the
-        // period's own start. Checking periodStart here let an already-passed period whose
-        // bill hadn't posted yet (e.g. today is Sept 15, period is September, bill is Oct 1)
-        // show up as a future-dated "payment" that hasn't happened.
-        let billY=cy, billM=cm+1; if(billM>12){billM=1;billY+=1;} // always arrears
-        const dateStr = `${billY}-${String(billM).padStart(2,'0')}-01`;
-        if (dateStr>endBound) break;
-        const lastDay = new Date(cy,cm,0).getDate();
-        let amount = settings.monthlyMethod==="flat" ? flatMonthly : (loan.principal||0)*dailyRate*lastDay;
-        // A draw dated before this period (e.g. taken the same day as closing) is clamped
-        // to start accruing at prevDate rather than dropped — its own closing-time stub is
-        // assumed covered the same way the base loan's was, but every dollar from prevDate
-        // forward still has to show up in a payment somewhere.
-        (loan.drawFacility?.draws||[]).forEach(d=>{
-          if (!d.date||d.date>=periodStart) return;
-          const drawStart = d.date>prevDate ? d.date : prevDate;
-          amount += settings.monthlyMethod==="flat" ? drawGross(d)*billRate/1200 : drawGross(d)*dailyRate*daysBetween(drawStart,periodStart);
-        });
-        pushPayment(dateStr, amount+feeFor(prevDate,periodStart));
-        prevDate = periodStart;
-        cm+=1; if(cm>12){cm=1;cy+=1;}
-      }
-      return;
-    }
-
-    // Standard model: optional grace month (no payment due until the loan's one-month
-    // anniversary — see settings.graceMonth), then a prorated catch-up first payment, then
-    // regular payments computed per-diem (actual days that month) or flat (rate/12 flat
-    // every time), per settings.monthlyMethod.
-    const firstDue = settings.graceMonth ? monthsLater(sy,sm,sd,1) : loan.startDate;
-    let cy=sy, cm=sm+1; if(cm>12){cm=1;cy+=1;}
-    const schedule=[];
-    while (true) {
-      const dateStr = `${cy}-${String(cm).padStart(2,'0')}-01`;
-      if (dateStr>endBound) break;
-      if (dateStr>=firstDue) schedule.push(dateStr);
-      cm+=1; if(cm>12){cm=1;cy+=1;}
-    }
-    let prevDate = loan.startDate;
-    schedule.forEach(dateStr=>{
-      const days = daysBetween(prevDate,dateStr);
-      let amount;
-      if (settings.monthlyMethod==="flat") {
-        // Every period here is a clean calendar month (prevDate = the 1st of the month
-        // right before dateStr) except possibly the very first one — the loan started
-        // mid-month, or (with a grace month) started mid-month before an even longer
-        // deferred gap. Bill that stub for the days actually owed, on the same 360-day/
-        // 30-day-month convention the flat rate itself is built on, instead of charging
-        // a full month's worth for a partial period.
-        const [dy,dm] = dateStr.split('-').map(Number);
-        let py=dy, pm=dm-1; if(pm<1){pm=12;py-=1;}
-        const isFullMonth = prevDate===`${py}-${String(pm).padStart(2,'0')}-01`;
-        amount = isFullMonth ? flatMonthly : (loan.principal||0)*billRate/100*(days/360);
-        (loan.drawFacility?.draws||[]).forEach(d=>{
-          if (!d.date||d.date>=dateStr||d.date<prevDate) return;
-          amount += drawGross(d)*billRate/1200;
-        });
-      } else if (pt==="monthly_fixed") {
-        amount = (loan.monthlyPayment||0)*days/30.44;
-      } else {
-        amount = (loan.principal||0)*dailyRate*days;
-        // Rehab draw facility: each draw accrues its own interest from its actual draw
-        // date (not the loan's origination date), folded into the same 1st-of-month
-        // payment as the base principal.
-        (loan.drawFacility?.draws||[]).forEach(d=>{
-          if (!d.date||d.date>=dateStr) return;
-          const drawStart = d.date>prevDate ? d.date : prevDate;
-          amount += drawGross(d)*dailyRate*daysBetween(drawStart,dateStr);
-        });
-      }
-      pushPayment(dateStr, amount+feeFor(prevDate,dateStr));
-      prevDate = dateStr;
+    hardPaymentSchedule(loan, data, loan.endDate||TODAY).forEach(({date, rawDate, amount}) => {
+      raw.push({date, sx:"m", lender:loan.lenderName, loanType:loan.loanType, interestType:loan.interestType||"percentage", etype:"hardPayment", amount, principal:loan.principal||0, property:propAddress, propId, rate:billRate, loanId:`${loan.id}-pay-${rawDate}`});
     });
   };
   data.properties.forEach(prop=>{
@@ -8334,6 +8108,17 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
   );
 }
 
+// The real amount due on `first` for this loan — the History-tab schedule's own entry for
+// that month (principal plus any funded draws, prorated exactly like the schedule), not the
+// flat principal*rate/12 estimate monthlyLoanPayment() gives. Falls back to that flat estimate
+// when the schedule has no entry yet for that month (e.g. still inside a grace period), so a
+// loan that would otherwise show a card here doesn't just silently lose it.
+const scheduledLoanPaymentFor = (loan, data, first) => {
+  const sched = hardPaymentSchedule(loan, data, first);
+  const last = sched[sched.length - 1];
+  return last && last.rawDate === first ? last.amount : monthlyLoanPayment(loan);
+};
+
 // Read-only cards auto-generated from every active monthly-pay loan (hard money's monthly
 // interest, or any other monthly_fixed loan) — one per loan for each 1st-of-the-month date
 // in view, since that's always the bill date (arrears). Purely computed each render, never
@@ -8355,7 +8140,7 @@ const upcomingLoanPayments = (data, dayCols) => {
         propId: l._propId,
         address: l._addr,
         lenderName: l.lenderName,
-        amount: monthlyLoanPayment(l),
+        amount: scheduledLoanPaymentFor(l, data, first),
         day: first,
       });
     }
@@ -8375,6 +8160,83 @@ const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
     {card.address&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">{card.address}</div>}
     <div className="text-base font-black tabular-nums mt-0.5 text-red-500 dark:text-red-400">−{h$(card.amount)}</div>
     <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Loan payment · auto</div>
+  </div>
+);
+
+// Auto-generated, read-only sell card (a property under contract to sell) — shows the net
+// cash-in estimate with an expandable breakdown (purchase, each subtracted loan, interest
+// added back) and, per private loan on that property, a "paying back" checkbox (persisted to
+// whiteboard.payingBack) that flips whether that loan's principal is subtracted from the
+// estimate. Unlike a manual card, this one is never draggable/editable/removable — it's
+// recomputed fresh from live property/loan data every render.
+const WhiteboardSellCard = ({ card, h$, update, navigate }) => {
+  const readOnly = useReadOnly();
+  const [open, setOpen] = useState(false);
+  const b = card.breakdown;
+  const togglePayingBack = (loanId, checked) => update(d => ({
+    ...d,
+    whiteboard: {
+      ...d.whiteboard,
+      payingBack: {
+        ...(d.whiteboard?.payingBack || {}),
+        [card.propId]: { ...(d.whiteboard?.payingBack?.[card.propId] || {}), [loanId]: checked },
+      },
+    },
+  }));
+  return (
+    <div className="rounded-xl border border-emerald-300 dark:border-emerald-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm">
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <span className="text-[10px]">🏠</span>
+        <button onClick={e => { e.stopPropagation(); navigate && navigate({ type: 'property', id: card.propId }); }}
+          className="font-semibold text-[12px] text-teal-600 dark:text-teal-400 hover:underline truncate text-left">{card.address}</button>
+      </div>
+      <div className="text-lg font-black tabular-nums mt-0.5 text-emerald-600 dark:text-emerald-400">+{h$(card.amount)}</div>
+      <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
+        Sale {b.saleDate} ({b.dateSource === "sheet" ? "sheet" : "REsimpli fallback"}) · auto
+      </div>
+      <button onClick={() => setOpen(o => !o)} className="text-[10px] font-semibold text-teal-500 dark:text-teal-400 hover:underline mt-1">{open ? "Hide breakdown" : "Show breakdown"}</button>
+      {open && (
+        <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-700 space-y-0.5 text-[10px] text-slate-500 dark:text-zinc-400">
+          <div className="flex justify-between"><span>Purchase price</span><span className="tabular-nums">{h$(b.purchasePrice)}</span></div>
+          {b.hardLoans.map(l => (
+            <div key={l.id} className="flex justify-between"><span>− {l.lenderName} (hard)</span><span className="tabular-nums">−{h$(l.principal)}</span></div>
+          ))}
+          <div className="flex justify-between"><span>+ Hard-money interest paid</span><span className="tabular-nums">+{h$(b.hardInterestPaidTotal)}</span></div>
+          {b.privateLoans.length > 0 && (
+            <div className="pt-1 space-y-1">
+              <div className="text-[9px] uppercase tracking-widest text-slate-400 dark:text-zinc-500">Paying back at closing?</div>
+              {b.privateLoans.map(l => (
+                <label key={l.id} className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="flex items-center gap-1.5 truncate">
+                    {!readOnly && <input type="checkbox" checked={!!l.checked} onChange={e => togglePayingBack(l.id, e.target.checked)} className="accent-teal-600"/>}
+                    <span className="truncate">{l.lenderName} ({h$(l.principal)})</span>
+                  </span>
+                  <span className="text-slate-300 dark:text-zinc-600">{l.checked ? "subtracted" : "assumed rolling"}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-1 italic">Sell · auto</div>
+    </div>
+  );
+};
+
+// Auto-generated, read-only buy card (a REsimpli lead under contract to buy). Shows both the
+// analytics and contract-question dates when they differ, so a mismatch between the two
+// sources is visible rather than silently resolved.
+const WhiteboardBuyCard = ({ card, h$ }) => (
+  <div className="rounded-xl border border-red-300 dark:border-red-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm">
+    <div className="flex items-center gap-1.5 mb-0.5">
+      <span className="text-[10px]">🔑</span>
+      <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{card.address}</div>
+    </div>
+    <div className="text-lg font-black tabular-nums mt-0.5 text-red-600 dark:text-red-400">−{h$(card.amount)}</div>
+    {card.dateFromAnalytics && card.dateFromContract && card.dateFromAnalytics !== card.dateFromContract && (
+      <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Analytics {card.dateFromAnalytics} vs. contract {card.dateFromContract} — using {card.date}</div>
+    )}
+    <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Buy (REsimpli) · auto</div>
   </div>
 );
 
@@ -8446,9 +8308,95 @@ function WhiteboardPage({ data, update }) {
   const [activeId,setActiveId] = useState(null);
   const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
 
-  const DAYS = 45;
+  const [windowDays,setWindowDays] = useState(45);
+  const DAYS = windowDays;
   const dayCols = Array.from({length:DAYS},(_,i)=>wbAddDays(TODAY,i));
   const autoCards = upcomingLoanPayments(data, dayCols);
+
+  // ─── Cash-flow forecast sources: Mercury starting cash, REsimpli sell dates (via the
+  // Office Dashboard Sheet, with a REsimpli fallback), REsimpli buy leads under contract.
+  // Each is fetched once on mount from its own read-only, auth-gated api/*.mjs function and
+  // degrades to a manual/"not connected" state on failure — never a crash (see the Whiteboard
+  // cash-flow forecast HARD RULES). Nothing here writes to nexus_data except the "paying
+  // back" checkbox (whiteboard.payingBack), toggled from WhiteboardSellCard.
+  const [mercury,setMercury] = useState({loading:true});
+  const [sellDatesResult,setSellDatesResult] = useState({loading:true, rows:[]});
+  const [buysResult,setBuysResult] = useState({loading:true, rows:[], needsInfo:[]});
+
+  // Which tracker properties are selling: resimpli stage Under Contract on the sell side
+  // (Inventory pipeline specifically — not the sort/grouping-folded rental mapping). Live data
+  // can carry recordType:null for an inventory property even once the sync's own
+  // classification gap is fixed (an old sync run, or a hand-edited record) — a stored
+  // resimpli.url containing "/inventory/" is also treated as inventory, since REsimpli's own
+  // inventory record links always carry that in the path.
+  const isInventoryResimpli = p => p.resimpli?.recordType==="inventory" || (p.resimpli?.url||"").includes("/inventory/");
+  const sellingProps = useMemo(() => (data.properties||[]).filter(p =>
+    !p.dateSold && isInventoryResimpli(p) && p.resimpli?.stage==="Under Contract"
+  ), [data.properties]);
+  const sellingPropsKey = sellingProps.map(p=>p.id).join(",");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMercuryBalance().then(r=>{ if(!cancelled) setMercury(r); }).catch(e=>{ if(!cancelled) setMercury({ok:false, reason:e.message}); });
+    fetchUpcomingBuys().then(r=>{ if(!cancelled) setBuysResult(r); }).catch(e=>{ if(!cancelled) setBuysResult({ok:false, reason:e.message, rows:[], needsInfo:[]}); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (sellingProps.length===0) { setSellDatesResult({ok:true, rows:[]}); return; }
+    fetchSellDates(sellingProps.map(p=>({id:p.id, address:p.address, leadId:p.resimpli?.leadId||null})))
+      .then(r=>{ if(!cancelled) setSellDatesResult(r); })
+      .catch(e=>{ if(!cancelled) setSellDatesResult({ok:false, reason:e.message, rows:[]}); });
+    return () => { cancelled = true; };
+  }, [sellingPropsKey]);
+
+  const payingBack = data.whiteboard?.payingBack || {};
+  const sellDateById = {};
+  (sellDatesResult.rows||[]).forEach(r => { sellDateById[r.id] = r; });
+
+  // Sell-card breakdown — see CLAUDE.md "Whiteboard Cash-Flow Forecast" for the formula.
+  // Amount = purchase price − every hard loan's principal (draws excluded; cash close) −
+  // every CHECKED private loan's principal (unchecked assumed to roll) + hard-money interest
+  // already paid through the sale date (the real History-tab schedule, draws included).
+  const sellCardsInfo = [];
+  const needsInfoSell = [];
+  sellingProps.forEach(prop => {
+    const dateInfo = sellDateById[prop.id];
+    if (!dateInfo || !dateInfo.date) {
+      needsInfoSell.push({ address: prop.address, reason: dateInfo?.reason || "Sell date lookup hasn't returned yet" });
+      return;
+    }
+    const active = prop.loans.filter(l=>!l.endDate);
+    const hardLoans = active.filter(l=>l.loanType==="hard");
+    const privateLoans = active.filter(l=>l.loanType==="private");
+    const hardPrincipalTotal = hardLoans.reduce((s,l)=>s+(l.principal||0),0);
+    // Real monthly-paid interest only — calcIntEarned's "closing"-paymentType branch returns
+    // interest still ACCRUING toward closing (not yet paid), which must never be added back
+    // here (see the sell-amount formula's own "never interest paid at closing" rule); summing
+    // hardPaymentSchedule's actual due-by-date payments directly is correct for every payment
+    // type (monthly_rate/monthly_fixed/monthly_rate_split get their real schedule; "closing"
+    // correctly contributes $0, since none of its interest is paid until the sale itself).
+    const hardInterestPaidTotal = hardLoans.reduce((s,l)=>s+hardPaymentSchedule(l, data, dateInfo.date).reduce((s2,p)=>s2+p.amount,0),0);
+    const checkedPrivatePrincipalTotal = privateLoans.filter(l=>payingBack[prop.id]?.[l.id]).reduce((s,l)=>s+(l.principal||0),0);
+    const amount = sellCashAmount({ purchasePrice: prop.purchasePrice||0, hardPrincipalTotal, checkedPrivatePrincipalTotal, hardInterestPaidTotal });
+    sellCardsInfo.push({
+      id: `sell-${prop.id}`, propId: prop.id, address: prop.address, amount, day: fcNextBusinessDay(dateInfo.date),
+      breakdown: {
+        purchasePrice: prop.purchasePrice||0, hardLoans, hardInterestPaidTotal, saleDate: dateInfo.date, dateSource: dateInfo.source,
+        privateLoans: privateLoans.map(l=>({id:l.id, lenderName:l.lenderName, principal:l.principal||0, checked: !!payingBack[prop.id]?.[l.id]})),
+      },
+    });
+  });
+
+  // Buy-card info — straight from the REsimpli lead list; amount/date already resolved
+  // server-side (soonest-of-dates, text cash parsing), nothing left to compute here.
+  const buyCardsInfo = (buysResult.rows||[]).map(r => ({
+    id: `buy-${r.leadId}`, address: r.address, amount: r.amount, day: r.date,
+    date: r.date, dateFromAnalytics: r.dateFromAnalytics, dateFromContract: r.dateFromContract,
+  }));
+  const sellCardsFor = day => sellCardsInfo.filter(c=>c.day===day);
+  const buyCardsFor = day => buyCardsInfo.filter(c=>c.day===day);
 
   // A bill counts as "in the Due Now queue" only while it has no day — drag it onto a day and
   // it shows up there like any other card instead (still excluded from Unscheduled, since a
@@ -8461,27 +8409,32 @@ function WhiteboardPage({ data, update }) {
   // Net for a day counts out-cards placed that day plus in-cards that actually SETTLE
   // that day (1 business day after the day they're dropped on), not cards merely placed
   // there — so a Thursday deposit doesn't look available for a Thursday closing. Auto loan
-  // payments always land on their own day (the 1st) with no settlement delay — they go out.
+  // payments, auto sell cards, and auto buy cards always land on their own already-settled
+  // day with no further delay (a sell card's day is already sale-date + 1 business day).
   const netFor = day => cards
     .filter(c=>c.day && wbEffectiveDate(c)===day)
     .reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0)
-    - autoCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
+    - autoCardsFor(day).reduce((s,c)=>s+(c.amount||0),0)
+    + sellCardsFor(day).reduce((s,c)=>s+(c.amount||0),0)
+    - buyCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
   // A card dragged onto day X but settling on day Y (see wbEffectiveDate) still shows on X —
   // this is what lets Y's balance jump make sense without hunting for the card.
   const settledInFor = day => cards.filter(c=>c.day && c.day!==day && c.direction==="in" && (c.amount||0)>0 && wbEffectiveDate(c)===day);
   // Running cash balance through each day, so a shortfall shows up on the exact day it
   // happens instead of needing to be worked out by hand. Only counts money that's actually
   // on a date — Due Now bills and Unscheduled cards have no date, so they sit outside this
-  // entirely until they're given one.
-  const startingBalance = data.whiteboard?.startingBalance || 0;
-  const balances = {};
-  {
-    let running = startingBalance;
-    for (const day of dayCols) {
-      running += netFor(day);
-      balances[day] = running;
-    }
-  }
+  // entirely until they're given one. Starting cash is Mercury's live balance when connected,
+  // else the existing manual input.
+  const startingBalanceManual = data.whiteboard?.startingBalance || 0;
+  const usingMercury = mercury.ok && mercury.balance!=null;
+  const startingBalance = usingMercury ? mercury.balance : startingBalanceManual;
+  const netByDay = {};
+  dayCols.forEach(day => { netByDay[day] = netFor(day); });
+  const { balances, firstShortfall, largestShortfall, positiveAgain } = computeForecastSummary(dayCols, netByDay, startingBalance);
+  const needsInfoAll = [
+    ...needsInfoSell.map(n=>({...n, kind:"sell"})),
+    ...(buysResult.needsInfo||[]).map(n=>({...n, kind:"buy"})),
+  ];
   // Current liens on a linked property, pulled live every render — so if a loan gets paid
   // off or a new one's added, the card reflects it automatically without re-entering anything.
   const liensFor = propId => {
@@ -8537,38 +8490,80 @@ function WhiteboardPage({ data, update }) {
   // or this total wouldn't match what the day columns actually add up to. A bill dragged onto
   // a day counts here exactly like any other dated card. Due Now shows its own total on its
   // own box for bills that haven't been given a day yet.
-  const scheduledCards = cards.filter(c=>c.day);
-  const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0);
-  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + autoCards.reduce((s,c)=>s+(c.amount||0),0);
-  const [sbInput,setSbInput] = useState(String(startingBalance||""));
-  useEffect(()=>{ setSbInput(String(startingBalance||"")); }, [startingBalance]);
+  // Only count a card toward the totals when its actual settlement day (wbEffectiveDate — the
+  // same day netFor/the running balance already use) falls inside the visible 45/90-day
+  // window — a card dated beyond it isn't part of this forecast and shouldn't inflate the
+  // headline In/Out figures. withinWindow (whiteboard-forecast.mjs) is the same pure filter
+  // used/tested for this, so the totals can't drift from what the day columns themselves add up to.
+  const scheduledCards = withinWindow(cards.filter(c=>c.day), dayCols, wbEffectiveDate);
+  const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0) + withinWindow(sellCardsInfo, dayCols).reduce((s,c)=>s+(c.amount||0),0);
+  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + withinWindow(autoCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(buyCardsInfo, dayCols).reduce((s,c)=>s+(c.amount||0),0);
+  const [sbInput,setSbInput] = useState(String(startingBalanceManual||""));
+  useEffect(()=>{ setSbInput(String(startingBalanceManual||"")); }, [startingBalanceManual]);
 
   return (
     <div>
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
-          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board, separate from the rest of the tracker — drag cards onto a day to plan upcoming money in and out. Incoming money takes 1 business day to clear, loan payments are pulled in on the 1st automatically, and bills with no due date live in the Due Now queue on the left.</p>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board — drag cards onto a day to plan upcoming money in and out. Incoming money takes 1 business day to clear; loan payments, upcoming sales, and upcoming buys are pulled in automatically; bills with no due date live in the Due Now queue on the left.</p>
         </div>
-        {!readOnly && <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
+            {[45,90].map(n=>(
+              <button key={n} onClick={()=>setWindowDays(n)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${windowDays===n?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{n}d</button>
+            ))}
+          </div>
+          {!readOnly && <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>}
+        </div>
       </div>
 
       <div className="flex gap-3 mb-4 flex-wrap">
-        <div className="flex-1 min-w-[140px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Starting Balance</div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-lg font-black text-slate-700 dark:text-zinc-200">$</span>
-            {readOnly ? (
-              <span className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{sbInput || "0"}</span>
-            ) : (
-              <input type="text" inputMode="decimal" value={sbInput}
-                onChange={e=>setSbInput(e.target.value)}
-                onBlur={()=>setStartingBalance(parseFloat(sbInput)||0)}
-                className="text-lg font-black tabular-nums bg-transparent w-full focus:outline-none text-slate-700 dark:text-zinc-200 min-w-0"/>
-            )}
-          </div>
+        <div className="flex-1 min-w-[160px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Starting Cash</div>
+          {usingMercury ? (
+            <>
+              <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{h$(mercury.balance)}</div>
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">{mercury.source}{mercury.asOf?` · ${new Date(mercury.asOf).toLocaleString()}`:""}</div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-0.5">
+                <span className="text-lg font-black text-slate-700 dark:text-zinc-200">$</span>
+                {readOnly ? (
+                  <span className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{sbInput || "0"}</span>
+                ) : (
+                  <input type="text" inputMode="decimal" value={sbInput}
+                    onChange={e=>setSbInput(e.target.value)}
+                    onBlur={()=>setStartingBalance(parseFloat(sbInput)||0)}
+                    className="text-lg font-black tabular-nums bg-transparent w-full focus:outline-none text-slate-700 dark:text-zinc-200 min-w-0"/>
+                )}
+              </div>
+              <div className="text-[10px] text-amber-600 dark:text-amber-400 truncate">{mercury.loading?"Checking Mercury…":`Manual — Mercury not connected${mercury.reason?` (${mercury.reason})`:""}`}</div>
+            </>
+          )}
         </div>
-        {(cards.length>0||autoCards.length>0)&&(<>
+        {firstShortfall && (
+          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-0.5">First Shortfall</div>
+            <div className="text-lg font-black tabular-nums text-red-600 dark:text-red-400">Need {h$(firstShortfall.amount)}</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500">by {wbFmtDate(firstShortfall.day)}</div>
+          </div>
+        )}
+        {largestShortfall && (
+          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-0.5">Largest Shortfall</div>
+            <div className="text-lg font-black tabular-nums text-red-600 dark:text-red-400">{h$(largestShortfall.amount)}</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500">on {wbFmtDate(largestShortfall.day)}</div>
+          </div>
+        )}
+        {firstShortfall && (
+          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400 mb-0.5">Positive Again</div>
+            <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{positiveAgain?wbFmtDate(positiveAgain):`Not within ${windowDays}d`}</div>
+          </div>
+        )}
+        {(cards.length>0||autoCards.length>0||sellCardsInfo.length>0||buyCardsInfo.length>0)&&(<>
           <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
             <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(totalIn)}</div>
@@ -8580,7 +8575,33 @@ function WhiteboardPage({ data, update }) {
         </>)}
       </div>
 
-      {cards.length===0&&autoCards.length===0?(
+      {sellDatesResult.sheetConnected===false && (
+        <div className="mb-4 rounded-xl px-3 py-2 text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+          ⚠️ Sell-dates sheet not connected (server env var <code className="font-mono">GOOGLE_SERVICE_ACCOUNT_JSON</code> missing or invalid{sellDatesResult.sheetError?`: ${sellDatesResult.sheetError}`:""}) — using REsimpli fallback dates only.
+        </div>
+      )}
+      {sellDatesResult.lastRefresh && (
+        <div className={`mb-4 rounded-xl px-3 py-2 text-[11px] font-semibold ${sellDatesResult.isStale?"bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800":"text-slate-400 dark:text-zinc-500"}`}>
+          {sellDatesResult.isStale?"⚠️ ":""}Sell-dates sheet last checked {new Date(sellDatesResult.lastRefresh).toLocaleString()}
+          {" "}({Math.round((Date.now()-new Date(sellDatesResult.lastRefresh).getTime())/36e5)}h ago){sellDatesResult.isStale?" — more than 26h old, sell dates may be out of date":""}
+        </div>
+      )}
+
+      {needsInfoAll.length>0 && (
+        <div className="mb-4 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 p-3">
+          <div className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1.5">⚠️ Needs Info — {needsInfoAll.length} excluded from the forecast</div>
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {needsInfoAll.map((n,i)=>(
+              <div key={i} className="text-[11px] text-amber-800 dark:text-amber-300 flex gap-1.5">
+                <span className="font-semibold shrink-0">{n.kind==="sell"?"Sell:":"Buy:"}</span>
+                <span className="truncate">{n.address} — {n.reason}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {cards.length===0&&autoCards.length===0&&sellCardsInfo.length===0&&buyCardsInfo.length===0?(
         <div className="text-center py-16 text-slate-400 dark:text-zinc-500">
           <div className="text-4xl mb-3">📌</div>
           <p className="font-semibold">Nothing on the board yet</p>
@@ -8597,7 +8618,9 @@ function WhiteboardPage({ data, update }) {
               <WhiteboardColumn key={day} id={day} h$={h$}
                 label={i===0?"Today":wbFmtDate(day)}
                 sub={i===0?wbFmtDate(day):wbWeekday(day)}
-                isToday={i===0} weekStart={i>0&&i%7===0} net={netFor(day)} balance={balances[day]} settledIn={settledInFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0}>
+                isToday={i===0} weekStart={i>0&&i%7===0} net={netFor(day)} balance={balances[day]} settledIn={settledInFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0&&sellCardsFor(day).length===0&&buyCardsFor(day).length===0}>
+                {sellCardsFor(day).map(c=><WhiteboardSellCard key={c.id} card={c} h$={h$} update={update} navigate={navigate}/>)}
+                {buyCardsFor(day).map(c=><WhiteboardBuyCard key={c.id} card={c} h$={h$}/>)}
                 {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
                 {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard} navigate={navigate}/>)}
               </WhiteboardColumn>
@@ -10219,13 +10242,18 @@ function DashboardPage({ data, update, onNavigateTab }) {
   ).filter(x => x.eligible).sort((a, b) => b.remaining - a.remaining);
   const drawsAvailable = drawsAvailableList.reduce((s, x) => s + x.remaining, 0);
 
-  const hardMonthly = allActiveLoans.filter(l => l.loanType === "hard").reduce((s, l) => s + monthlyLoanPayment(l), 0);
-  const hardMonthlyLoans = allActiveLoans.filter(l => l.loanType === "hard" && monthlyLoanPayment(l) > 0);
-
   // Next 1st-of-the-month hard money payment date (recurring, always recomputed from today)
   const [nfY, nfM, nfD] = TODAY.split("-").map(Number);
   const nextFirstDate = nfD <= 1 ? new Date(nfY, nfM - 1, 1) : new Date(nfY, nfM, 1);
+  const nextFirstStr = `${nextFirstDate.getFullYear()}-${String(nextFirstDate.getMonth()+1).padStart(2,"0")}-${String(nextFirstDate.getDate()).padStart(2,"0")}`;
   const daysToNextFirst = Math.floor((nextFirstDate - new Date(TODAY)) / 864e5);
+
+  // scheduledLoanPaymentFor (declared near upcomingLoanPayments, Whiteboard section) gives
+  // the real History-tab schedule amount for a given 1st-of-month date — principal plus any
+  // funded draws, prorated exactly like the schedule — instead of the flat principal*rate/12
+  // estimate monthlyLoanPayment() gives on its own.
+  const hardMonthly = allActiveLoans.filter(l => l.loanType === "hard").reduce((s, l) => s + scheduledLoanPaymentFor(l, data, nextFirstStr), 0);
+  const hardMonthlyLoans = allActiveLoans.filter(l => l.loanType === "hard" && monthlyLoanPayment(l) > 0);
 
   // Unified upcoming-due schedule: fixed-maturity loans + recurring hard money interest
   const dueSchedule = [
