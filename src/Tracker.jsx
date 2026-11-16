@@ -4,13 +4,16 @@ import { loadData, saveData, subscribeToChanges, listLenderAccounts, createLende
 import {
   RESIMPLI_STAGES, buildPipelineIndex, pipelineForRecordType, resimpliStageLabel,
   groupedStageSortKey, effectiveGroupingResimpli,
-  normalizeAddressForMatch, matchResimpliRecords, assertOnlyResimpliChanged,
+  normalizeAddressForMatch, matchResimpliRecords, assertOnlyResimpliChanged, storedIdsFor,
 } from './resimpli-shared.mjs'
 import {
   TODAY, daysBetween, yearDays, drawGross, defaultLenderPaymentSettings, resolveLenderSettings,
   calcBalance, calcMonthlyPaidPortion, calcIntEarned, hardPaymentSchedule,
 } from './loan-schedule-shared.mjs'
-import { nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary, withinWindow } from './whiteboard-forecast.mjs'
+import {
+  nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary, withinWindow,
+  filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
+} from './whiteboard-forecast.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -8169,9 +8172,17 @@ const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
 // whiteboard.payingBack) that flips whether that loan's principal is subtracted from the
 // estimate. Unlike a manual card, this one is never draggable/editable/removable — it's
 // recomputed fresh from live property/loan data every render.
-const WhiteboardSellCard = ({ card, h$, update, navigate }) => {
+// `onMarkClosed`/`onPickDate`/`onResetDate` are all omitted (undefined) under readOnly — the
+// card still renders the manual-date/breakdown info either way, it just can't be acted on.
+const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onPickDate, onResetDate }) => {
   const readOnly = useReadOnly();
   const [open, setOpen] = useState(false);
+  const [pickingDate, setPickingDate] = useState(false);
+  // Draggable onto another day (dnd-kit) — each card calls useDraggable itself, same pattern
+  // as WhiteboardBillCard, since this hook can't be called from a parent's .map() loop.
+  const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id, disabled:readOnly});
+  const dragStyle = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
+  const dragHandleProps = readOnly ? {} : {...attributes, ...listeners};
   const b = card.breakdown;
   const togglePayingBack = (loanId, checked) => update(d => ({
     ...d,
@@ -8184,16 +8195,36 @@ const WhiteboardSellCard = ({ card, h$, update, navigate }) => {
     },
   }));
   return (
-    <div className="rounded-xl border border-emerald-300 dark:border-emerald-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm">
-      <div className="flex items-center gap-1.5 mb-0.5">
-        <span className="text-[10px]">🏠</span>
-        <button onClick={e => { e.stopPropagation(); navigate && navigate({ type: 'property', id: card.propId }); }}
-          className="font-semibold text-[12px] text-teal-600 dark:text-teal-400 hover:underline truncate text-left">{card.address}</button>
+    <div ref={setNodeRef} style={dragStyle} {...dragHandleProps}
+      className={`rounded-xl border border-emerald-300 dark:border-emerald-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
+      <div className="flex items-start justify-between gap-1.5 mb-0.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[10px]">🏠</span>
+          <button onClick={e => { e.stopPropagation(); navigate && navigate({ type: 'property', id: card.propId }); }}
+            className="font-semibold text-[12px] text-teal-600 dark:text-teal-400 hover:underline truncate text-left">{card.address}</button>
+        </div>
+        {!readOnly && (
+          <div className="flex items-center gap-1 shrink-0">
+            {onPickDate && <button onClick={e=>{e.stopPropagation();setPickingDate(p=>!p);}} title="Pick a date (works on touch, no drag needed)" className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">📅</button>}
+            {onMarkClosed && <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this sale closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>}
+          </div>
+        )}
       </div>
+      {pickingDate && !readOnly && (
+        <input type="date" defaultValue={card.day} onClick={e=>e.stopPropagation()}
+          onChange={e=>{ if(e.target.value){ onPickDate(e.target.value); setPickingDate(false); } }}
+          className="text-[11px] border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 mb-1.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 w-full focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+      )}
       <div className="text-lg font-black tabular-nums mt-0.5 text-emerald-600 dark:text-emerald-400">+{h$(card.amount)}</div>
       <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
         Sale {b.saleDate} ({b.dateSource === "sheet" ? "sheet" : "REsimpli fallback"}) · auto
       </div>
+      {card.manualDate && (
+        <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <span>📌 Moved to {wbFmtDate(card.day)} (source says {wbFmtDate(card.sourceDate)})</span>
+          {onResetDate && <button onClick={e=>{e.stopPropagation();onResetDate();}} className="font-semibold hover:underline shrink-0">Reset</button>}
+        </div>
+      )}
       <button onClick={() => setOpen(o => !o)} className="text-[10px] font-semibold text-teal-500 dark:text-teal-400 hover:underline mt-1">{open ? "Hide breakdown" : "Show breakdown"}</button>
       {open && (
         <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-700 space-y-0.5 text-[10px] text-slate-500 dark:text-zinc-400">
@@ -8226,19 +8257,102 @@ const WhiteboardSellCard = ({ card, h$, update, navigate }) => {
 // Auto-generated, read-only buy card (a REsimpli lead under contract to buy). Shows both the
 // analytics and contract-question dates when they differ, so a mismatch between the two
 // sources is visible rather than silently resolved.
-const WhiteboardBuyCard = ({ card, h$ }) => (
-  <div className="rounded-xl border border-red-300 dark:border-red-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm">
-    <div className="flex items-center gap-1.5 mb-0.5">
-      <span className="text-[10px]">🔑</span>
-      <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{card.address}</div>
+const WhiteboardBuyCard = ({ card, h$, onMarkClosed, onPickDate, onResetDate }) => {
+  const readOnly = useReadOnly();
+  const [pickingDate, setPickingDate] = useState(false);
+  const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id, disabled:readOnly});
+  const dragStyle = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
+  const dragHandleProps = readOnly ? {} : {...attributes, ...listeners};
+  return (
+    <div ref={setNodeRef} style={dragStyle} {...dragHandleProps}
+      className={`rounded-xl border border-red-300 dark:border-red-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
+      <div className="flex items-start justify-between gap-1.5 mb-0.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[10px]">🔑</span>
+          <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{card.address}</div>
+        </div>
+        {!readOnly && (
+          <div className="flex items-center gap-1 shrink-0">
+            {onPickDate && <button onClick={e=>{e.stopPropagation();setPickingDate(p=>!p);}} title="Pick a date (works on touch, no drag needed)" className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">📅</button>}
+            {onMarkClosed && <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this purchase closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>}
+          </div>
+        )}
+      </div>
+      {pickingDate && !readOnly && (
+        <input type="date" defaultValue={card.day} onClick={e=>e.stopPropagation()}
+          onChange={e=>{ if(e.target.value){ onPickDate(e.target.value); setPickingDate(false); } }}
+          className="text-[11px] border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 mb-1.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 w-full focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+      )}
+      <div className="text-lg font-black tabular-nums mt-0.5 text-red-600 dark:text-red-400">−{h$(card.amount)}</div>
+      {card.dateFromAnalytics && card.dateFromContract && card.dateFromAnalytics !== card.dateFromContract && (
+        <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Analytics {card.dateFromAnalytics} vs. contract {card.dateFromContract} — using {card.date}</div>
+      )}
+      {card.manualDate && (
+        <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <span>📌 Moved to {wbFmtDate(card.day)} (source says {wbFmtDate(card.sourceDate)})</span>
+          {onResetDate && <button onClick={e=>{e.stopPropagation();onResetDate();}} className="font-semibold hover:underline shrink-0">Reset</button>}
+        </div>
+      )}
+      <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Buy (REsimpli) · auto</div>
     </div>
+  );
+};
+
+// "Closed, waiting to confirm" — Mark Closed on a sell/buy card moves it here and out of the
+// forecast entirely (cash in/out, running balance, shortfall cards all stop counting it)
+// until the real data confirms it (see WhiteboardPage's auto-clear effect) or Kyle undoes it
+// by hand. Shows what was known about the deal at the moment it was marked closed, since the
+// live card itself no longer exists once removed from the board.
+const WhiteboardClosedPanel = ({ items, h$, onUndo }) => {
+  if (!items.length) return null;
+  return (
+    <div className="mb-4 rounded-2xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 p-3">
+      <div className="text-xs font-bold text-slate-500 dark:text-zinc-400 mb-1.5">✅ Closed, waiting to confirm — {items.length}</div>
+      <div className="space-y-1 max-h-32 overflow-y-auto">
+        {items.map(it => (
+          <div key={it.id} className="flex items-center justify-between gap-2 text-[11px] text-slate-600 dark:text-zinc-300">
+            <span className="truncate">{it.kind==="sell"?"Sell:":"Buy:"} {it.address} ({h$(it.amount)})</span>
+            {onUndo && <button onClick={()=>onUndo(it.id)} className="font-semibold text-teal-600 dark:text-teal-400 hover:underline shrink-0">Undo</button>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// A "Set aside" entry WITH a date — money Kyle knows is already spoken for and will actually
+// leave Mercury on a specific day (vs. an undated one, which just lowers the headline
+// "available" figure instead of appearing as a dated card — see availableCash/
+// undatedSetAsideTotal in whiteboard-forecast.mjs).
+const WhiteboardSetAsideCard = ({ card, h$ }) => (
+  <div className="rounded-xl border border-violet-300 dark:border-violet-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm">
+    <div className="flex items-center gap-1.5 mb-0.5"><span className="text-[10px]">🔒</span><div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{card.label}</div></div>
     <div className="text-lg font-black tabular-nums mt-0.5 text-red-600 dark:text-red-400">−{h$(card.amount)}</div>
-    {card.dateFromAnalytics && card.dateFromContract && card.dateFromAnalytics !== card.dateFromContract && (
-      <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Analytics {card.dateFromAnalytics} vs. contract {card.dateFromContract} — using {card.date}</div>
-    )}
-    <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Buy (REsimpli) · auto</div>
+    <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Set aside · auto</div>
   </div>
 );
+
+// Add/edit one "Set aside" entry — label, amount, and an optional date it actually leaves.
+function WhiteboardSetAsideModal({ init, onSave, onClose }) {
+  const [label, setLabel] = useState(init?.label || "");
+  const [amount, setAmount] = useState(init ? String(init.amount || "") : "");
+  const [date, setDate] = useState(init?.date || "");
+  const canSave = label.trim().length > 0 && parseFloat(amount) > 0;
+  return (
+    <Modal title={init ? "Edit Set Aside" : "Set Aside Money"} onClose={onClose}>
+      <div className="space-y-3">
+        <Inp label="Label" value={label} onChange={setLabel} placeholder="e.g. Payroll, taxes owed"/>
+        <Inp label="Amount ($)" money value={amount} onChange={setAmount} placeholder="5000"/>
+        <DateInp label="Leaves on (optional)" value={date} onChange={setDate} helpText="Leave blank if it's already spoken for but has no set date — it'll just lower the available figure. Set a date once you know when it actually leaves Mercury, and it'll show as a scheduled outflow that day instead."/>
+        <div className="flex gap-2 pt-1">
+          <Btn color={canSave ? "blue" : "ghost"} disabled={!canSave} full
+            onClick={() => canSave && onSave({ id: init?.id || uid(), label: label.trim(), amount: parseFloat(amount) || 0, date: date || null })}>Save</Btn>
+          <Btn color="ghost" onClick={onClose}>Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 // Bills/invoices with no due date — pay-ASAP, ranked by when they came in (default) or a
 // manual override via the up/down arrows, kept in their own queue instead of forced onto a
@@ -8306,6 +8420,8 @@ function WhiteboardPage({ data, update }) {
   const [addOpen,setAddOpen] = useState(false);
   const [editCard,setEditCard] = useState(null);
   const [activeId,setActiveId] = useState(null);
+  const [addingSetAside,setAddingSetAside] = useState(false);
+  const [editingSetAside,setEditingSetAside] = useState(null);
   const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
 
   const [windowDays,setWindowDays] = useState(45);
@@ -8395,8 +8511,61 @@ function WhiteboardPage({ data, update }) {
     id: `buy-${r.leadId}`, address: r.address, amount: r.amount, day: r.date,
     date: r.date, dateFromAnalytics: r.dateFromAnalytics, dateFromContract: r.dateFromContract,
   }));
-  const sellCardsFor = day => sellCardsInfo.filter(c=>c.day===day);
-  const buyCardsFor = day => buyCardsInfo.filter(c=>c.day===day);
+
+  // ─── Whiteboard-only overrides (data.whiteboardOverrides) — Mark Closed, moved dates, and
+  // Set Aside entries. Stored in their own top-level key, read ONLY here — see CLAUDE.md
+  // "Whiteboard Cash-Flow Forecast — Whiteboard-only overrides" and
+  // whiteboard-forecast.mjs's filterClosed/applyMovedDate/undatedSetAsideTotal/availableCash/
+  // datedSetAsideCards (the pure, unit-tested functions actually doing this work). Nothing
+  // here ever touches a property/loan/lender/REsimpli field.
+  const closedOverrides = data.whiteboardOverrides?.closed || {};
+  const movedDates = data.whiteboardOverrides?.movedDates || {};
+  const setAsides = data.whiteboardOverrides?.setAsides || [];
+  // Closed items are pulled OUT of the forecast entirely (cash in/out, running balance,
+  // shortfall cards all stop counting them) and shown in their own panel instead — built from
+  // the raw (pre-filter) arrays above, before any date override, since a closed item's display
+  // shouldn't jump around from a manual-date edit that no longer matters once it's closed.
+  const closedItems = [
+    ...sellCardsInfo.filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"sell", address:c.address, amount:c.amount })),
+    ...buyCardsInfo.filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"buy", address:c.address, amount:c.amount })),
+  ];
+  const activeSellCards = filterClosed(sellCardsInfo, closedOverrides).map(c=>applyMovedDate(c, movedDates));
+  const activeBuyCards = filterClosed(buyCardsInfo, closedOverrides).map(c=>applyMovedDate(c, movedDates));
+  const setAsideCardsList = datedSetAsideCards(setAsides);
+  const sellCardsFor = day => activeSellCards.filter(c=>c.day===day);
+  const buyCardsFor = day => activeBuyCards.filter(c=>c.day===day);
+  const setAsideCardsFor = day => setAsideCardsList.filter(c=>c.day===day);
+
+  // Auto-clear: once the real data confirms a closing — a sell property gets dateSold or
+  // leaves Under Contract/Inventory (drops out of sellingProps), or a buy lead leaves Under
+  // Contract (drops out of buysResult.rows) or the lead's property now actually exists in the
+  // tracker (matched by any id storedIdsFor collects) — the override is stale and removed
+  // automatically, same as Kyle clicking Undo himself. Runs after every fetch/data change;
+  // a no-op (no update() call) when nothing's stale, so this never fights an in-flight edit.
+  useEffect(() => {
+    const closed = data.whiteboardOverrides?.closed || {};
+    const staleKeys = Object.keys(closed).filter(key => {
+      const o = closed[key];
+      if (o.kind === "sell") return !sellingProps.some(p => p.id === o.key);
+      if (o.kind === "buy") {
+        // needsInfo leads are ALSO still Under Contract (classifyBuyLead only ever runs on
+        // Under Contract leads) — just missing a cash figure/date — so a lead dropping OUT of
+        // rows into needsInfo must not look like "left Under Contract" and auto-clear a Mark
+        // Closed override that's still legitimately pending confirmation.
+        const stillUnderContract = (buysResult.rows||[]).some(r => r.leadId === o.key) || (buysResult.needsInfo||[]).some(n => n.leadId === o.key);
+        const nowInTracker = (data.properties||[]).some(p => storedIdsFor(p).has(o.key));
+        return !stillUnderContract || nowInTracker;
+      }
+      return false;
+    });
+    if (!staleKeys.length) return;
+    update(d => {
+      const next = { ...(d.whiteboardOverrides?.closed||{}) };
+      staleKeys.forEach(k => delete next[k]);
+      return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, closed: next } };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sellingPropsKey, buysResult, data.properties, data.whiteboardOverrides?.closed]);
 
   // A bill counts as "in the Due Now queue" only while it has no day — drag it onto a day and
   // it shows up there like any other card instead (still excluded from Unscheduled, since a
@@ -8416,7 +8585,8 @@ function WhiteboardPage({ data, update }) {
     .reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0)
     - autoCardsFor(day).reduce((s,c)=>s+(c.amount||0),0)
     + sellCardsFor(day).reduce((s,c)=>s+(c.amount||0),0)
-    - buyCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
+    - buyCardsFor(day).reduce((s,c)=>s+(c.amount||0),0)
+    - setAsideCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
   // A card dragged onto day X but settling on day Y (see wbEffectiveDate) still shows on X —
   // this is what lets Y's balance jump make sense without hunting for the card.
   const settledInFor = day => cards.filter(c=>c.day && c.day!==day && c.direction==="in" && (c.amount||0)>0 && wbEffectiveDate(c)===day);
@@ -8427,7 +8597,14 @@ function WhiteboardPage({ data, update }) {
   // else the existing manual input.
   const startingBalanceManual = data.whiteboard?.startingBalance || 0;
   const usingMercury = mercury.ok && mercury.balance!=null;
-  const startingBalance = usingMercury ? mercury.balance : startingBalanceManual;
+  const rawStartingBalance = usingMercury ? mercury.balance : startingBalanceManual;
+  // "Available" cash is the raw Mercury/manual figure minus every UNDATED Set Aside entry —
+  // money already spoken for that Kyle doesn't want counted as available, even though it
+  // hasn't left Mercury on any particular day yet (a dated entry instead shows as its own
+  // outflow card on that day, via setAsideCardsFor/netFor above — see
+  // whiteboard-forecast.mjs's availableCash/undatedSetAsideTotal).
+  const setAsideTotal = undatedSetAsideTotal(setAsides);
+  const startingBalance = availableCash(rawStartingBalance, setAsides);
   const netByDay = {};
   dayCols.forEach(day => { netByDay[day] = netFor(day); });
   const { balances, firstShortfall, largestShortfall, positiveAgain } = computeForecastSummary(dayCols, netByDay, startingBalance);
@@ -8478,13 +8655,64 @@ function WhiteboardPage({ data, update }) {
     })}};
   });
 
+  // Mark Closed / moved-date / Set Aside writers — all additive patches to
+  // data.whiteboardOverrides, never touching properties/loans/lenders/REsimpli/the sheet.
+  const markClosed = (cardId, kind, key, address, amount) => update(d => ({
+    ...d,
+    whiteboardOverrides: {
+      ...d.whiteboardOverrides,
+      closed: { ...(d.whiteboardOverrides?.closed||{}), [cardId]: { kind, key, address, amount, closedAt: new Date().toISOString() } },
+    },
+  }));
+  const undoClosed = cardId => update(d => {
+    const next = { ...(d.whiteboardOverrides?.closed||{}) };
+    delete next[cardId];
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, closed: next } };
+  });
+  // originalDate is pinned the FIRST time a card is moved and never overwritten by a later
+  // move — Reset always restores the true real source date, not whatever it was most
+  // recently moved from.
+  const setMovedDate = (cardId, newDate, sourceDateNow) => update(d => {
+    const existing = d.whiteboardOverrides?.movedDates?.[cardId];
+    const originalDate = existing?.originalDate ?? sourceDateNow;
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, movedDates: { ...(d.whiteboardOverrides?.movedDates||{}), [cardId]: { date: newDate, originalDate } } } };
+  });
+  const resetMovedDate = cardId => update(d => {
+    const next = { ...(d.whiteboardOverrides?.movedDates||{}) };
+    delete next[cardId];
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, movedDates: next } };
+  });
+  const saveSetAside = entry => update(d => {
+    const existing = d.whiteboardOverrides?.setAsides||[];
+    const already = existing.some(x=>x.id===entry.id);
+    const nextList = already ? existing.map(x=>x.id===entry.id?entry:x) : [...existing, entry];
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, setAsides: nextList } };
+  });
+  const deleteSetAside = id => {
+    if (!window.confirm("Remove this set-aside entry?")) return;
+    update(d => ({ ...d, whiteboardOverrides: { ...d.whiteboardOverrides, setAsides: (d.whiteboardOverrides?.setAsides||[]).filter(x=>x.id!==id) } }));
+  };
+
   const handleDragEnd = ({active,over}) => {
     setActiveId(null);
     if (!over) return;
+    const id = String(active.id);
+    if (id.startsWith("sell-") || id.startsWith("buy-")) {
+      // A sell/buy auto card dragged onto a day — moves it via the same override Set Aside
+      // and the tap-to-pick-date button use, never the manual-card path above.
+      if (over.id==="unscheduled"||over.id==="duenow") return; // auto cards always have a day; nowhere to "unschedule" them to
+      const list = id.startsWith("sell-") ? activeSellCards : activeBuyCards;
+      const card = list.find(c=>c.id===id);
+      if (card) setMovedDate(id, over.id, card.sourceDate ?? card.day);
+      return;
+    }
     setCardDay(active.id, (over.id==="unscheduled"||over.id==="duenow") ? null : over.id);
   };
 
   const activeCard = cards.find(c=>c.id===activeId);
+  const activeAutoCard = !activeCard && activeId
+    ? (String(activeId).startsWith("sell-") ? activeSellCards.find(c=>c.id===activeId) : String(activeId).startsWith("buy-") ? activeBuyCards.find(c=>c.id===activeId) : null)
+    : null;
   // Cards still sitting in Unscheduled haven't been given a day yet, and bills still in Due
   // Now have no day at all — neither feeds into any day's balance, so exclude both here too,
   // or this total wouldn't match what the day columns actually add up to. A bill dragged onto
@@ -8496,8 +8724,8 @@ function WhiteboardPage({ data, update }) {
   // headline In/Out figures. withinWindow (whiteboard-forecast.mjs) is the same pure filter
   // used/tested for this, so the totals can't drift from what the day columns themselves add up to.
   const scheduledCards = withinWindow(cards.filter(c=>c.day), dayCols, wbEffectiveDate);
-  const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0) + withinWindow(sellCardsInfo, dayCols).reduce((s,c)=>s+(c.amount||0),0);
-  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + withinWindow(autoCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(buyCardsInfo, dayCols).reduce((s,c)=>s+(c.amount||0),0);
+  const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0) + withinWindow(activeSellCards, dayCols).reduce((s,c)=>s+(c.amount||0),0);
+  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + withinWindow(autoCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(activeBuyCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(setAsideCardsList, dayCols).reduce((s,c)=>s+(c.amount||0),0);
   const [sbInput,setSbInput] = useState(String(startingBalanceManual||""));
   useEffect(()=>{ setSbInput(String(startingBalanceManual||"")); }, [startingBalanceManual]);
 
@@ -8563,7 +8791,7 @@ function WhiteboardPage({ data, update }) {
             <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{positiveAgain?wbFmtDate(positiveAgain):`Not within ${windowDays}d`}</div>
           </div>
         )}
-        {(cards.length>0||autoCards.length>0||sellCardsInfo.length>0||buyCardsInfo.length>0)&&(<>
+        {(cards.length>0||autoCards.length>0||activeSellCards.length>0||activeBuyCards.length>0||setAsideCardsList.length>0)&&(<>
           <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
             <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(totalIn)}</div>
@@ -8573,6 +8801,34 @@ function WhiteboardPage({ data, update }) {
             <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(totalOut)}</div>
           </div>
         </>)}
+      </div>
+
+      <div className="mb-4 bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Set Aside</div>
+          {!readOnly && <button onClick={()=>setAddingSetAside(true)} className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline">+ Add</button>}
+        </div>
+        <div className="text-xs text-slate-500 dark:text-zinc-400 mb-2">
+          {usingMercury?"Mercury":"Manual"} {h$(rawStartingBalance)}, set aside {h$(setAsideTotal)}, available {h$(startingBalance)}
+        </div>
+        {setAsides.length===0 ? (
+          <div className="text-[11px] text-slate-300 dark:text-zinc-600 italic">Nothing set aside</div>
+        ) : (
+          <div className="space-y-1">
+            {setAsides.map(s=>(
+              <div key={s.id} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="truncate text-slate-600 dark:text-zinc-300">{s.label} {s.date?`— leaves ${s.date}`:"— no date, lowers available now"}</span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{h$(s.amount)}</span>
+                  {!readOnly && (<>
+                    <button onClick={()=>setEditingSetAside(s)} className="text-teal-500 dark:text-teal-400 hover:underline">Edit</button>
+                    <button onClick={()=>deleteSetAside(s.id)} className="text-red-500 dark:text-red-400 hover:underline">Delete</button>
+                  </>)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {sellDatesResult.sheetConnected===false && (
@@ -8601,7 +8857,9 @@ function WhiteboardPage({ data, update }) {
         </div>
       )}
 
-      {cards.length===0&&autoCards.length===0&&sellCardsInfo.length===0&&buyCardsInfo.length===0?(
+      <WhiteboardClosedPanel items={closedItems} h$={h$} onUndo={readOnly?undefined:undoClosed}/>
+
+      {cards.length===0&&autoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
         <div className="text-center py-16 text-slate-400 dark:text-zinc-500">
           <div className="text-4xl mb-3">📌</div>
           <p className="font-semibold">Nothing on the board yet</p>
@@ -8618,16 +8876,29 @@ function WhiteboardPage({ data, update }) {
               <WhiteboardColumn key={day} id={day} h$={h$}
                 label={i===0?"Today":wbFmtDate(day)}
                 sub={i===0?wbFmtDate(day):wbWeekday(day)}
-                isToday={i===0} weekStart={i>0&&i%7===0} net={netFor(day)} balance={balances[day]} settledIn={settledInFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0&&sellCardsFor(day).length===0&&buyCardsFor(day).length===0}>
-                {sellCardsFor(day).map(c=><WhiteboardSellCard key={c.id} card={c} h$={h$} update={update} navigate={navigate}/>)}
-                {buyCardsFor(day).map(c=><WhiteboardBuyCard key={c.id} card={c} h$={h$}/>)}
+                isToday={i===0} weekStart={i>0&&i%7===0} net={netFor(day)} balance={balances[day]} settledIn={settledInFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0&&sellCardsFor(day).length===0&&buyCardsFor(day).length===0&&setAsideCardsFor(day).length===0}>
+                {sellCardsFor(day).map(c=><WhiteboardSellCard key={c.id} card={c} h$={h$} update={update} navigate={navigate}
+                  onMarkClosed={readOnly?undefined:()=>markClosed(c.id,"sell",c.propId,c.address,c.amount)}
+                  onPickDate={readOnly?undefined:(newDate)=>setMovedDate(c.id,newDate,c.sourceDate??c.day)}
+                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}/>)}
+                {buyCardsFor(day).map(c=><WhiteboardBuyCard key={c.id} card={c} h$={h$}
+                  onMarkClosed={readOnly?undefined:()=>markClosed(c.id,"buy",c.id.replace(/^buy-/,""),c.address,c.amount)}
+                  onPickDate={readOnly?undefined:(newDate)=>setMovedDate(c.id,newDate,c.sourceDate??c.day)}
+                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}/>)}
                 {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
+                {setAsideCardsFor(day).map(c=><WhiteboardSetAsideCard key={c.id} card={c} h$={h$}/>)}
                 {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard} navigate={navigate}/>)}
               </WhiteboardColumn>
             ))}
           </div>
           <DragOverlay>
             {activeCard&&<div className="w-56"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
+            {activeAutoCard&&(
+              <div className="w-56 rounded-xl border border-slate-300 dark:border-zinc-600 p-3 bg-white dark:bg-zinc-800 shadow-lg">
+                <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{activeAutoCard.address}</div>
+                <div className="text-base font-black tabular-nums mt-0.5 text-slate-800 dark:text-zinc-100">{h$(activeAutoCard.amount)}</div>
+              </div>
+            )}
           </DragOverlay>
         </DndContext>
       )}
@@ -8636,6 +8907,12 @@ function WhiteboardPage({ data, update }) {
         <WhiteboardCardModal properties={data.properties} init={editCard}
           onSave={c=>{saveCard(c);setAddOpen(false);setEditCard(null);}}
           onClose={()=>{setAddOpen(false);setEditCard(null);}}/>
+      )}
+
+      {(addingSetAside||editingSetAside)&&(
+        <WhiteboardSetAsideModal init={editingSetAside}
+          onSave={entry=>{saveSetAside(entry);setAddingSetAside(false);setEditingSetAside(null);}}
+          onClose={()=>{setAddingSetAside(false);setEditingSetAside(null);}}/>
       )}
     </div>
   );

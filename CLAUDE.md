@@ -978,6 +978,81 @@ of rolling it" checkbox, set from `WhiteboardSellCard`).
   JSON key, shared as a Viewer on the Office Dashboard Sheet) — both server-side-only env vars
   on Vercel, see `.env.example`. Until both are set, the Whiteboard still works exactly as
   before (manual starting balance, no auto sell/buy cards, no "needs info" panel).
+- **Live status**: merged into `claude/build-deploy-app-BIdEz` and live in production as of
+  2026-11-16 (Kyle: "Go"). `MERCURY_API_TOKEN`/`GOOGLE_SERVICE_ACCOUNT_JSON` are set in Vercel
+  for both Production and Preview.
+
+### Whiteboard-only overrides (`data.whiteboardOverrides`)
+Mark Closed, drag/tap-to-move dates, and "Set Aside" starting-cash adjustments — three
+Whiteboard-only features (Kyle approved 11/16, shipped straight to production, no preview
+branch). **HARD RULE**: all three live in their own top-level `data.whiteboardOverrides` key,
+read and written ONLY by `WhiteboardPage` (and the pure helpers in `whiteboard-forecast.mjs`
+it calls) — nothing else in the app (no other tab, no `api/*.mjs` function) ever references
+it, enforced by a static-containment test (`tests/whiteboard-overrides-isolation.test.mjs`)
+that fails the suite if the string `whiteboardOverrides` ever shows up outside
+`WhiteboardPage()` in `Tracker.jsx` or anywhere in `api/`. It syncs like every other field —
+no special plumbing — because the whole `data` blob already round-trips through Supabase as
+one JSON column; it's additive (`{...d, whiteboardOverrides: {...d.whiteboardOverrides, ...}}`
+at every level), so Undo/Redo and `applyMigrations`' generic `{...d, ...}` spread both already
+handle it with zero special-casing.
+```js
+data.whiteboardOverrides = {
+  closed: {                    // Mark Closed — keyed by the same auto-card id scheme
+    "sell-<propId>": {kind:"sell", key:propId, address, amount, closedAt: isoString},
+    "buy-<leadId>":  {kind:"buy",  key:leadId,  address, amount, closedAt: isoString},
+  },
+  movedDates: {                // drag/tap-to-pick date override, same id scheme
+    "<cardId>": {date: "YYYY-MM-DD", originalDate: "YYYY-MM-DD"},  // originalDate pinned once
+  },
+  setAsides: [                 // Starting Cash "Set aside" list
+    {id, label, amount, date: "YYYY-MM-DD"|null},
+  ],
+}
+```
+- **Mark Closed**: the "Closed" button on `WhiteboardSellCard`/`WhiteboardBuyCard` (never on a
+  manual card or the auto loan-payment card). A closed item is pulled out of the forecast
+  entirely — `filterClosed()` (`whiteboard-forecast.mjs`) drops it before `sellCardsFor`/
+  `buyCardsFor`/the totals/the running balance ever see it — and listed instead in the
+  "✅ Closed, waiting to confirm" panel (`WhiteboardClosedPanel`) with an Undo button per item.
+  **Auto-clear**: a `useEffect` in `WhiteboardPage` removes a closed override by itself once
+  the real data confirms it — a sell property gets `dateSold` or drops out of `sellingProps`
+  (leaves Under Contract/Inventory), or a buy lead drops out of BOTH `buysResult.rows` and
+  `buysResult.needsInfo` (truly leaves Under Contract — landing in `needsInfo` instead, e.g.
+  for a missing cash figure, does NOT count as leaving) or its property now exists in the
+  tracker (matched via `storedIdsFor`, same id-matching `resimpli-shared.mjs`'s REsimpli
+  matcher uses). A no-op (no `update()` call) when nothing's stale, so it never fights an
+  in-flight edit or loops.
+- **Drag/tap to move a date**: `WhiteboardSellCard`/`WhiteboardBuyCard` each call
+  `useDraggable({id:card.id})` themselves (same per-card pattern as the existing
+  `WhiteboardBillCard`, since the dnd-kit hook can't be called from a parent's `.map()` loop),
+  so they drop onto a day column through the SAME `DndContext`/`handleDragEnd` the manual
+  cards use — `handleDragEnd` checks the dragged id's `sell-`/`buy-` prefix to route it to
+  `setMovedDate()` instead of the manual-card `setCardDay()` path. The 📅 button on each card
+  is the tap-to-pick-date fallback (a plain `<input type="date">`, toggled inline) — added
+  because touch-dragging a card across a horizontally-scrolling day grid is unreliable on
+  iPhone even with `touch-none` set; either path calls the same `setMovedDate()`.
+  `applyMovedDate()` (`whiteboard-forecast.mjs`) overrides the card's `day` for forecast
+  placement while keeping `sourceDate` as whatever the real source (REsimpli/the Sheet) says
+  *right now* — so if that real date later changes, the card still uses the manual date but
+  shows the new source date alongside it ("📌 Moved to \<date\> (source says \<date\>)"), per
+  Kyle's spec. `originalDate` is pinned the FIRST time a card is moved and never overwritten by
+  a later move, so "Reset" always restores the true original, not whatever it was most
+  recently moved from.
+- **Starting Cash → Set Aside**: money already sitting in the Mercury Master balance that's
+  spoken for but hasn't left yet. An entry with no date is subtracted straight from the
+  headline "available" figure (`availableCash()`); one with a date instead becomes its own
+  dated outflow card (`datedSetAsideCards()` → `WhiteboardSetAsideCard`) that only affects the
+  running balance on that day, leaving "available" alone. The summary line reads "Mercury $X
+  (or Manual $X), set aside $Y, available $Z". `WhiteboardSetAsideModal` adds/edits one entry;
+  each is deletable. The Mercury balance itself (`mercury.balance`) is only ever read, never
+  adjusted by any of this.
+- **Tests**: `tests/whiteboard-overrides.test.mjs` covers `filterClosed`/`applyMovedDate`
+  (including the "source date changed since the override was set" case) /
+  `undatedSetAsideTotal`/`availableCash`/`datedSetAsideCards`, plus explicit isolation checks
+  that `hardPaymentSchedule`/`resolveLenderSettings`/`calcBalance`/`calcIntEarned`/
+  `matchResimpliRecords`/`groupedStageSortKey` all return byte-identical results whether or not
+  `data.whiteboardOverrides` is present. `tests/whiteboard-overrides-isolation.test.mjs` is the
+  static-containment check described above.
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top

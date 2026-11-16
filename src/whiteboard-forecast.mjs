@@ -128,6 +128,50 @@ export function withinWindow(items, dayCols, dayOf = item => item.day) {
   return items.filter(item => set.has(dayOf(item)));
 }
 
+// ─── Whiteboard-only overrides (data.whiteboardOverrides) ──────────────────────────────────
+// Everything below operates on data.whiteboardOverrides — a top-level key read ONLY by
+// WhiteboardPage (see CLAUDE.md "Whiteboard Cash-Flow Forecast — Whiteboard-only overrides").
+// No other screen/calculation in the app reads or writes it; these helpers never touch
+// properties/loans/lenders/REsimpli/the Sheet, so a page that never calls them is guaranteed
+// unaffected by whatever's stored here.
+
+// Drops any auto card (sell/buy — never a manual card, never a loan-payment card) whose id
+// has been marked closed. `closed` is data.whiteboardOverrides.closed, {[cardId]: {...}}.
+export function filterClosed(cardsInfo, closed) {
+  if (!closed) return cardsInfo;
+  return cardsInfo.filter(c => !closed[c.id]);
+}
+
+// Applies a manual date override to one auto card. `movedDates` is
+// data.whiteboardOverrides.movedDates, {[cardId]: {date, originalDate}}. The card's own `day`
+// (as freshly computed from the real source — REsimpli/the Sheet) is preserved as
+// `sourceDate` so the UI can show "moved manually, source is now <date>" even if that real
+// source date has changed since the override was set — the override itself never changes
+// until Reset is clicked.
+export function applyMovedDate(card, movedDates) {
+  const override = movedDates?.[card.id];
+  if (!override) return card;
+  return { ...card, day: override.date, manualDate: true, originalDate: override.originalDate, sourceDate: card.day };
+}
+
+// Total of every "Set aside" entry with NO date — subtracted straight from Starting Cash
+// (money already spoken for, not yet scheduled to leave on any particular day).
+export function undatedSetAsideTotal(setAsides) {
+  return (setAsides || []).filter(s => !s.date).reduce((sum, s) => sum + (s.amount || 0), 0);
+}
+
+// "Available" cash — the Mercury (or manual) starting balance minus every undated set-aside.
+export function availableCash(startingCash, setAsides) {
+  return Math.round((startingCash - undatedSetAsideTotal(setAsides)) * 100) / 100;
+}
+
+// Every "Set aside" entry that DOES have a date becomes its own out-card on that day — same
+// shape {id, day, amount} the other auto-card arrays use, so it can flow through withinWindow/
+// netFor identically.
+export function datedSetAsideCards(setAsides) {
+  return (setAsides || []).filter(s => s.date).map(s => ({ id: `setaside-${s.id}`, label: s.label, amount: s.amount || 0, day: s.date }));
+}
+
 // Running cash balance across a day window, given a starting balance and a map of
 // {day: netAmountThatDay}. Returns {balances: {day: balance}, firstShortfall: {day, amount}|null,
 // largestShortfall: {day, amount}|null, positiveAgain: day|null} — the pieces the Whiteboard's
