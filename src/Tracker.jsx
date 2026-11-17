@@ -9027,6 +9027,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     ...buyWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"onHoldBuy", label:shortAddress(c.address), amount:c.amount||0, direction:"out", restoreDay:c.day })),
   ];
   const noDateSorted = sortByPriorityOrder(noDateAll, noDateOrder);
+  const setNoDateOrder = newIds => update(d=>({...d, whiteboardOverrides:{...d.whiteboardOverrides, noDateOrder:newIds}}));
   const moveNoDatePriority = (id, dir) => {
     const ids = noDateSorted.map(x=>x.id);
     const idx = ids.indexOf(id);
@@ -9034,7 +9035,18 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     if (idx<0||swapIdx<0||swapIdx>=ids.length) return;
     const next = [...ids];
     [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
-    update(d=>({...d, whiteboardOverrides:{...d.whiteboardOverrides, noDateOrder:next}}));
+    setNoDateOrder(next);
+  };
+  // Drag-to-reorder the No-Date list directly (▲▼ above still work too — same
+  // setNoDateOrder, just a swap instead of an arrayMove). "Number 1 means most important" —
+  // the number badge on each row is just its position in noDateSorted, so it's always in
+  // sync with whatever order drag/▲▼ last produced.
+  const handleNoDateDragEnd = ({active,over}) => {
+    if (!over || active.id===over.id) return;
+    const ids = noDateSorted.map(x=>x.id);
+    const oldIndex = ids.indexOf(active.id), newIndex = ids.indexOf(over.id);
+    if (oldIndex<0||newIndex<0) return;
+    setNoDateOrder(arrayMove(ids, oldIndex, newIndex));
   };
   // Current liens on a linked property, pulled live every render — so if a loan gets paid
   // off or a new one's added, the card reflects it automatically without re-entering anything.
@@ -9364,12 +9376,18 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
 
       {noDateSorted.length>0 && (
         <div className="mb-4 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 p-3">
-          <div className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1.5">📋 No Date — {noDateSorted.length}, ranked by priority</div>
+          <div className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1.5">📋 No Date — {noDateSorted.length}, ranked by priority (drag ⠿ or use ▲▼ — #1 is most important)</div>
+          <DndContext sensors={readOnly?[]:dragSensors} onDragEnd={handleNoDateDragEnd}>
+          <SortableContext items={noDateSorted.map(n=>n.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-1 max-h-56 overflow-y-auto">
             {noDateSorted.map((n,i)=>(
-              <div key={n.id} className="text-[11px] text-amber-800 dark:text-amber-300">
+              <SortableItem key={n.id} id={n.id} disabled={readOnly}>
+                {handleProps => (
+                <div className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/10">
                 <div className="flex gap-1.5 items-center justify-between">
                   <div className="flex items-center gap-1 shrink-0">
+                    {!readOnly && <span {...handleProps} title="Drag to reorder" className="cursor-grab active:cursor-grabbing text-slate-400 dark:text-zinc-500 touch-none px-0.5">⠿</span>}
+                    <span className="w-4 text-center font-black text-amber-500 dark:text-amber-400 tabular-nums" title="Priority rank">{i+1}</span>
                     {!readOnly && (<>
                       <button onClick={()=>moveNoDatePriority(n.id,-1)} disabled={i===0} title="Move up in priority" className="w-4 h-4 flex items-center justify-center rounded hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-25">▲</button>
                       <button onClick={()=>moveNoDatePriority(n.id,1)} disabled={i===noDateSorted.length-1} title="Move down in priority" className="w-4 h-4 flex items-center justify-center rounded hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-25">▼</button>
@@ -9405,10 +9423,14 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
                     }} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-teal-600 text-white disabled:opacity-40">Save</button>
                   </div>
                 )}
-              </div>
+                </div>
+                )}
+              </SortableItem>
             ))}
           </div>
-          <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 italic">Manual cards/bills with no date yet, plus REsimpli/Sheet properties missing a date or amount — ▲▼ to re-rank by priority. Pencil in an amount+date on a Sell/Buy row to add it to the forecast like a real card (it drops back here on its own if the real data catches up); pick a date on a Bill/Card row to schedule it.</div>
+          </SortableContext>
+          </DndContext>
+          <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 italic">Manual cards/bills with no date yet, plus REsimpli/Sheet properties missing a date or amount — drag ⠿ or use ▲▼ to re-rank by priority (#1 = most important). Pencil in an amount+date on a Sell/Buy row to add it to the forecast like a real card (it drops back here on its own if the real data catches up); pick a date on a Bill/Card row to schedule it.</div>
         </div>
       )}
 

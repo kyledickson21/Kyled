@@ -1267,6 +1267,17 @@ order spanning all three sources.
   `<input type="date">` (→ `setCardDay`); a Needs Info row gets the existing "Fill in" amount+
   date form (→ `saveManualFill`, unchanged from the prior phase). ▲▼ priority buttons (gated
   `!readOnly`) are on every row regardless of kind.
+- **Drag-to-reorder + number badges (11/17 follow-up)** — Kyle: "I want to be able to drag it
+  to different priorities... and have them numbered. Number 1 means most important." Each row
+  is wrapped in the existing generic `SortableItem` helper (near `usePersistedState`, top of
+  file — already used for Home-screen/property drag-reorder, now reused here rather than a
+  new one-off `useSortable` component) with its own small `DndContext`/`SortableContext`
+  (`@dnd-kit/sortable`, already a dependency) scoped just to this list — a `⠿` handle drags,
+  `handleNoDateDragEnd` computes the new order via `arrayMove` and writes it through the same
+  `setNoDateOrder(newIds)` the ▲▼ buttons now also call (both paths converge on one writer).
+  The number badge shown on every row is nothing but its own index in `noDateSorted` — it's
+  automatically correct after either a drag or a ▲▼ click, with no separate "priority number"
+  field to keep in sync.
 - **Tests**: `sortByPriorityOrder` (no-op with no order, ranked-first ordering, unranked items
   keep relative order appended after).
 
