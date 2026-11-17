@@ -1150,13 +1150,15 @@ types.
   switches to a denser layout (smaller padding/fonts, edit icons hidden) so a typical dataset
   fits without scrolling. Not a promise of zero scroll for an arbitrarily large dataset — the
   table body can still scroll on its own — just chrome-free and as dense as stays legible.
-  **Summary tiles are TV-specific (11/17 update, Kyle: "headings that are actually useful")**
-  — normal Board view keeps Lowest Balance/Total In/Total Out/Ending Balance, but TV Mode
-  swaps the first and last for "Need to Find" (the shortfall amount + "by \<date\>", or
-  "✓ none" if the balance never goes negative — reuses `ledgerSum.lowest`, just reframed as an
-  action rather than a balance reading) and "Under $10k" (the date the balance first drops
-  below that floor, or "✓ stays above" — `firstBelowThreshold(ledgerRows, 10000)`, computed in
-  `WhiteboardPage` and passed down as `firstBelow10k`).
+  **Summary tiles are TV-specific (11/17, two rounds of feedback)** — normal Board view keeps
+  Lowest Balance/Total In/Total Out/Ending Balance, but TV Mode swaps the first and last for
+  two pure-date bubbles: "Under $10k" (the date the balance first drops below that floor, or
+  "✓ stays above") and "Goes Negative" (the date it first goes below $0, or "✓ never") — each
+  a sub-label showing the $ short/remaining that day. Both come from the same generalized
+  `firstBelowThreshold(ledgerRows, threshold)` helper (just called with `10000` and `0`),
+  computed in `WhiteboardPage` and passed down as `firstBelow10k`/`firstNegative`. (An earlier
+  pass combined the negative-balance date into one "Need to Find $X by \<date\>" tile — Kyle
+  asked for it split into its own plain date bubble instead, matching "Under $10k"'s shape.)
 - **Tests**: `tests/whiteboard-overrides.test.mjs` — `applyAmountOverride`/`manualFillCards`
   (composability with `applyMovedDate`, never duplicating an id that already has a real card,
   the next-business-day clearing rule). `tests/whiteboard-ledger.test.mjs`'s "never calls
@@ -1259,6 +1261,30 @@ order spanning all three sources.
   `!readOnly`) are on every row regardless of kind.
 - **Tests**: `sortByPriorityOrder` (no-op with no order, ranked-first ordering, unranked items
   keep relative order appended after).
+
+### "Move to No-Date" — pulling an already-dated sell/buy card off the timeline (11/17)
+Kyle: "how can I move properties to the no date list if they're already on a date?" There was
+no way — Mark Closed removes a deal from the forecast entirely (for when it's actually done),
+but there was nothing for "I'm just not sure about this one yet, pull it off the calendar for
+now without closing it." **`noDateForced`** (new `data.whiteboardOverrides` sub-key, `{[cardId]:
+true}`) is that missing middle ground.
+- **`sendToNoDate(cardId)`/`restoreFromNoDate(cardId)`** (`WhiteboardPage`) — the override is
+  purely an id flag, filtered via the same generic `filterClosed()` already used for Mark
+  Closed (it just drops any id present in the map, so it works unchanged for this too).
+  `activeSellCards`/`activeBuyCards` now run through it as a second filter pass, AFTER the
+  existing moved-date/amount overrides are applied (`sellWithOverrides`/`buyWithOverrides`,
+  computed once and reused both for the active lists and for the No-Date row below) — so a
+  forced-no-date card still carries its real, fully-computed date/amount for display even
+  though it's excluded from the forecast.
+- **UI**: a new 📋 button (Calendar's `WhiteboardSellCard`/`WhiteboardBuyCard`, next to the
+  existing 📅/Closed buttons; Board's `WhiteboardBoardEntry`, next to ✏️/✕) calls
+  `onSendToNoDate`. The card then appears in the unified No-Date panel (see above) as
+  `kind:"onHoldSell"/"onHoldBuy"`, showing its real projected amount and "— would be \<date\>",
+  with a "↩ Restore" button (instead of Fill In, since the real data for it already exists —
+  nothing to pencil in) that calls `restoreFromNoDate`.
+- **Never auto-clears** — same reasoning as the loanPayment/setAside Mark Closed case: there's
+  no "real data confirms it" signal for "Kyle is unsure about this one," so he restores it
+  himself whenever he's ready to commit to a date again.
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top

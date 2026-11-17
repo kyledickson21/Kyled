@@ -8177,7 +8177,7 @@ const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
 // recomputed fresh from live property/loan data every render.
 // `onMarkClosed`/`onPickDate`/`onResetDate` are all omitted (undefined) under readOnly — the
 // card still renders the manual-date/breakdown info either way, it just can't be acted on.
-const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onPickDate, onResetDate }) => {
+const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onPickDate, onResetDate, onSendToNoDate }) => {
   const readOnly = useReadOnly();
   const [open, setOpen] = useState(false);
   const [pickingDate, setPickingDate] = useState(false);
@@ -8209,6 +8209,7 @@ const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onPickDa
         {!readOnly && (
           <div className="flex items-center gap-1 shrink-0">
             {onPickDate && <button onClick={e=>{e.stopPropagation();setPickingDate(p=>!p);}} title="Pick a date (works on touch, no drag needed)" className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">📅</button>}
+            {onSendToNoDate && <button onClick={e=>{e.stopPropagation();onSendToNoDate();}} title="Move to the No-Date list — pulls it off the timeline without closing it" className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400 text-[11px]">📋</button>}
             {onMarkClosed && <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this sale closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>}
           </div>
         )}
@@ -8263,7 +8264,7 @@ const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onPickDa
 // Auto-generated, read-only buy card (a REsimpli lead under contract to buy). Shows both the
 // analytics and contract-question dates when they differ, so a mismatch between the two
 // sources is visible rather than silently resolved.
-const WhiteboardBuyCard = ({ card, h$, onMarkClosed, onPickDate, onResetDate }) => {
+const WhiteboardBuyCard = ({ card, h$, onMarkClosed, onPickDate, onResetDate, onSendToNoDate }) => {
   const readOnly = useReadOnly();
   const [pickingDate, setPickingDate] = useState(false);
   const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id, disabled:readOnly});
@@ -8280,6 +8281,7 @@ const WhiteboardBuyCard = ({ card, h$, onMarkClosed, onPickDate, onResetDate }) 
         {!readOnly && (
           <div className="flex items-center gap-1 shrink-0">
             {onPickDate && <button onClick={e=>{e.stopPropagation();setPickingDate(p=>!p);}} title="Pick a date (works on touch, no drag needed)" className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">📅</button>}
+            {onSendToNoDate && <button onClick={e=>{e.stopPropagation();onSendToNoDate();}} title="Move to the No-Date list — pulls it off the timeline without closing it" className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400 text-[11px]">📋</button>}
             {onMarkClosed && <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this purchase closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>}
           </div>
         )}
@@ -8430,7 +8432,7 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
 // WhiteboardBoardView's own DndContext), with inline amount editing and a tap-to-pick-date
 // fallback (same reasoning as the Calendar cards: touch-dragging across a table is unreliable
 // on a phone). "Mark Closed" reuses the exact same override as Calendar's sell/buy cards.
-const WhiteboardBoardEntry = ({ e, h$, navigate, readOnly, compact, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed }) => {
+const WhiteboardBoardEntry = ({ e, h$, navigate, readOnly, compact, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onSendToNoDate }) => {
   const [editingAmount, setEditingAmount] = useState(false);
   const [amountDraft, setAmountDraft] = useState(String(e.amount||""));
   const [pickingDate, setPickingDate] = useState(false);
@@ -8456,7 +8458,8 @@ const WhiteboardBoardEntry = ({ e, h$, navigate, readOnly, compact, onPickDate, 
           <div className="flex items-center gap-1 shrink-0">
             <button onClick={ev=>{ev.stopPropagation();setPickingDate(p=>!p);}} title="Pick a date" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[10px]">📅</button>
             <button onClick={ev=>{ev.stopPropagation();setEditingAmount(x=>!x);setAmountDraft(String(e.amount||""));}} title="Edit amount" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[10px]">✏️</button>
-            <button onClick={ev=>{ev.stopPropagation();onMarkClosed();}} title="Take off the timeline / mark closed" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-[10px]">✕</button>
+            {onSendToNoDate && <button onClick={ev=>{ev.stopPropagation();onSendToNoDate();}} title="Move to the No-Date list" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400 text-[10px]">📋</button>}
+            <button onClick={ev=>{ev.stopPropagation();onMarkClosed();}} title="Take off the timeline entirely / mark closed" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-[10px]">✕</button>
           </div>
         )}
       </div>
@@ -8489,7 +8492,7 @@ const WhiteboardBoardEntry = ({ e, h$, navigate, readOnly, compact, onPickDate, 
   );
 };
 
-const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany }) => {
+const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate }) => {
   const [loansOpen, setLoansOpen] = useState(false);
   const short = row.balance < 0;
   const { loanPayments, other, grouped, loanTotal } = groupLoanPaymentEntries(row.entries);
@@ -8521,7 +8524,8 @@ const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, o
             onSetAmount={readOnly?undefined:(id,amt)=>onSetAmount(id,amt)}
             onResetAmount={readOnly||!e.manualAmount?undefined:()=>onResetAmount(e.id)}
             onResetDate={readOnly||!e.manualDate?undefined:()=>onResetDate(e.id)}
-            onMarkClosed={()=>onMarkClosed(e)}/>
+            onMarkClosed={()=>onMarkClosed(e)}
+            onSendToNoDate={readOnly?undefined:()=>onSendToNoDate(e.id)}/>
         ))}
         {loanPayments.length>0 && (grouped ? (
           <div className="mt-0.5">
@@ -8571,8 +8575,8 @@ const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, o
   );
 };
 
-function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, navigate, readOnly, roundMode, firstBelow10k,
-  onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany }) {
+function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, navigate, readOnly, roundMode, firstBelow10k, firstNegative,
+  onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate }) {
   const hasShortfall = ledgerSum.lowest && ledgerSum.lowest.balance < 0;
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
@@ -8628,24 +8632,24 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
         </div>
       )}
       {/* Summary strip. Normal Board view: lowest balance (+date), total in/out, ending
-          balance. TV Mode swaps in the two numbers that actually matter for a glance-from-
-          across-the-room readout — how much to find and by when, and the date the account
-          would first dip under the $10k floor — per Kyle's own framing of what's useful there. */}
+          balance. TV Mode swaps in the two dates that actually matter for a glance-from-
+          across-the-room readout — when the account would first dip under $10k, and when it
+          would first go negative — per Kyle's own framing of what's useful there. */}
       <div className={`flex gap-2 flex-wrap shrink-0 ${compact?"mb-2":"mb-4 gap-3"}`}>
         {compact ? (<>
-          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
-            <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Need to Find</div>
-            {hasShortfall ? (<>
-              <div className="text-sm font-black tabular-nums text-red-600 dark:text-red-400">{h$(Math.abs(rBal(ledgerSum.lowest.balance)))}</div>
-              <div className="text-[9px] text-slate-400 dark:text-zinc-500">by {wbFmtDate(ledgerSum.lowest.day)}</div>
-            </>) : <div className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">✓ none</div>}
-          </div>
           <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
             <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Under $10k</div>
             {firstBelow10k ? (<>
               <div className="text-sm font-black tabular-nums text-amber-600 dark:text-amber-400">{wbFmtDate(firstBelow10k.day)}</div>
               <div className="text-[9px] text-slate-400 dark:text-zinc-500">{h$(rBal(firstBelow10k.balance))} that day</div>
             </>) : <div className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">✓ stays above</div>}
+          </div>
+          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Goes Negative</div>
+            {firstNegative ? (<>
+              <div className="text-sm font-black tabular-nums text-red-600 dark:text-red-400">{wbFmtDate(firstNegative.day)}</div>
+              <div className="text-[9px] text-slate-400 dark:text-zinc-500">{h$(Math.abs(rBal(firstNegative.balance)))} short that day</div>
+            </>) : <div className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">✓ never</div>}
           </div>
           <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
             <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
@@ -8712,7 +8716,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                       </tr>
                       {visibleRows.map(row=><WhiteboardBoardRow key={row.day} row={row} h$={h$} navigate={navigate} readOnly={effReadOnly} compact={compact} roundMode={roundMode}
                         onPickDate={(e,newDate)=>onPickDate?.(e,newDate)} onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate}
-                        onMarkClosed={onMarkClosed} onExcludeMany={onExcludeMany}/>)}
+                        onMarkClosed={onMarkClosed} onExcludeMany={onExcludeMany} onSendToNoDate={onSendToNoDate}/>)}
                     </Fragment>
                   );
                 })}
@@ -8870,6 +8874,14 @@ function WhiteboardPage({ data, update }) {
   const amountOverrides = data.whiteboardOverrides?.amountOverrides || {};
   const manualFill = data.whiteboardOverrides?.manualFill || {};
   const setAsides = data.whiteboardOverrides?.setAsides || [];
+  // "Move to No-Date" — a sell/buy card that already HAS a real date/amount but Kyle wants
+  // pulled off the dated timeline anyway (unsure about it, wants to revisit later). Unlike
+  // Mark Closed, nothing about the deal is actually resolved, so it isn't dropped — it moves
+  // into the unified No-Date list instead, showing its real projected date/amount for context,
+  // with a Restore action (no "Fill in" needed — the real data for it already exists). Never
+  // auto-clears (same reasoning as loanPayment/setAside Mark Closed below) — Kyle restores it
+  // himself once he's ready to commit to a date again.
+  const noDateForced = data.whiteboardOverrides?.noDateForced || {};
 
   // Manual fill-in: a card Kyle penciled in by hand for a property/lead the real data had no
   // date or amount for (see the "Fill in" action on Needs Info rows). Only ever stands in for
@@ -8893,8 +8905,10 @@ function WhiteboardPage({ data, update }) {
     ...autoCards.filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"loanPayment", address:c.lenderName?(c.address?`${c.lenderName} (${c.address})`:c.lenderName):(c.address||"Loan payment"), amount:c.amount })),
     ...datedSetAsideCards(setAsides).filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"setAside", address:c.label, amount:c.amount })),
   ];
-  const activeSellCards = filterClosed(allSellCardsInfo, closedOverrides).map(c=>applyMovedDate(c, movedDates)).map(c=>applyAmountOverride(c, amountOverrides));
-  const activeBuyCards = filterClosed(allBuyCardsInfo, closedOverrides).map(c=>applyMovedDate(c, movedDates)).map(c=>applyAmountOverride(c, amountOverrides));
+  const sellWithOverrides = allSellCardsInfo.map(c=>applyMovedDate(c, movedDates)).map(c=>applyAmountOverride(c, amountOverrides));
+  const buyWithOverrides = allBuyCardsInfo.map(c=>applyMovedDate(c, movedDates)).map(c=>applyAmountOverride(c, amountOverrides));
+  const activeSellCards = filterClosed(filterClosed(sellWithOverrides, closedOverrides), noDateForced);
+  const activeBuyCards = filterClosed(filterClosed(buyWithOverrides, closedOverrides), noDateForced);
   const activeAutoCards = filterClosed(autoCards, closedOverrides);
   const setAsideCardsList = filterClosed(datedSetAsideCards(setAsides), closedOverrides);
   const sellCardsFor = day => activeSellCards.filter(c=>c.day===day);
@@ -8999,6 +9013,11 @@ function WhiteboardPage({ data, update }) {
     ...bills.map(c=>({ id:c.id, kind:"bill", label:shortAddress(c.address)||c.address||"Bill", amount:c.amount||0, direction:c.direction })),
     ...unscheduled.map(c=>({ id:c.id, kind:"unscheduled", label:c.kind==="property"?shortAddress(c.address):(c.address||"Card"), amount:c.amount||0, direction:c.direction })),
     ...needsInfoAll.map(n=>({ id:n.cardId, kind:n.kind==="sell"?"needsInfoSell":"needsInfoBuy", label:n.address, reason:n.reason, raw:n })),
+    // "Move to No-Date" rows — a sell/buy card that already has a real date/amount, pulled off
+    // the dated timeline on purpose (not because the data is missing anything). Shows the real
+    // projected date/amount for context and a Restore action instead of Fill In.
+    ...sellWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"onHoldSell", label:shortAddress(c.address), amount:c.amount||0, direction:"in", restoreDay:c.day })),
+    ...buyWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"onHoldBuy", label:shortAddress(c.address), amount:c.amount||0, direction:"out", restoreDay:c.day })),
   ];
   const noDateSorted = sortByPriorityOrder(noDateAll, noDateOrder);
   const moveNoDatePriority = (id, dir) => {
@@ -9073,6 +9092,16 @@ function WhiteboardPage({ data, update }) {
     const nextClosed = { ...(d.whiteboardOverrides?.closed||{}) };
     entries.forEach(e => { nextClosed[e.id] = { kind: e.kind||"loanPayment", key: e.id, address: e.fullLabel||e.label, amount: e.amount, closedAt: new Date().toISOString() }; });
     return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, closed: nextClosed } };
+  });
+  // "Move to No-Date" / Restore — see the noDateForced comment above.
+  const sendToNoDate = cardId => update(d => ({
+    ...d,
+    whiteboardOverrides: { ...d.whiteboardOverrides, noDateForced: { ...(d.whiteboardOverrides?.noDateForced||{}), [cardId]: true } },
+  }));
+  const restoreFromNoDate = cardId => update(d => {
+    const next = { ...(d.whiteboardOverrides?.noDateForced||{}) };
+    delete next[cardId];
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, noDateForced: next } };
   });
   // originalDate is pinned the FIRST time a card is moved and never overwritten by a later
   // move — Reset always restores the true real source date, not whatever it was most
@@ -9336,14 +9365,16 @@ function WhiteboardPage({ data, update }) {
                     </>)}
                   </div>
                   <div className="flex gap-1.5 truncate min-w-0 flex-1">
-                    <span className="font-semibold shrink-0">{n.kind==="needsInfoSell"?"Sell:":n.kind==="needsInfoBuy"?"Buy:":n.kind==="bill"?"Bill:":"Card:"}</span>
-                    <span className="truncate">{n.label}{n.reason?` — ${n.reason}`:""}</span>
+                    <span className="font-semibold shrink-0">{n.kind==="needsInfoSell"||n.kind==="onHoldSell"?"Sell:":n.kind==="needsInfoBuy"||n.kind==="onHoldBuy"?"Buy:":n.kind==="bill"?"Bill:":"Card:"}</span>
+                    <span className="truncate">{n.label}{n.reason?` — ${n.reason}`:""}{n.restoreDay?` — would be ${wbFmtDate(n.restoreDay)}`:""}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {!n.reason && (
                       <span className={`tabular-nums font-semibold ${n.direction==="in"?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{n.direction==="in"?"+":"−"}{h$(n.amount||0)}</span>
                     )}
-                    {!readOnly && (n.reason ? (
+                    {!readOnly && (n.kind==="onHoldSell"||n.kind==="onHoldBuy" ? (
+                      <button onClick={()=>restoreFromNoDate(n.id)} title={`Restore to ${wbFmtDate(n.restoreDay)}`} className="font-semibold text-teal-700 dark:text-teal-400 hover:underline">↩ Restore</button>
+                    ) : n.reason ? (
                       <button onClick={()=>{ if(fillingIn===n.id){setFillingIn(null);} else {setFillingIn(n.id);setFillAmount("");setFillDate("");} }}
                         className="font-semibold text-teal-700 dark:text-teal-400 hover:underline">{fillingIn===n.id?"Cancel":"Fill in"}</button>
                     ) : (
@@ -9375,10 +9406,11 @@ function WhiteboardPage({ data, update }) {
       {boardView==="board" && (
         <WhiteboardBoardView startingBalance={startingBalance} startingLabel={usingMercury?`Mercury ${mercury.source||""}`.trim():"Manual balance"}
           ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} navigate={navigate} readOnly={readOnly} roundMode={roundMode}
-          firstBelow10k={firstBelowThreshold(ledgerRows, 10000)}
+          firstBelow10k={firstBelowThreshold(ledgerRows, 10000)} firstNegative={firstBelowThreshold(ledgerRows, 0)}
           onPickDate={readOnly?undefined:handleBoardPickDate} onSetAmount={readOnly?undefined:setAmountOverride}
           onResetAmount={readOnly?undefined:resetAmountOverride} onResetDate={readOnly?undefined:resetMovedDate}
-          onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}/>
+          onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}
+          onSendToNoDate={readOnly?undefined:sendToNoDate}/>
       )}
 
       {boardView==="calendar" && (cards.length===0&&activeAutoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
@@ -9402,11 +9434,13 @@ function WhiteboardPage({ data, update }) {
                 {sellCardsFor(day).map(c=><WhiteboardSellCard key={c.id} card={c} h$={h$} update={update} navigate={navigate}
                   onMarkClosed={readOnly?undefined:()=>markClosed(c.id,"sell",c.propId,c.address,c.amount)}
                   onPickDate={readOnly?undefined:(newDate)=>setMovedDate(c.id,newDate,c.sourceDate??c.day)}
-                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}/>)}
+                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}
+                  onSendToNoDate={readOnly?undefined:()=>sendToNoDate(c.id)}/>)}
                 {buyCardsFor(day).map(c=><WhiteboardBuyCard key={c.id} card={c} h$={h$}
                   onMarkClosed={readOnly?undefined:()=>markClosed(c.id,"buy",c.id.replace(/^buy-/,""),c.address,c.amount)}
                   onPickDate={readOnly?undefined:(newDate)=>setMovedDate(c.id,newDate,c.sourceDate??c.day)}
-                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}/>)}
+                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}
+                  onSendToNoDate={readOnly?undefined:()=>sendToNoDate(c.id)}/>)}
                 {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
                 {setAsideCardsFor(day).map(c=><WhiteboardSetAsideCard key={c.id} card={c} h$={h$}/>)}
                 {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard} navigate={navigate}/>)}
