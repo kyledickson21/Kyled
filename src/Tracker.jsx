@@ -7899,6 +7899,17 @@ const wbIsWeekend = dateStr => {
   const dow = new Date(y,m-1,d).getDay();
   return dow===0 || dow===6;
 };
+// Month view's own small date helpers — day-of-week index (0=Sun) for grid alignment, the
+// bare day-of-month number for each box, and a "Month YYYY" label shown once per month.
+const wbDow = dateStr => {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return new Date(y,m-1,d).getDay();
+};
+const wbDayNum = dateStr => Number(dateStr.slice(8,10));
+const wbMonthYearLabel = dateStr => {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'long',year:'numeric'});
+};
 // Incoming money doesn't actually hit the account the day it's expected — it takes
 // 1 business day to clear, so a card dated Thursday isn't real cash until Friday.
 const wbNextBusinessDay = dateStr => {
@@ -8735,6 +8746,77 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
   );
 }
 
+// ─── Month view — a real wall-calendar grid (Kyle, 11/17): "boxes that you'd see on a
+// calendar" instead of the horizontally-scrolling day columns the existing Calendar/"Row"
+// view uses. Same dayCols/cardsFor/sellCardsFor/etc. WhiteboardPage already builds — this is
+// purely a different LAYOUT for the exact same data, same as Board is. Reuses the Calendar
+// view's own DndContext/handleDragEnd/dragSensors/activeId wholesale (see WhiteboardPage's
+// render) rather than a second drag implementation, so "drag a house to a different day,"
+// "drag a no-date card onto a day to schedule it," and "drag a dated card back to Unscheduled/
+// Due Now to pull its date off" all work identically whether Kyle's looking at the Row
+// scroller or this grid — the only new drag behavior (sell/buy dropped onto Unscheduled/Due
+// Now actually unscheduling it, via sendToNoDate, instead of being a no-op) was added to
+// handleDragEnd itself, so it benefits the Row view too, not just this one.
+//
+// A compact draggable "chip" for one card inside a Month box — deliberately much smaller than
+// the full WhiteboardSellCard/WhiteboardBuyCard/WhiteboardCard used by the Row view (a month
+// box is a fraction of a day-column's width), so editing actions (✏️/📅/Mark Closed/Fill In)
+// live only in Board/Row view; this is a fast way to MOVE dates by drag, not a second editor.
+const WhiteboardMonthChip = ({ id, label, amount, direction, h$, onClick, readOnly, colorClass }) => {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id, disabled: readOnly });
+  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 20 } : undefined;
+  return (
+    <div ref={setNodeRef} style={style} {...(readOnly?{}:{...attributes,...listeners})} onClick={onClick}
+      title={label}
+      className={`text-[9px] leading-tight rounded px-1 py-0.5 mb-0.5 truncate ${colorClass} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":onClick?"cursor-pointer":""}`}>
+      <span className="font-bold">{direction==="in"?"+":"−"}{h$(amount||0)}</span> {label}
+    </div>
+  );
+};
+
+// One box in the grid. `day` is a real "YYYY-MM-DD" or null (a padding cell before the 1st
+// box/after the last, so every week row is a full, aligned 7 columns like a real calendar).
+const WhiteboardMonthDay = ({ day, padKey, isToday, dayNum, showMonthLabel, h$, navigate, readOnly, balance,
+  manualCards, sellCards, buyCards, autoCards, setAsideCards, onEditCard }) => {
+  // A padding box (day===null, before the 1st real day in the window or after the last) still
+  // calls the hook unconditionally (never skipped) with a STABLE id (its own grid position,
+  // not a fresh random value every render) — disabled, so it's never a real drop target.
+  const { setNodeRef, isOver } = useDroppable({ id: day || `__pad-${padKey}`, disabled: !day });
+  if (!day) return <div className="border border-transparent"/>;
+  const short = balance!=null && balance<0;
+  return (
+    <div ref={setNodeRef} className={`min-h-[84px] border p-1 flex flex-col ${isOver?"ring-2 ring-inset ring-teal-400 bg-teal-50 dark:bg-teal-900/20":isToday?"bg-amber-50/70 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800":"border-slate-100 dark:border-zinc-800"}`}>
+      <div className="flex items-baseline justify-between mb-0.5">
+        <span className={`text-[10px] font-bold ${isToday?"text-amber-600 dark:text-amber-400":"text-slate-400 dark:text-zinc-500"}`}>{dayNum}</span>
+        {showMonthLabel && <span className="text-[8px] font-bold uppercase tracking-wide text-slate-400 dark:text-zinc-500 truncate ml-1">{wbMonthYearLabel(day)}</span>}
+      </div>
+      <div className="flex-1 overflow-y-auto space-y-0">
+        {sellCards.map(c=>(
+          <WhiteboardMonthChip key={c.id} id={c.id} label={shortAddress(c.address)} amount={c.amount} direction="in" h$={h$} readOnly={readOnly}
+            onClick={()=>navigate&&navigate({type:'property',id:c.propId})}
+            colorClass="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"/>
+        ))}
+        {buyCards.map(c=>(
+          <WhiteboardMonthChip key={c.id} id={c.id} label={shortAddress(c.address)} amount={c.amount} direction="out" h$={h$} readOnly={readOnly}
+            colorClass="bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"/>
+        ))}
+        {manualCards.map(c=>(
+          <WhiteboardMonthChip key={c.id} id={c.id} label={c.kind==="property"?shortAddress(c.address):(c.address||"Card")} amount={c.amount} direction={c.direction} h$={h$} readOnly={readOnly}
+            onClick={()=>{ if(c.kind==="property"&&navigate) navigate({type:'property',id:c.propId}); else if(onEditCard) onEditCard(c); }}
+            colorClass={c.direction==="in"?"bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300":"bg-slate-200 dark:bg-zinc-700 text-slate-600 dark:text-zinc-300"}/>
+        ))}
+        {autoCards.length>0 && <div className="text-[8px] text-slate-400 dark:text-zinc-500 truncate">💸 {autoCards.length} loan pmt{autoCards.length>1?"s":""}</div>}
+        {setAsideCards.length>0 && <div className="text-[8px] text-violet-400 dark:text-violet-500 truncate">🔒 set aside</div>}
+      </div>
+      {balance!=null && (
+        <div className={`text-[8px] font-bold tabular-nums text-right mt-0.5 ${short?"text-red-500 dark:text-red-400":"text-slate-300 dark:text-zinc-600"}`}>{short?"−":""}{h$(Math.abs(balance))}</div>
+      )}
+    </div>
+  );
+};
+
+const MONTH_WEEKDAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
 function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const readOnly = useReadOnly();
   const prv = usePrivacy();
@@ -8777,6 +8859,18 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const DAYS = windowDays;
   const dayCols = Array.from({length:DAYS},(_,i)=>wbAddDays(TODAY,i));
   const autoCards = upcomingLoanPayments(data, dayCols);
+  // Month view's own grid — dayCols padded with `null` boxes so every week row is a real,
+  // aligned 7-day week (Sun..Sat) like a wall calendar, not just "today plus N more days."
+  // Pure display grouping of the exact same dayCols array — adds no new days, computes
+  // nothing new, just rearranges what's already there into weeks.
+  const monthWeeks = useMemo(() => {
+    if (!dayCols.length) return [];
+    const padded = new Array(wbDow(dayCols[0])).fill(null).concat(dayCols);
+    while (padded.length % 7 !== 0) padded.push(null);
+    const weeks = [];
+    for (let i=0; i<padded.length; i+=7) weeks.push(padded.slice(i,i+7));
+    return weeks;
+  }, [dayCols.length, dayCols[0]]);
 
   // ─── Cash-flow forecast sources: Mercury starting cash, REsimpli sell dates (via the
   // Office Dashboard Sheet, with a REsimpli fallback), REsimpli buy leads under contract.
@@ -9184,8 +9278,10 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     const id = String(active.id);
     if (id.startsWith("sell-") || id.startsWith("buy-")) {
       // A sell/buy auto card dragged onto a day — moves it via the same override Set Aside
-      // and the tap-to-pick-date button use, never the manual-card path above.
-      if (over.id==="unscheduled"||over.id==="duenow") return; // auto cards always have a day; nowhere to "unschedule" them to
+      // and the tap-to-pick-date button use, never the manual-card path above. Dropped onto
+      // Unscheduled/Due Now instead — pull it off the dated timeline entirely (same as the
+      // 📋 "Move to No-Date" button), the drag equivalent of sendToNoDate.
+      if (over.id==="unscheduled"||over.id==="duenow") { sendToNoDate(id); return; }
       const list = id.startsWith("sell-") ? activeSellCards : activeBuyCards;
       const card = list.find(c=>c.id===id);
       if (card) setMovedDate(id, over.id, card.sourceDate ?? card.day);
@@ -9259,8 +9355,8 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         {!publicMode && (
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
-            {["calendar","board"].map(v=>(
-              <button key={v} onClick={()=>setBoardView(v)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all capitalize ${boardView===v?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{v}</button>
+            {[["calendar","Row"],["board","Board"],["month","Month"]].map(([v,label])=>(
+              <button key={v} onClick={()=>setBoardView(v)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${boardView===v?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{label}</button>
             ))}
           </div>
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
@@ -9491,6 +9587,45 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
           </DragOverlay>
         </DndContext>
       ))}
+
+      {effectiveBoardView==="month" && (
+        <DndContext sensors={readOnly?[]:dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
+          <div className="flex gap-3">
+            <div className="w-56 shrink-0 space-y-3">
+              <WhiteboardDueNowBox bills={bills} billsTotal={billsTotal} h$={h$} moveBill={readOnly?undefined:moveBill} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard}/>
+              <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
+                {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard} navigate={navigate}/>)}
+              </WhiteboardColumn>
+            </div>
+            <div className="flex-1 min-w-0 overflow-x-auto">
+              <div className="min-w-[560px]">
+                <div className="grid grid-cols-7 gap-px mb-px">
+                  {MONTH_WEEKDAY_LABELS.map(w=><div key={w} className="text-center text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 py-1">{w}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-px bg-slate-100 dark:bg-zinc-800">
+                  {monthWeeks.flatMap((week,wi)=>week.map((day,di)=>(
+                    <WhiteboardMonthDay key={day||`pad-${wi}-${di}`} day={day} padKey={`${wi}-${di}`} dayNum={day?wbDayNum(day):null}
+                      isToday={day===dayCols[0]} showMonthLabel={!!day && (wbDayNum(day)===1 || day===monthWeeks[0].find(d=>d))}
+                      h$={h$} navigate={navigate} readOnly={readOnly} balance={day?rBal(balances[day]):null}
+                      manualCards={day?cardsFor(day):[]} sellCards={day?sellCardsFor(day):[]} buyCards={day?buyCardsFor(day):[]}
+                      autoCards={day?autoCardsFor(day):[]} setAsideCards={day?setAsideCardsFor(day):[]}
+                      onEditCard={readOnly?undefined:setEditCard}/>
+                  )))}
+                </div>
+              </div>
+            </div>
+          </div>
+          <DragOverlay>
+            {activeCard&&<div className="w-56"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
+            {activeAutoCard&&(
+              <div className="w-56 rounded-xl border border-slate-300 dark:border-zinc-600 p-3 bg-white dark:bg-zinc-800 shadow-lg">
+                <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{activeAutoCard.address}</div>
+                <div className="text-base font-black tabular-nums mt-0.5 text-slate-800 dark:text-zinc-100">{h$(activeAutoCard.amount)}</div>
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       {(addOpen||editCard)&&(
         <WhiteboardCardModal properties={data.properties} init={editCard}

@@ -1305,6 +1305,63 @@ true}`) is that missing middle ground.
   no "real data confirms it" signal for "Kyle is unsure about this one," so he restores it
   himself whenever he's ready to commit to a date again.
 
+### Month view — a real wall-calendar grid (11/17)
+Kyle: "a calendar view, with the boxes you'd see on a calendar," where he can drag houses
+between days, see the no-date stuff and drag it onto a day to schedule it, and drag a dated
+item back off onto the no-date area to unschedule it. A third view alongside Row (renamed
+from "Calendar" — the existing horizontal day-scroller, to stop it being confused with this
+new one) and Board: `["calendar","board","month"]` are still the underlying `boardView`
+values (no migration needed for existing `localStorage` choices), labeled "Row"/"Board"/
+"Month" on the toggle.
+- **Same data, a different layout — no second forecast implementation.** `monthWeeks`
+  (`WhiteboardPage`, a `useMemo` over `dayCols`) pads `dayCols` with `null` boxes so every
+  week row is a real, aligned Sun–Sat week like a wall calendar — a pure display grouping of
+  the exact same array Row/Board already use, adding no new days and computing nothing new.
+  Each real box calls the exact same `cardsFor`/`sellCardsFor`/`buyCardsFor`/`autoCardsFor`/
+  `setAsideCardsFor` functions Row's day columns already call.
+- **Drag reuses the Row view's own `DndContext`/`handleDragEnd`/`dragSensors`/`activeId`
+  wholesale** — its own separate `DndContext` instance (mutually exclusive render branch, same
+  as Row's), but calling the literal same `handleDragEnd` function, not a second drag
+  implementation. The one actual LOGIC change was to `handleDragEnd` itself: dropping a sell/
+  buy card onto Unscheduled/Due Now used to be a silent no-op ("auto cards always have a day,
+  nowhere to unschedule them to") — it now calls `sendToNoDate(id)` (the same thing the 📋
+  button does), so "drag a house back out to no-date" works in BOTH Row and Month view, not
+  just the new one.
+- **No-Date sidebar**: `WhiteboardDueNowBox` and the `id="unscheduled"` `WhiteboardColumn` are
+  reused completely as-is (not reimplemented) in a sidebar next to the grid — dropping a card
+  from a day box onto either already unschedules it (manual/bill cards via the existing
+  `setCardDay(id,null)` path; sell/buy via the `sendToNoDate` fix above), and dragging FROM
+  there onto a day box already schedules it (existing `setCardDay(id,day)` path) — all
+  pre-existing behavior, just newly reachable from this grid too. The separate, unified
+  "📋 No Date" PRIORITY panel (REsimpli/Sheet Needs-Info rows + the same bills/unscheduled
+  cards, hand-ranked — see above) is a DIFFERENT thing and still shows above every view
+  including Month; it is NOT wired into this grid's `DndContext` — dragging a Needs-Info/
+  on-hold row onto a calendar box is out of scope (those already have their own Fill
+  in/Restore actions).
+- **Scope: everything draggable in Row view is draggable here too** (manual/property/misc
+  cards, bills, sell/buy auto cards — Kyle confirmed "everything," not just sell/buy "houses")
+  — loan-payment and Set Aside entries stay non-draggable in both views, since their dates
+  come from real loan terms/Kyle's own typed-in date, not something to freely drag around.
+- **`WhiteboardMonthChip`** — a compact draggable pill (`useDraggable`, own id = the same
+  `sell-`/`buy-`/card-id scheme everything else uses) deliberately much smaller than the full
+  `WhiteboardSellCard`/`WhiteboardBuyCard`/`WhiteboardCard` Row view shows (a month box is a
+  fraction of a day-column's width) — click navigates to the property (sell cards, property
+  manual cards) or opens the edit modal (other manual cards, reusing the existing `setEditCard`
+  state), but editing actions like ✏️ amount/📅 pick-date/Mark Closed live only in Board/Row —
+  this is a fast way to MOVE dates by drag, not a second editor. Loan payments/Set Aside show
+  as a small non-draggable count/icon line instead of chips.
+- **`WhiteboardMonthDay`** — one grid box: `useDroppable({id: day})` (a `null` day/padding box
+  still calls the hook unconditionally, with a stable `padKey`-derived id, `disabled:true` —
+  never a real drop target, but never a fresh random id every render either), day-of-month
+  number, a month/year label shown on the 1st of any month or the very first box in the window
+  (so a window starting mid-month is still labeled), the chips, and a small end-of-day balance
+  figure (red if negative) for context.
+- **Tests**: none new — like the public TV dashboard, this is layout + reuse of already-tested
+  drag/override logic (`setMovedDate`/`setCardDay`/`sendToNoDate`), not new calculation logic.
+  The one real behavior change (`handleDragEnd`'s Unscheduled/Due Now drop for sell/buy) is
+  covered by the same manual-testing expectation as the rest of the drag system (dnd-kit
+  interactions aren't unit-tested anywhere in this suite).
+
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view
 on a TV, and asked for a URL that needs no login at all — AbleSign just loads a URL, it can't
