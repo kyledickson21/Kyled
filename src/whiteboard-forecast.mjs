@@ -178,6 +178,26 @@ export function datedSetAsideCards(setAsides) {
 // running total independently — the two views can't drift apart on a single cent, because
 // they're reading the exact same numbers, not two implementations of the same math.
 
+// Just the street line of a full address ("123 Main St, Columbus, OH 43215" -> "123 Main St"),
+// so the Board view's narrow Address column never truncates mid-word — the full address is
+// still shown via a `title` tooltip by the caller. Returns the input unchanged (never throws)
+// for a label that isn't an address at all (no comma) — a lender name, "Bill", etc.
+export function shortAddress(address) {
+  if (!address) return address;
+  return address.split(",")[0].trim();
+}
+
+// Splits a day's entries into {loanPayments, other} and decides whether the loan-payment
+// lines should collapse into one summary row — display-only grouping, never changes any
+// amount: the row's own netIn/netOut/balance (from buildLedgerRows) already sum every entry
+// regardless of how this groups them for display. `threshold` matches "more than ~3" per Kyle.
+export function groupLoanPaymentEntries(entries, threshold = 3) {
+  const loanPayments = entries.filter(e => e.kind === "loanPayment");
+  const other = entries.filter(e => e.kind !== "loanPayment");
+  const loanTotal = Math.round(loanPayments.reduce((s, e) => s + (e.amount || 0), 0) * 100) / 100;
+  return { loanPayments, other, grouped: loanPayments.length > threshold, loanTotal };
+}
+
 // One row per day in `dayCols`. `entriesByDay` is {day: [{id,label,amount,direction}]} — built
 // by the caller from the SAME per-day card arrays (manual cards settling that day, auto loan
 // payments, sell/buy cards, Set Aside cards) the calendar view's own netFor(day) sums, so

@@ -13,7 +13,7 @@ import {
 import {
   nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary, withinWindow,
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
-  buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary,
+  buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary, shortAddress, groupLoanPaymentEntries,
 } from './whiteboard-forecast.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -8419,17 +8419,41 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
 // from WhiteboardPage's own `ledgerRows`/`ledgerSum` (built from the exact same dayCols/
 // balances/cards the Calendar view uses), so it can't compute, store, or drift from anything.
 const WhiteboardBoardRow = ({ row, h$, navigate }) => {
+  const [loansOpen, setLoansOpen] = useState(false);
   const short = row.balance < 0;
+  const { loanPayments, other, grouped, loanTotal } = groupLoanPaymentEntries(row.entries);
   return (
     <tr className={short ? "bg-red-50 dark:bg-red-900/10" : ""}>
       <td className="px-3 py-2 align-top whitespace-nowrap text-xs font-semibold text-slate-500 dark:text-zinc-400">{wbFmtDate(row.day)}<div className="text-[10px] font-normal text-slate-300 dark:text-zinc-600">{wbWeekday(row.day)}</div></td>
       <td className="px-3 py-2 align-top text-xs text-slate-700 dark:text-zinc-200">
-        {row.entries.map(e=>(
-          <div key={e.id} className="truncate max-w-[220px]">
+        {other.map(e=>(
+          <div key={e.id} className="truncate max-w-[180px]" title={e.fullLabel||e.label}>
             {e.propId ? (
               <button onClick={()=>navigate&&navigate({type:'property',id:e.propId})} className="hover:underline text-teal-600 dark:text-teal-400">{e.label}</button>
             ) : e.label}
           </div>
+        ))}
+        {loanPayments.length>0 && (grouped ? (
+          <div className="mt-0.5">
+            <button onClick={()=>setLoansOpen(o=>!o)} className="w-full flex items-center justify-between gap-2 text-left hover:text-teal-600 dark:hover:text-teal-400">
+              <span className="truncate">{loansOpen?"▾":"▸"} Loan payments ({loanPayments.length})</span>
+              <span className="tabular-nums text-red-600 dark:text-red-400 shrink-0">−{h$(loanTotal)}</span>
+            </button>
+            {loansOpen && (
+              <div className="mt-1 pl-3 space-y-0.5 border-l border-slate-200 dark:border-zinc-700">
+                {loanPayments.map(e=>(
+                  <div key={e.id} className="flex items-center justify-between gap-2 text-[10px] text-slate-500 dark:text-zinc-400" title={e.fullLabel||e.lenderName}>
+                    <span className="truncate">{e.lenderName}{e.address?` · ${shortAddress(e.address)}`:""}</span>
+                    <span className="tabular-nums shrink-0">{h$(e.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          loanPayments.map(e=>(
+            <div key={e.id} className="truncate max-w-[180px]" title={e.fullLabel||e.lenderName}>{e.lenderName}{e.address?` (${shortAddress(e.address)})`:""}</div>
+          ))
         ))}
       </td>
       <td className="px-3 py-2 align-top text-right text-xs font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
@@ -8847,13 +8871,27 @@ function WhiteboardPage({ data, update }) {
   // every money-moving thing Calendar already shows: manual cards (on the day they actually
   // SETTLE, same as netFor), the auto loan-payment cards, sell/buy auto cards (closed/moved
   // overrides already applied upstream), and dated Set Aside cards.
+  // `label` is always the short, non-truncating display text (shortAddress() for anything
+  // address-based); `fullLabel` carries the complete original text for a `title` tooltip.
+  // Loan-payment entries are tagged `kind:"loanPayment"` with their own lenderName/address so
+  // WhiteboardBoardRow can group/collapse them (groupLoanPaymentEntries, whiteboard-
+  // forecast.mjs) — a display grouping only; row.netIn/netOut/balance below already sum every
+  // entry regardless of how they're grouped for display.
   const entriesByDay = {};
   dayCols.forEach(day => {
     entriesByDay[day] = [
-      ...cards.filter(c=>c.day && wbEffectiveDate(c)===day).map(c=>({ id:c.id, label:c.address || (c.kind==="bill"?"Bill":"Card"), amount:c.amount||0, direction:c.direction, propId:c.kind==="property"?c.propId:null })),
-      ...autoCardsFor(day).map(c=>({ id:c.id, label:c.lenderName ? (c.address?`${c.lenderName} (${c.address})`:c.lenderName) : (c.address||"Loan payment"), amount:c.amount||0, direction:"out", propId:c.propId })),
-      ...sellCardsFor(day).map(c=>({ id:c.id, label:c.address, amount:c.amount||0, direction:"in", propId:c.propId })),
-      ...buyCardsFor(day).map(c=>({ id:c.id, label:c.address, amount:c.amount||0, direction:"out" })),
+      ...cards.filter(c=>c.day && wbEffectiveDate(c)===day).map(c=>{
+        const addr = c.kind==="property" ? c.address : null;
+        return { id:c.id, label: addr?shortAddress(addr):(c.address||(c.kind==="bill"?"Bill":"Card")), fullLabel:c.address||null, amount:c.amount||0, direction:c.direction, propId:c.kind==="property"?c.propId:null };
+      }),
+      ...autoCardsFor(day).map(c=>({
+        id:c.id, kind:"loanPayment", lenderName:c.lenderName||"Loan payment", address:c.address||null,
+        label: c.lenderName || shortAddress(c.address) || "Loan payment",
+        fullLabel: c.lenderName ? (c.address?`${c.lenderName} — ${c.address}`:c.lenderName) : (c.address||"Loan payment"),
+        amount:c.amount||0, direction:"out", propId:c.propId,
+      })),
+      ...sellCardsFor(day).map(c=>({ id:c.id, label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"in", propId:c.propId })),
+      ...buyCardsFor(day).map(c=>({ id:c.id, label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"out" })),
       ...setAsideCardsFor(day).map(c=>({ id:c.id, label:c.label, amount:c.amount||0, direction:"out" })),
     ];
   });

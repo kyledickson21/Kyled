@@ -1084,6 +1084,15 @@ ledger best practices rather than copying it literally (no hand-drawn-style circ
   of only writing down days something actually happens); a day with multiple entries lists each
   on its own line inside one row rather than string-joining addresses. Week-subtotal rows
   (`Fragment`-grouped, 7-day chunks starting from today) show that week's own IN/OUT totals.
+  Every address shown is `shortAddress()`'d (`whiteboard-forecast.mjs` — just the street line,
+  e.g. `"1323 Red Bank Dr, Columbus, OH 43215"` → `"1323 Red Bank Dr"`) so the narrow Address
+  column never truncates mid-word; the full original string is still on a `title` tooltip via
+  `fullLabel` on each `entriesByDay` entry. A day with more than 3 loan-payment lines (`kind:
+  "loanPayment"` entries — Dec 1 can run 40+) collapses into one "▸ Loan payments (N)
+  −$X" toggle row, collapsed by default, expanding to show each lender/property/amount
+  (`groupLoanPaymentEntries`, `whiteboard-forecast.mjs` — a pure display split of the same
+  entries `buildLedgerRows` already summed; it never touches the row's own netIn/netOut/
+  balance, which still sum every entry regardless of how they're grouped for display).
 - **Needs Info** still shows in Board view — it's the one existing, shared panel rendered once
   above the view-specific content (not duplicated per-view), so it never drifts from Calendar's
   copy either.
@@ -1091,9 +1100,12 @@ ledger best practices rather than copying it literally (no hand-drawn-style circ
   `computeForecastSummary`'s own `balances` object field-for-field, each row's net matching the
   exact `netByDay` figure that produced it (including the Red Bank $78,089.68 case), week-chunk
   boundaries/subtotals, `ledgerSummary`'s lowest/totals/ending (including a forced-shortfall
-  case and the zero-rows fallback), and the two display-only guarantees above (no `update` prop
-  anywhere in the Board components; the view toggle is `localStorage`-only). 79 tests pass
-  across the whole suite as of this writing.
+  case and the zero-rows fallback), `shortAddress`/`groupLoanPaymentEntries` (including a
+  46-entry grouped case proving the grouped subtotal is a strict subset of the row's own
+  unaffected `netOut`), and the display-only guarantees (no `update` prop anywhere in the
+  Board components; the view toggle is `localStorage`-only; `WhiteboardBoardRow` actually calls
+  both fix functions, not just defines them). 84 tests pass across the whole suite as of this
+  writing.
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top

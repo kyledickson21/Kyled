@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { computeForecastSummary, buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary } from "../src/whiteboard-forecast.mjs";
+import { computeForecastSummary, buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary, shortAddress, groupLoanPaymentEntries } from "../src/whiteboard-forecast.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -126,4 +126,66 @@ test("WhiteboardBoardView and WhiteboardBoardRow never take an `update` prop or 
 test("the Calendar/Board view toggle only writes to localStorage (usePersistedState), never to nexus_data", () => {
   const text = readFileSync(path.join(repoRoot, "src/Tracker.jsx"), "utf8");
   assert.match(text, /const \[boardView,setBoardView\] = usePersistedState\("nx-whiteboardView","calendar"\)/, "boardView must be a usePersistedState (localStorage-backed), not part of data/whiteboardOverrides");
+});
+
+// ─── 11/17 4:28pm fixes: loan-payment grouping and short addresses ─────────────────────────
+test("shortAddress keeps just the street line", () => {
+  assert.equal(shortAddress("1323 Red Bank Dr, Columbus, OH 43215"), "1323 Red Bank Dr");
+  assert.equal(shortAddress("1323 Red Bank Dr"), "1323 Red Bank Dr");
+  assert.equal(shortAddress(""), "");
+  assert.equal(shortAddress(null), null);
+  assert.equal(shortAddress(undefined), undefined);
+  assert.equal(shortAddress("  840 Francis , Dayton, OH"), "840 Francis");
+});
+
+test("groupLoanPaymentEntries: 3 or fewer loan payments are NOT grouped", () => {
+  const entries = [
+    { id: "a", kind: "loanPayment", lenderName: "Lender A", amount: 1000, direction: "out" },
+    { id: "b", kind: "loanPayment", lenderName: "Lender B", amount: 2000, direction: "out" },
+    { id: "c", kind: "loanPayment", lenderName: "Lender C", amount: 3000, direction: "out" },
+    { id: "d", kind: null, label: "840 Francis", amount: 500, direction: "out" },
+  ];
+  const { loanPayments, other, grouped, loanTotal } = groupLoanPaymentEntries(entries);
+  assert.equal(loanPayments.length, 3);
+  assert.equal(other.length, 1);
+  assert.equal(grouped, false);
+  assert.equal(loanTotal, 6000);
+});
+
+test("groupLoanPaymentEntries: more than 3 loan payments ARE grouped, total sums every one of them", () => {
+  const entries = Array.from({ length: 46 }, (_, i) => ({ id: `l${i}`, kind: "loanPayment", lenderName: `Lender ${i}`, amount: 1000 + i, direction: "out" }));
+  const { loanPayments, other, grouped, loanTotal } = groupLoanPaymentEntries(entries);
+  assert.equal(loanPayments.length, 46);
+  assert.equal(other.length, 0);
+  assert.equal(grouped, true);
+  const expected = Math.round(entries.reduce((s, e) => s + e.amount, 0) * 100) / 100;
+  assert.equal(loanTotal, expected);
+});
+
+test("groupLoanPaymentEntries never changes the day's own netIn/netOut/balance math — it's purely a display split of the same entries buildLedgerRows already summed", () => {
+  const { dayCols, entriesByDay, netByDay } = makeScenario();
+  // Add 46 loan-payment entries on one day, same as the grouping test above.
+  const heavyDay = dayCols[4];
+  const extraLoans = Array.from({ length: 46 }, (_, i) => ({ id: `extra-loan-${i}`, kind: "loanPayment", lenderName: `Lender ${i}`, amount: 100, direction: "out" }));
+  entriesByDay[heavyDay] = [...entriesByDay[heavyDay], ...extraLoans];
+  netByDay[heavyDay] -= extraLoans.reduce((s, e) => s + e.amount, 0);
+  const { balances } = computeForecastSummary(dayCols, netByDay, 70000);
+  const rows = buildLedgerRows(dayCols, entriesByDay, balances);
+  const heavyRow = rows.find(r => r.day === heavyDay);
+  const { grouped, loanTotal } = groupLoanPaymentEntries(heavyRow.entries);
+  assert.equal(grouped, true);
+  // The grouped subtotal is a strict subset of the row's full netOut — grouping never changes
+  // the row's own netOut (still the sum of ALL out-direction entries, grouped or not).
+  assert.ok(loanTotal < heavyRow.netOut);
+  assert.equal(heavyRow.balance, balances[heavyDay]);
+});
+
+test("WhiteboardBoardRow actually uses groupLoanPaymentEntries/shortAddress (the fix is wired up, not just defined)", () => {
+  const text = readFileSync(path.join(repoRoot, "src/Tracker.jsx"), "utf8");
+  const startIdx = text.indexOf("const WhiteboardBoardRow =");
+  const endIdx = text.indexOf("\nfunction WhiteboardBoardView(");
+  assert.ok(startIdx !== -1 && endIdx !== -1 && endIdx > startIdx, "could not locate WhiteboardBoardRow's body");
+  const body = text.slice(startIdx, endIdx);
+  assert.match(body, /groupLoanPaymentEntries\(/);
+  assert.match(body, /shortAddress\(/);
 });
