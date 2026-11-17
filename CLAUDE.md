@@ -1061,9 +1061,12 @@ row, a sticky header, a summary strip (lowest balance + its date, total in, tota
 balance), week subtotal rows, and a red highlight + "Need $X" on any day the balance goes
 negative. Loosely inspired by Kyle's own physical office whiteboard, but built to cash-flow-
 ledger best practices rather than copying it literally (no hand-drawn-style circles/"!!!").
-**Display-only** — it computes nothing of its own and can't write anything: `WhiteboardBoardView`/
-`WhiteboardBoardRow` (Tracker.jsx, declared just above `WhiteboardPage`) never receive an
-`update` prop at all, enforced by `tests/whiteboard-ledger.test.mjs`.
+**Computes nothing of its own and never calls `update()` directly** — `WhiteboardBoardView`/
+`WhiteboardBoardRow`/`WhiteboardBoardEntry` (Tracker.jsx, declared just above `WhiteboardPage`)
+never receive an `update` prop at all, enforced by `tests/whiteboard-ledger.test.mjs`. It IS
+interactive (11/17, see "Board view interactivity" below) — but strictly through named
+callback props (`onPickDate`/`onSetAmount`/`onMarkClosed`/etc.) owned and written by
+`WhiteboardPage` itself, never a direct write from inside these three components.
 - **Toggle**: `["calendar","board"]` buttons next to the existing 30/45/90-day range toggle (a
   30-day option was added alongside the existing 45/90, per this same request) —
   `boardView` is `usePersistedState("nx-whiteboardView","calendar")`, i.e. `localStorage` only,
@@ -1102,10 +1105,110 @@ ledger best practices rather than copying it literally (no hand-drawn-style circ
   boundaries/subtotals, `ledgerSummary`'s lowest/totals/ending (including a forced-shortfall
   case and the zero-rows fallback), `shortAddress`/`groupLoanPaymentEntries` (including a
   46-entry grouped case proving the grouped subtotal is a strict subset of the row's own
-  unaffected `netOut`), and the display-only guarantees (no `update` prop anywhere in the
-  Board components; the view toggle is `localStorage`-only; `WhiteboardBoardRow` actually calls
-  both fix functions, not just defines them). 84 tests pass across the whole suite as of this
-  writing.
+  unaffected `netOut`), and the "never calls `update()` directly" guarantee (no `update` prop
+  anywhere in the three Board components; the view toggle is `localStorage`-only).
+
+### Board view interactivity (11/17)
+Kyle: "allow me to drag the houses to different dates, manually change and add amounts,
+manually add dates and amounts to stuff where it can't find that... also take it off the
+timeline, and add stuff that's due with no date." All of it reuses the SAME
+`data.whiteboardOverrides` mechanism (two new sub-keys below) and the same `markClosed`/
+`setMovedDate` writers Calendar's cards already used — nothing new was added to the data
+model's write surface, only new UI that calls what already existed, plus two small new override
+types.
+- **`amountOverrides`** (`{[cardId]: amount}`) and **`manualFill`**
+  (`{[cardId]: {kind, key, address, amount, date}}`) — new `data.whiteboardOverrides` sub-keys.
+  `applyAmountOverride(card, amountOverrides)` and `manualFillCards(manualFill, existingIds,
+  kind, nextBusinessDayFn)` (both pure, `whiteboard-forecast.mjs`) compose with the existing
+  `applyMovedDate` exactly like `manualDate`/`originalDate` do — a card can carry a manual date
+  AND a manual amount at once, independently.
+- **Editing a sell/buy entry** (Board's `WhiteboardBoardEntry`, and the same ✏️/📅 added to
+  Calendar's `WhiteboardSellCard`/`WhiteboardBuyCard`): ✏️ inline amount edit
+  (`setAmountOverride`/`resetAmountOverride`), 📅 tap-to-pick date (`setMovedDate`, same
+  override Calendar's drag already used), plus Board-view-only drag-to-reschedule (its own
+  `DndContext`, scoped to the ledger table — a separate render branch from Calendar's, so no id
+  collisions). "Mark Closed" (✕) takes it off the timeline entirely, same as Calendar.
+- **"Take off the timeline" extended to loan-payment and Set Aside lines** — `markClosed`/
+  `undoClosed` were already fully generic (any `kind` string), so no new writer was needed, only
+  new ✕ buttons in `WhiteboardBoardRow` calling them with `kind:"loanPayment"`/`"setAside"`, plus
+  a bulk `excludeMany(entries)` ("Remove all") for a day's whole grouped loan-payment list in one
+  `update()` call. Unlike sell/buy, these never auto-clear — there's no "real data confirms it"
+  signal for a loan payment or Set Aside entry, so Kyle undoes those by hand from the "Closed,
+  waiting to confirm" panel.
+- **"Add stuff due with no date"** — the existing Unscheduled/Due Now manual-card system already
+  supported a dateless card (`WhiteboardCardModal`'s "+ Add Card" always defaults a new card's
+  `day` to `null`); Board view just didn't SHOW those lists. It now does, in a compact amber
+  strip with a quick date-assign input (reuses `setCardDay`).
+- **Needs Info "Fill in"** — a `manualFill` entry lets Kyle pencil in an amount+date for a
+  property/lead the real data (REsimpli/the Sheet) has no date or amount for; it joins the
+  forecast as a real synthesized card (same id scheme, `sell-<propId>`/`buy-<leadId>`) and
+  auto-clears itself the moment a real card exists for that id (checked via `storedIdsFor`-style
+  id matching against the UNMERGED real sell/buy arrays, so it can't be stale-cleared by itself).
+- **📺 TV Mode** — a button on Board view that calls the browser Fullscreen API on just the
+  ledger's own container (takes over the whole screen with ONLY that element, hiding the
+  sidebar/nav/everything else automatically — no change to the Tracker shell needed) and
+  switches to a denser layout (smaller padding/fonts, edit icons hidden) so a typical dataset
+  fits without scrolling. Not a promise of zero scroll for an arbitrarily large dataset — the
+  table body can still scroll on its own — just chrome-free and as dense as stays legible.
+- **Tests**: `tests/whiteboard-overrides.test.mjs` — `applyAmountOverride`/`manualFillCards`
+  (composability with `applyMovedDate`, never duplicating an id that already has a real card,
+  the next-business-day clearing rule). `tests/whiteboard-ledger.test.mjs`'s "never calls
+  `update()`" check now also covers `WhiteboardBoardEntry`.
+
+### A past-due sale/buy no longer silently vanishes from the forecast (11/17)
+Kyle: "a house that closed yesterday but hasn't hit the account yet, I still want it to
+reflect." The bug: a sell card's `day` is `nextBusinessDay(saleDate)` — if the REsimpli/Sheet
+close date itself had already passed (the sale closed a few days ago but the cash still hasn't
+hit Mercury), that computed day fell before TODAY, which is outside `dayCols` (always
+TODAY..TODAY+windowDays) — so the card, and its whole amount, just disappeared from
+`entriesByDay` with no trace: not in Needs Info, not anywhere. The buy side already routes a
+past closing date to Needs Info server-side (`classifyBuyLead`'s `isPastDate` check), so this
+was sell-only in practice, but both got the same fix for consistency.
+- **`clampToToday(dateStr, today)`** (pure, `whiteboard-forecast.mjs`): a date before `today`
+  is pulled up to `today` instead of left as-is. Applied to the sell card's computed `day`
+  (`sellCardsInfo`) and defensively to the buy card's `day` (`buyCardsInfo` — never expected to
+  actually fire there, since the server already excludes it, but kept consistent). The card
+  carries `pastDue: day!==rawDay` so the UI can say so: `WhiteboardSellCard`/`WhiteboardBuyCard`
+  show "⏰ closed/was due \<real date\> — showing today since it hasn't hit the account yet"
+  (skipped if the card was ALSO manually moved — `manualDate` already shows its own note), and
+  Board view's `WhiteboardBoardEntry` shows a small "⏰ overdue" badge. `card.breakdown.saleDate`
+  (sell) / `card.date` (buy) still hold the true original close date throughout, so nothing
+  about the real date is lost — only WHERE it's forecast-placed changes.
+- **Tests**: `clampToToday` (no-op when on/after today, pulls a past date to today, no-op on a
+  missing argument).
+
+### Conservative "round to nearest $5k" display toggle (11/17)
+Kyle: a toggle to round the Whiteboard's headline numbers for a built-in safety margin — a
+current/running account balance and money coming IN round DOWN (assume you have/get less than
+the real number), money going OUT rounds UP (assume it costs more) — and remember whichever way
+it's set.
+- **`roundDown5k(v)`/`roundUp5k(v)`** (pure, `whiteboard-forecast.mjs`): plain floor/ceil to the
+  nearest 5000. `roundDown5k` alone correctly handles a SIGNED balance regardless of sign — a
+  positive balance floors toward zero (smaller, i.e. more conservative), a negative balance
+  floors further negative (a BIGGER deficit, i.e. still more conservative) — so the same
+  function covers "balance" and "net" everywhere, including Calendar's per-day combined
+  net-in-minus-net-out figure; only a pure positive expense/shortfall MAGNITUDE needs the
+  separate `roundUp5k`.
+- **`roundMode`** — `usePersistedState("nx-whiteboardRound", false)` in `WhiteboardPage`, the
+  same remembered-per-device `localStorage` pattern as `boardView`/`nx-propSortMode` elsewhere
+  (never written to `data`/`whiteboardOverrides` — it's a display preference, not real data) —
+  so the choice survives switching Calendar ↔ Board and reloading the page. Toggled via a
+  "↕ Round $5k" button next to the existing Calendar/Board and 30/45/90-day toggles, which
+  applies to both views (it lives in the shared header above either one).
+- **Scope: aggregate/headline totals only, never an individual card's own real amount** —
+  applied to: Starting Cash/Mercury balance, the Set Aside summary line (balance/set-aside-
+  total/available), First/Largest Shortfall, Total In/Total Out, Calendar's per-day
+  balance/net tiles (`WhiteboardColumn`), and Board's Lowest/Ending Balance, Total In/Out,
+  the "Current" starting-balance row, week subtotals, and each row's own netIn/netOut/balance/
+  "Need $X" (plus the grouped loan-payments subtotal). A single house's sale price, a single
+  loan payment, a single Set Aside line item, etc. always display exact — rounding is applied
+  at the specific JSX call site for each headline figure (`rIn`/`rOut`/`rBal` helpers built from
+  `roundMode` in `WhiteboardPage`/`WhiteboardBoardView`/`WhiteboardBoardRow`), never upstream in
+  the actual `balances`/`ledgerSum`/`row` data, so every "short"/red-styling sign check still
+  reads the TRUE unrounded number (flooring a value can't flip its sign, so this never
+  disagrees with what's displayed).
+- **Tests**: `roundDown5k`/`roundUp5k` (positive and negative balances, zero, an amount already
+  on a $5k line).
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top

@@ -282,6 +282,29 @@ export function ledgerSummary(rows, startingBalance) {
   };
 }
 
+// Clamps a computed settlement date that's fallen into the past up to `today` — a sell/buy
+// card's date is always inferred cash that HASN'T hit the bank account yet (if it had, it
+// wouldn't need forecasting at all), so a date before today just means "this is overdue, show
+// it as due today" rather than silently dropping it outside the forward-looking day window
+// (dayCols never includes a day before today, so an unclamped past date just vanishes —
+// amount, card, and all — from the forecast with no trace, which is the bug this fixes).
+export function clampToToday(dateStr, today) {
+  if (!dateStr || !today) return dateStr;
+  return dateStr < today ? today : dateStr;
+}
+
+// Conservative "safety margin" rounding for the Whiteboard's headline cash-flow figures — an
+// opt-in display toggle (data.whiteboardOverrides never stores it; it's a plain
+// usePersistedState like boardView) that never touches the real stored amounts, only how the
+// aggregate totals are displayed: a current/running account balance always rounds DOWN to the
+// nearest $5k (assume you have less than the real number — floor handles a negative balance
+// correctly too, since flooring a deficit makes it a BIGGER deficit, e.g. -$1,200 -> -$5,000,
+// exactly as conservative as rounding a positive balance down); money coming IN rounds DOWN
+// (assume less arrives than expected); money going OUT rounds UP (assume it costs more than
+// expected). See CLAUDE.md "Whiteboard Cash-Flow Forecast" for exactly where each is applied.
+export function roundDown5k(v) { return Math.floor((v || 0) / 5000) * 5000; }
+export function roundUp5k(v) { return Math.ceil((v || 0) / 5000) * 5000; }
+
 // Running cash balance across a day window, given a starting balance and a map of
 // {day: netAmountThatDay}. Returns {balances: {day: balance}, firstShortfall: {day, amount}|null,
 // largestShortfall: {day, amount}|null, positiveAgain: day|null} — the pieces the Whiteboard's

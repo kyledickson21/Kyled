@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
-  applyAmountOverride, manualFillCards,
+  applyAmountOverride, manualFillCards, clampToToday, roundDown5k, roundUp5k,
 } from "../src/whiteboard-forecast.mjs";
 
 test("filterClosed drops a card whose id is marked closed", () => {
@@ -182,4 +182,42 @@ test("manualFillCards' sell output applies the same next-business-day clearing r
   const cards = manualFillCards(manualFill, new Set(), "sell", spy);
   assert.equal(calledWith, "2026-12-01");
   assert.equal(cards[0].day, "2026-12-02");
+});
+
+// ─── 11/17: a past-but-unsettled date never silently vanishes from the forecast ────────────
+
+test("clampToToday leaves a date on or after today untouched", () => {
+  assert.equal(clampToToday("2026-12-05", "2026-12-01"), "2026-12-05");
+  assert.equal(clampToToday("2026-12-01", "2026-12-01"), "2026-12-01");
+});
+
+test("clampToToday pulls a past date up to today — the card still shows up instead of vanishing", () => {
+  assert.equal(clampToToday("2026-11-28", "2026-12-01"), "2026-12-01");
+});
+
+test("clampToToday is a no-op when either argument is missing", () => {
+  assert.equal(clampToToday(null, "2026-12-01"), null);
+  assert.equal(clampToToday("2026-12-01", null), "2026-12-01");
+});
+
+// ─── 11/17: conservative $5k rounding toggle ───────────────────────────────────────────────
+
+test("roundDown5k floors a positive balance/in-amount toward zero (assume less)", () => {
+  assert.equal(roundDown5k(12345), 10000);
+  assert.equal(roundDown5k(5000), 5000);
+  assert.equal(roundDown5k(4999), 0);
+  assert.equal(roundDown5k(0), 0);
+});
+
+test("roundDown5k on a negative balance rounds the deficit further negative (bigger assumed shortfall, still conservative)", () => {
+  assert.equal(roundDown5k(-1200), -5000);
+  assert.equal(roundDown5k(-12345), -15000);
+  assert.equal(roundDown5k(-5000), -5000);
+});
+
+test("roundUp5k ceils an out-amount/shortfall magnitude away from zero (assume it costs more)", () => {
+  assert.equal(roundUp5k(12345), 15000);
+  assert.equal(roundUp5k(5000), 5000);
+  assert.equal(roundUp5k(1), 5000);
+  assert.equal(roundUp5k(0), 0);
 });
