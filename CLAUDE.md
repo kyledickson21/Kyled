@@ -990,7 +990,15 @@ read and written ONLY by `WhiteboardPage` (and the pure helpers in `whiteboard-f
 it calls) — nothing else in the app (no other tab, no `api/*.mjs` function) ever references
 it, enforced by a static-containment test (`tests/whiteboard-overrides-isolation.test.mjs`)
 that fails the suite if the string `whiteboardOverrides` ever shows up outside
-`WhiteboardPage()` in `Tracker.jsx` or anywhere in `api/`. It syncs like every other field —
+`WhiteboardPage()` in `Tracker.jsx` or anywhere in `api/` — **with one documented exception**:
+`api/tv-data.mjs` (the public, no-login TV dashboard's read endpoint — see "Public TV
+Dashboard" below) passes it straight through to the client untouched, read-only, same as
+properties/unassigned/lenders/whiteboard, so `WhiteboardPage` — reached there via
+`src/TvDashboard.jsx`, still the one and only place that actually interprets it — renders the
+real Mark-Closed/moved-date/amount-override/No-Date-priority state instead of a stale picture.
+The isolation test allowlists exactly that one file by name and separately asserts it contains
+no write/RPC call that could mutate it; every OTHER `api/*.mjs` file still may never reference
+it at all. It syncs like every other field —
 no special plumbing — because the whole `data` blob already round-trips through Supabase as
 one JSON column; it's additive (`{...d, whiteboardOverrides: {...d.whiteboardOverrides, ...}}`
 at every level), so Undo/Redo and `applyMigrations`' generic `{...d, ...}` spread both already
@@ -1285,6 +1293,80 @@ true}`) is that missing middle ground.
 - **Never auto-clears** — same reasoning as the loanPayment/setAside Mark Closed case: there's
   no "real data confirms it" signal for "Kyle is unsure about this one," so he restores it
   himself whenever he's ready to commit to a date again.
+
+### Public TV Dashboard (`?tv=<secret>`, 11/17)
+Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view
+on a TV, and asked for a URL that needs no login at all — AbleSign just loads a URL, it can't
+do an interactive Supabase sign-in. **Security tradeoff Kyle explicitly confirmed before this
+was built**: the URL contains a long random secret instead of a real login — anyone who gets
+that exact URL can view the cash balance and upcoming deals with no login, so the secret is a
+password living in a link, not true authentication. He also chose to show the FULL Board view
+(addresses, lender names on loan-payment lines — everything, same as his own screen) rather
+than a numbers-only redacted version.
+- **The one new thing this trusts with no login**: `TV_DASHBOARD_SECRET` (server-side env var)
+  and a matching row in a new `tv_dashboard_config` table (`supabase/tv_dashboard.sql` — NOT
+  applied yet, same "written to the repo, Kyle runs it by hand" pattern as
+  `resimpli_sync.sql`). Rotating it (new random value in both places) immediately kills the
+  old URL with zero other changes — treat the secret like a password, never commit the real
+  value, and rotate it if the TV/kiosk link ever leaks.
+- **`tv_dashboard_read(secret)`** (Postgres, `SECURITY DEFINER`, bypasses RLS, same pattern as
+  `resimpli_sync_read`) returns ONLY `{properties, unassigned, lenders, whiteboard,
+  whiteboardOverrides}` — the exact slice `WhiteboardPage` actually reads (confirmed by
+  grepping every `data.X` access inside its own span, plus `upcomingLoanPayments`'s use of
+  `data.unassigned`/`data.lenders` for the loan-payment schedule) — never closingData,
+  overageChecks, resimpliReview, dashboardLayout, Home-screen config, or any lender/bookkeeper
+  account data.
+- **`api/tv-data.mjs`** — `GET /api/tv-data?key=<secret>`, checks the key itself (so a wrong
+  key never even reaches the database) and again inside the Postgres function (so the anon key
+  alone, without the secret, still can't read anything). The ONE documented exception to the
+  `whiteboardOverrides` containment hard rule above — a read-only pass-through, not a second
+  place that interprets or mutates it (enforced by its own isolation-test carve-out).
+- **`api/_tv-auth.mjs`** (`isTvKeyAuthorized(req)`) — a tiny shared check, imported by
+  `api/mercury-balance.mjs`/`api/sell-dates.mjs`/`api/upcoming-buys.mjs`'s own
+  `isAuthorizedCaller`, accepted as an ALTERNATIVE to (never a replacement for) each one's
+  normal "send Kyle's logged-in Supabase token" check — a request still needs either a valid
+  session for `kyle@nexushomesoh.com` or this secret, never neither.
+- **`src/supabase.js`**: `loadTvDashboardData(tvKey)` (the no-session counterpart to
+  `loadData()`) plus an optional `tvKey` argument on `fetchMercuryBalance`/`fetchSellDates`/
+  `fetchUpcomingBuys` — when present (only `src/TvDashboard.jsx` ever passes one), it's sent
+  instead of a session bearer token; the normal, logged-in Tracker path never passes it, so
+  its behavior is completely unchanged.
+- **Reuses `WhiteboardPage` wholesale — no second implementation of the forecast to drift
+  from the real one.** `WhiteboardPage`, `ReadOnlyContext`, `PrivacyContext`, and
+  `PanelContext` are named-exported from `Tracker.jsx` (a separate `export { ... }` statement
+  at the very end of the file, not `export` on the declarations themselves, so
+  `WhiteboardPage`'s own line stays exactly `function WhiteboardPage(` — the isolation test
+  above locates it by that literal prefix). `src/TvDashboard.jsx` loads
+  `{properties, unassigned, lenders, whiteboard, whiteboardOverrides}` via
+  `loadTvDashboardData`, re-fetches every 5 minutes (a kiosk page stays open for days — this is
+  what keeps Mercury/sell-dates/upcoming-buys fresh too, since `WhiteboardPage` only fetches
+  those on its own mount; remounting it via a changing `key` on each refresh re-triggers that),
+  and renders `<ReadOnlyContext.Provider value={true}><PrivacyContext.Provider
+  value={false}><PanelContext.Provider value={null}><WhiteboardPage ... publicMode
+  tvKey={tvKey}/></PanelContext.Provider></PrivacyContext.Provider></ReadOnlyContext.Provider>`
+  — always read-only (there's no user identity for a write to attribute to), never masked.
+- **`publicMode` prop on `WhiteboardPage`** (only ever true from `TvDashboard`): hides the
+  whole toolbar (Calendar/Board toggle, day-range toggle, Round $5k, + Add Card — nobody's
+  there to click them) and forces `effectiveBoardView` to `"board"` — a plain local override
+  of the real, persisted `boardView` value for just the render branches, NOT a different
+  default passed to `usePersistedState` itself, so the normal Tracker's own `localStorage`
+  choice (and the test asserting its exact default) is completely untouched. `forceTv` on
+  `WhiteboardBoardView` similarly seeds `tvMode`'s initial state to `true` directly, WITHOUT
+  calling the Fullscreen API (no real user gesture exists to request it from, and the
+  kiosk/AbleSign box is already fullscreen at the OS level, so there's nothing to request).
+- **`App.jsx`**: checks `?tv=<secret>` in the URL and renders `TvDashboard` instead of the
+  normal session/login flow — checked AFTER every hook in `App` runs (never a conditional
+  early return before them, to keep hook order unconditional), but before any of the
+  session-loading or login UI.
+- **Routing a kiosk to it**: point AbleSign (or any browser-based kiosk) at
+  `https://<your-domain>/?tv=<the secret>`. No app-side "generate a link" UI — the URL is
+  assembled by hand once, using whatever value was put in `TV_DASHBOARD_SECRET`/
+  `tv_dashboard_config`.
+- **Tests**: the isolation-test carve-out above (`tv-data.mjs` is read-only, no write/RPC
+  call). No new pure-logic tests were needed — this feature is wiring (new auth paths, a new
+  read endpoint, re-exporting and re-parameterizing existing components), not new calculation
+  logic; the actual forecast math is the same already-tested `WhiteboardPage`/
+  `whiteboard-forecast.mjs` code path the logged-in Tracker already exercises.
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top

@@ -125,24 +125,51 @@ export async function runResimpliSync({ dryRun }) {
 // degrades gracefully on its own (returns ok:false with a reason) rather than throwing, so a
 // missing env var or a failed external call never breaks the Whiteboard page — callers check
 // `ok` instead of relying on a catch block here.
-export async function fetchMercuryBalance() {
+//
+// `tvKey` (optional, 4th/2nd/1st-ish arg below) is the public TV dashboard's secret — passed
+// only by src/TvDashboard.jsx, which has no Supabase session at all. When present, it's sent
+// INSTEAD of a session bearer token (there isn't one to send); each endpoint's own
+// isAuthorizedCaller accepts either (see api/_tv-auth.mjs). The normal, logged-in Tracker path
+// never passes this, so its behavior is completely unchanged.
+export async function fetchMercuryBalance(tvKey) {
+  if (tvKey) {
+    const res = await fetch(`/api/mercury-balance?key=${encodeURIComponent(tvKey)}`)
+    return res.json()
+  }
   const { data: { session } } = await supabase.auth.getSession()
   const res = await fetch('/api/mercury-balance', { headers: { Authorization: `Bearer ${session?.access_token}` } })
   return res.json()
 }
 
-export async function fetchSellDates(properties) {
-  const { data: { session } } = await supabase.auth.getSession()
-  const res = await fetch('/api/sell-dates', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ properties }),
-  })
+export async function fetchSellDates(properties, tvKey) {
+  const body = tvKey ? { properties, key: tvKey } : { properties }
+  const headers = { 'Content-Type': 'application/json' }
+  if (!tvKey) {
+    const { data: { session } } = await supabase.auth.getSession()
+    headers.Authorization = `Bearer ${session?.access_token}`
+  }
+  const res = await fetch('/api/sell-dates', { method: 'POST', headers, body: JSON.stringify(body) })
   return res.json()
 }
 
-export async function fetchUpcomingBuys() {
+export async function fetchUpcomingBuys(tvKey) {
+  if (tvKey) {
+    const res = await fetch(`/api/upcoming-buys?key=${encodeURIComponent(tvKey)}`)
+    return res.json()
+  }
   const { data: { session } } = await supabase.auth.getSession()
   const res = await fetch('/api/upcoming-buys', { headers: { Authorization: `Bearer ${session?.access_token}` } })
   return res.json()
+}
+
+// Public TV Dashboard (src/TvDashboard.jsx) — the no-login counterpart to loadData() above.
+// Reads ONLY {properties, unassigned, lenders, whiteboard, whiteboardOverrides} through
+// api/tv-data.mjs, which is gated by `tvKey` instead of a Supabase session (see
+// supabase/tv_dashboard.sql for exactly what's excluded and why). Never touched by the normal,
+// logged-in Tracker — this is the one function on this whole page that works with NO session.
+export async function loadTvDashboardData(tvKey) {
+  const res = await fetch(`/api/tv-data?key=${encodeURIComponent(tvKey)}`)
+  const json = await res.json()
+  if (!json.ok) throw new Error(json.reason || 'tv-data failed')
+  return json.data
 }

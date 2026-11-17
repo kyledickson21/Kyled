@@ -19,6 +19,7 @@
 
 import { fetchAllRecords, fetchLeadDetails } from "./_resimpli-client.mjs";
 import { parseCashAmount, etEpochToDateStr, soonestDate, isPastDate } from "../src/whiteboard-forecast.mjs";
+import { isTvKeyAuthorized } from "./_tv-auth.mjs";
 
 const STATUS_ID_UNDER_CONTRACT = "6aa4dcfad18014f8fc6397f5";
 const QUESTION_CASH_NEEDED = "6abf1af80bf2ecf681afbacd";
@@ -27,6 +28,7 @@ const ADMIN_EMAIL = "kyle@nexushomesoh.com";
 const IN_SCOPE_INVESTMENT_TYPES = /fix\s*(and|&)?\s*flip|rental/i;
 
 async function isAuthorizedCaller(req) {
+  if (isTvKeyAuthorized(req)) return true; // the public, no-login TV page — see api/_tv-auth.mjs
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
   if (!token) return false;

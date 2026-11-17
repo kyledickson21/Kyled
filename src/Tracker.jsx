@@ -8575,19 +8575,22 @@ const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, o
   );
 };
 
-function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, navigate, readOnly, roundMode, firstBelow10k, firstNegative,
+function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, navigate, readOnly, roundMode, firstBelow10k, firstNegative, forceTv,
   onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate }) {
   const hasShortfall = ledgerSum.lowest && ledgerSum.lowest.balance < 0;
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
   const rBal = v => roundMode ? roundDown5k(v) : v;
   // "TV Mode" — fullscreens just this view (via the Fullscreen API, which takes over the whole
-  // screen with ONLY this element, hiding the sidebar/nav/everything else automatically) and
+  // screen with ONLY that element, hiding the sidebar/nav/everything else automatically) and
   // switches to a denser layout so a typical dataset fits without scrolling. True pixel-perfect
   // no-scroll for an arbitrarily large dataset isn't promised — the table body can still scroll
   // on its own if the window/data is unusually large — but the page chrome is gone and the type
-  // is as small as stays legible from across a room.
-  const [tvMode, setTvMode] = useState(false);
+  // is as small as stays legible from across a room. `forceTv` (the public, no-login TV page —
+  // src/TvDashboard.jsx) starts already in this compact layout WITHOUT calling the Fullscreen
+  // API (which needs a real user gesture the kiosk never provides — the kiosk/AbleSign box
+  // itself is already fullscreen at the OS level, so there's nothing for this page to request).
+  const [tvMode, setTvMode] = useState(!!forceTv);
   const containerRef = useRef(null);
   useEffect(() => {
     const onFsChange = () => { if (!document.fullscreenElement) setTvMode(false); };
@@ -8732,7 +8735,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
   );
 }
 
-function WhiteboardPage({ data, update }) {
+function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const readOnly = useReadOnly();
   const prv = usePrivacy();
   const navigate = usePanel();
@@ -8754,6 +8757,10 @@ function WhiteboardPage({ data, update }) {
   // doesn't need to live in whiteboardOverrides). Board view computes nothing of its own; it
   // reads the exact same dayCols/balances/cards this component already builds below.
   const [boardView,setBoardView] = usePersistedState("nx-whiteboardView","calendar");
+  // The public TV page (publicMode) always shows Board, regardless of the real toggle's own
+  // persisted value — a plain local override, not a different default for the hook itself (so
+  // the normal, logged-in Tracker's own localStorage choice is completely untouched).
+  const effectiveBoardView = publicMode ? "board" : boardView;
   // Conservative "round to nearest $5k" display toggle — same remembered-per-device pattern as
   // boardView above (never written to data/whiteboardOverrides; purely how the headline
   // figures are DISPLAYED, never the real stored amounts). rIn/rBal round down (assume less
@@ -8795,15 +8802,15 @@ function WhiteboardPage({ data, update }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchMercuryBalance().then(r=>{ if(!cancelled) setMercury(r); }).catch(e=>{ if(!cancelled) setMercury({ok:false, reason:e.message}); });
-    fetchUpcomingBuys().then(r=>{ if(!cancelled) setBuysResult(r); }).catch(e=>{ if(!cancelled) setBuysResult({ok:false, reason:e.message, rows:[], needsInfo:[]}); });
+    fetchMercuryBalance(tvKey).then(r=>{ if(!cancelled) setMercury(r); }).catch(e=>{ if(!cancelled) setMercury({ok:false, reason:e.message}); });
+    fetchUpcomingBuys(tvKey).then(r=>{ if(!cancelled) setBuysResult(r); }).catch(e=>{ if(!cancelled) setBuysResult({ok:false, reason:e.message, rows:[], needsInfo:[]}); });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     if (sellingProps.length===0) { setSellDatesResult({ok:true, rows:[]}); return; }
-    fetchSellDates(sellingProps.map(p=>({id:p.id, address:p.address, leadId:p.resimpli?.leadId||null})))
+    fetchSellDates(sellingProps.map(p=>({id:p.id, address:p.address, leadId:p.resimpli?.leadId||null})), tvKey)
       .then(r=>{ if(!cancelled) setSellDatesResult(r); })
       .catch(e=>{ if(!cancelled) setSellDatesResult({ok:false, reason:e.message, rows:[]}); });
     return () => { cancelled = true; };
@@ -9231,10 +9238,13 @@ function WhiteboardPage({ data, update }) {
   return (
     <div>
       <div className="flex items-start justify-between gap-3 mb-4">
+        {!publicMode && (
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
           <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board — drag cards onto a day to plan upcoming money in and out. Incoming money takes 1 business day to clear; loan payments, upcoming sales, and upcoming buys are pulled in automatically; bills with no due date live in the Due Now queue on the left.</p>
         </div>
+        )}
+        {!publicMode && (
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
             {["calendar","board"].map(v=>(
@@ -9250,6 +9260,7 @@ function WhiteboardPage({ data, update }) {
             className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all ${roundMode?"bg-teal-600 text-white shadow-sm":"bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500"}`}>↕ Round $5k</button>
           {!readOnly && <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>}
         </div>
+        )}
       </div>
 
       <div className="flex gap-3 mb-4 flex-wrap">
@@ -9277,7 +9288,7 @@ function WhiteboardPage({ data, update }) {
             </>
           )}
         </div>
-        {boardView==="calendar" && (<>
+        {effectiveBoardView==="calendar" && (<>
           {firstShortfall && (
             <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
               <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-0.5">First Shortfall</div>
@@ -9403,9 +9414,9 @@ function WhiteboardPage({ data, update }) {
 
       <WhiteboardClosedPanel items={closedItems} h$={h$} onUndo={readOnly?undefined:undoClosed}/>
 
-      {boardView==="board" && (
+      {effectiveBoardView==="board" && (
         <WhiteboardBoardView startingBalance={startingBalance} startingLabel={usingMercury?`Mercury ${mercury.source||""}`.trim():"Manual balance"}
-          ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} navigate={navigate} readOnly={readOnly} roundMode={roundMode}
+          ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} navigate={navigate} readOnly={readOnly} roundMode={roundMode} forceTv={publicMode}
           firstBelow10k={firstBelowThreshold(ledgerRows, 10000)} firstNegative={firstBelowThreshold(ledgerRows, 0)}
           onPickDate={readOnly?undefined:handleBoardPickDate} onSetAmount={readOnly?undefined:setAmountOverride}
           onResetAmount={readOnly?undefined:resetAmountOverride} onResetDate={readOnly?undefined:resetMovedDate}
@@ -9413,7 +9424,7 @@ function WhiteboardPage({ data, update }) {
           onSendToNoDate={readOnly?undefined:sendToNoDate}/>
       )}
 
-      {boardView==="calendar" && (cards.length===0&&activeAutoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
+      {effectiveBoardView==="calendar" && (cards.length===0&&activeAutoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
         <div className="text-center py-16 text-slate-400 dark:text-zinc-500">
           <div className="text-4xl mb-3">📌</div>
           <p className="font-semibold">Nothing on the board yet</p>
@@ -12504,3 +12515,11 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
     </ReadOnlyContext.Provider>
   );
 }
+
+// Named exports for the public, no-login TV dashboard (src/TvDashboard.jsx) — it renders
+// WhiteboardPage directly, outside the normal authenticated Tracker tree entirely, so it needs
+// these three contexts to provide its own (always readOnly=true, privacy off, no panel nav)
+// rather than inheriting Tracker's. A separate statement, not `export` on the declarations
+// themselves, so WhiteboardPage's own line stays exactly `function WhiteboardPage(` — several
+// tests (tests/whiteboard-overrides-isolation.test.mjs) locate it by that literal line prefix.
+export { WhiteboardPage, ReadOnlyContext, PrivacyContext, PanelContext };

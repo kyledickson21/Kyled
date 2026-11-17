@@ -43,15 +43,32 @@ test("every whiteboardOverrides reference in Tracker.jsx is inside WhiteboardPag
   assert.ok(insideCount > 0, "expected to find whiteboardOverrides references inside WhiteboardPage — did the feature get removed?");
 });
 
-test("no api/*.mjs file reads or writes whiteboardOverrides", () => {
+// One deliberate, narrow exception: api/tv-data.mjs (the public, no-login TV dashboard's read
+// endpoint — see CLAUDE.md "Public TV Dashboard") passes whiteboardOverrides straight through
+// from tv_dashboard_read() to the client, same as properties/unassigned/lenders/whiteboard —
+// it's a read-only, single-RPC pass-through with no rebuild/transform logic of its own (unlike
+// the REsimpli sync this rule was originally written to guard against, which rewrites the
+// whole properties array), and the data still only ever gets INTERPRETED by WhiteboardPage
+// itself on the client (via src/TvDashboard.jsx), the one place this whole rule designates as
+// the owner. Every OTHER api/*.mjs file must still never reference it at all.
+const WHITEBOARD_OVERRIDES_EXEMPT_API_FILES = ["tv-data.mjs"];
+
+test("no api/*.mjs file reads or writes whiteboardOverrides (except the documented tv-data.mjs pass-through)", () => {
   const apiDir = path.join(repoRoot, "api");
   const offenders = [];
   for (const file of readdirSync(apiDir)) {
     if (!file.endsWith(".mjs")) continue;
+    if (WHITEBOARD_OVERRIDES_EXEMPT_API_FILES.includes(file)) continue;
     const text = readFileSync(path.join(apiDir, file), "utf8");
     if (text.includes("whiteboardOverrides")) offenders.push(file);
   }
   assert.deepEqual(offenders, [], "no server function should ever touch whiteboardOverrides — it's Whiteboard-UI-only, synced via the normal nexus_data blob like everything else");
+});
+
+test("api/tv-data.mjs only ever READS whiteboardOverrides — no write/rpc call that could mutate it", () => {
+  const text = readFileSync(path.join(repoRoot, "api/tv-data.mjs"), "utf8");
+  assert.match(text, /whiteboardOverrides/, "expected tv-data.mjs to actually mention it (in a comment) — if this changed, update the exemption above too");
+  assert.doesNotMatch(text, /\.rpc\(\s*["'`]\w*(apply|write|update|sync_apply)/i, "tv-data.mjs must stay read-only — only tv_dashboard_read, never anything that writes");
 });
 
 test("whiteboard-forecast.mjs's own functions never read data.whiteboardOverrides — only documentation comments mention the key name", () => {

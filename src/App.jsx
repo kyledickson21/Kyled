@@ -3,6 +3,12 @@ import { supabase } from './supabase'
 import Tracker from './Tracker'
 import Home from './Home'
 import LenderPortal from './LenderPortal'
+import TvDashboard from './TvDashboard'
+
+// The public, no-login TV dashboard (?tv=<secret> in the URL) — checked and rendered BEFORE
+// any Supabase session/login logic runs at all, since this route deliberately has no login.
+// See src/TvDashboard.jsx and CLAUDE.md "Public TV Dashboard" for the full design.
+const tvKey = new URLSearchParams(window.location.search).get('tv')
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -29,6 +35,10 @@ export default function App() {
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  // Checked after the hooks above (never conditionally skipping them) but before any of the
+  // session/login UI below — this route has no login at all, so there's nothing to wait on.
+  if (tvKey) return <TvDashboard tvKey={tvKey} />
 
   const signIn = async (e) => {
     e.preventDefault()

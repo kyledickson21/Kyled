@@ -19,11 +19,14 @@
 // Never calls REsimpli's internal dashboard API, never stores a password — just this one
 // read-only Mercury API token (MERCURY_API_TOKEN), server-side only.
 
+import { isTvKeyAuthorized } from "./_tv-auth.mjs";
+
 const MASTER_ACCOUNT_ID = "d4aeaffe-6729-11f0-88e7-c7902c936c24";
 const MASTER_ACCOUNT_LABEL = "Mercury Master ••3564";
 const ADMIN_EMAIL = "kyle@nexushomesoh.com";
 
 async function isAuthorizedCaller(req) {
+  if (isTvKeyAuthorized(req)) return true; // the public, no-login TV page — see api/_tv-auth.mjs
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
   if (!token) return false;

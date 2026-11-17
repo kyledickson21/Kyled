@@ -33,12 +33,14 @@ import { fetchSheetValues } from "./_google-sheets-client.mjs";
 import { fetchLeadDetails } from "./_resimpli-client.mjs";
 import { normalizeAddressForMatch } from "../src/resimpli-shared.mjs";
 import { etEpochToDateStr, etLocalStringToUtcIso } from "../src/whiteboard-forecast.mjs";
+import { isTvKeyAuthorized } from "./_tv-auth.mjs";
 
 const SHEET_ID = "1sLr3xx99bjWgE8njqfg84arzgHUmHoJaetmSji6TDD8";
 const ADMIN_EMAIL = "kyle@nexushomesoh.com";
 const STALE_HOURS = 26;
 
 async function isAuthorizedCaller(req) {
+  if (isTvKeyAuthorized(req)) return true; // the public, no-login TV page — see api/_tv-auth.mjs
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
   if (!token) return false;
