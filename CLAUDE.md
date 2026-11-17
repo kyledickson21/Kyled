@@ -1054,6 +1054,47 @@ data.whiteboardOverrides = {
   `data.whiteboardOverrides` is present. `tests/whiteboard-overrides-isolation.test.mjs` is the
   static-containment check described above.
 
+### Board view — a running-balance ledger (Calendar ↔ Board toggle)
+A second Whiteboard layout (Kyle, 11/17, shipped straight to production): a classic cash-flow
+ledger table — DATE | ADDRESS | IN (+) | OUT (−) | NEW BALANCE, a "Current" starting-balance
+row, a sticky header, a summary strip (lowest balance + its date, total in, total out, ending
+balance), week subtotal rows, and a red highlight + "Need $X" on any day the balance goes
+negative. Loosely inspired by Kyle's own physical office whiteboard, but built to cash-flow-
+ledger best practices rather than copying it literally (no hand-drawn-style circles/"!!!").
+**Display-only** — it computes nothing of its own and can't write anything: `WhiteboardBoardView`/
+`WhiteboardBoardRow` (Tracker.jsx, declared just above `WhiteboardPage`) never receive an
+`update` prop at all, enforced by `tests/whiteboard-ledger.test.mjs`.
+- **Toggle**: `["calendar","board"]` buttons next to the existing 30/45/90-day range toggle (a
+  30-day option was added alongside the existing 45/90, per this same request) —
+  `boardView` is `usePersistedState("nx-whiteboardView","calendar")`, i.e. `localStorage` only,
+  never written to `data`/Supabase (same per-device "remember my last choice" pattern as
+  `nx-propSortMode` etc. elsewhere in the file) — confirmed by its own test.
+- **Exact same data and rules as Calendar — guaranteed by construction, not by re-deriving
+  the math a second time.** `WhiteboardPage` builds one `entriesByDay[day]` array (manual cards
+  settling that day via `wbEffectiveDate`, `autoCardsFor`, `sellCardsFor`/`buyCardsFor` — which
+  already have Mark Closed/moved-date overrides applied — and `setAsideCardsFor`) straight from
+  the SAME per-day arrays `netFor`/the Calendar day columns already use, then calls
+  `buildLedgerRows(dayCols, entriesByDay, balances)` — passing in `computeForecastSummary`'s own
+  `balances` object UNCHANGED, never recomputing a running total independently. A ledger row's
+  `balance` is therefore always the literal same number the Calendar view's own day column shows
+  for that date; there is no second implementation of the running-balance math to drift from the
+  first. `groupLedgerRowsByWeek`/`ledgerSummary` (both pure, in `whiteboard-forecast.mjs`) only
+  aggregate what's already been computed — totals, the lowest-balance day, the ending balance.
+- **Row display**: a day with no entries is skipped (matches the physical-whiteboard precedent
+  of only writing down days something actually happens); a day with multiple entries lists each
+  on its own line inside one row rather than string-joining addresses. Week-subtotal rows
+  (`Fragment`-grouped, 7-day chunks starting from today) show that week's own IN/OUT totals.
+- **Needs Info** still shows in Board view — it's the one existing, shared panel rendered once
+  above the view-specific content (not duplicated per-view), so it never drifts from Calendar's
+  copy either.
+- **Tests**: `tests/whiteboard-ledger.test.mjs` — `buildLedgerRows` row balances matching
+  `computeForecastSummary`'s own `balances` object field-for-field, each row's net matching the
+  exact `netByDay` figure that produced it (including the Red Bank $78,089.68 case), week-chunk
+  boundaries/subtotals, `ledgerSummary`'s lowest/totals/ending (including a forced-shortfall
+  case and the zero-rows fallback), and the two display-only guarantees above (no `update` prop
+  anywhere in the Board components; the view toggle is `localStorage`-only). 79 tests pass
+  across the whole suite as of this writing.
+
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top
 - Stats (count, avg cash to close, avg rehab, avg profit) reflect whichever tab is active

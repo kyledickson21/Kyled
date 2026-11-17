@@ -172,6 +172,60 @@ export function datedSetAsideCards(setAsides) {
   return (setAsides || []).filter(s => s.date).map(s => ({ id: `setaside-${s.id}`, label: s.label, amount: s.amount || 0, day: s.date }));
 }
 
+// ─── Ledger ("Board") view — a running-balance ledger table, the same data/rules as the
+// calendar view, just laid out as rows instead of day columns. Deliberately built to REUSE the
+// calendar view's own `balances` (from computeForecastSummary) rather than recomputing a
+// running total independently — the two views can't drift apart on a single cent, because
+// they're reading the exact same numbers, not two implementations of the same math.
+
+// One row per day in `dayCols`. `entriesByDay` is {day: [{id,label,amount,direction}]} — built
+// by the caller from the SAME per-day card arrays (manual cards settling that day, auto loan
+// payments, sell/buy cards, Set Aside cards) the calendar view's own netFor(day) sums, so
+// netIn-netOut here always equals netFor(day) by construction. `balances` is
+// computeForecastSummary's own output — never recomputed here.
+export function buildLedgerRows(dayCols, entriesByDay, balances) {
+  return dayCols.map(day => {
+    const entries = entriesByDay[day] || [];
+    const netIn = Math.round(entries.filter(e => e.direction === "in").reduce((s, e) => s + (e.amount || 0), 0) * 100) / 100;
+    const netOut = Math.round(entries.filter(e => e.direction === "out").reduce((s, e) => s + (e.amount || 0), 0) * 100) / 100;
+    return { day, entries, netIn, netOut, balance: balances[day] };
+  });
+}
+
+// Chunks ledger rows into fixed 7-day weeks starting from the first row (today), each with its
+// own IN/OUT subtotal — a plain display grouping, no effect on any balance.
+export function groupLedgerRowsByWeek(rows) {
+  const weeks = [];
+  for (let i = 0; i < rows.length; i += 7) {
+    const chunk = rows.slice(i, i + 7);
+    if (!chunk.length) continue;
+    const totalIn = Math.round(chunk.reduce((s, r) => s + r.netIn, 0) * 100) / 100;
+    const totalOut = Math.round(chunk.reduce((s, r) => s + r.netOut, 0) * 100) / 100;
+    weeks.push({ weekStart: chunk[0].day, rows: chunk, totalIn, totalOut });
+  }
+  return weeks;
+}
+
+// The summary strip at the top of the ledger: lowest balance + the date it happens, total in,
+// total out, and the ending balance (the last row's balance, or the starting balance if there
+// are no rows at all).
+export function ledgerSummary(rows, startingBalance) {
+  let lowest = null;
+  let totalIn = 0, totalOut = 0;
+  rows.forEach(r => {
+    totalIn += r.netIn;
+    totalOut += r.netOut;
+    if (!lowest || r.balance < lowest.balance) lowest = { day: r.day, balance: r.balance };
+  });
+  return {
+    lowest,
+    totalIn: Math.round(totalIn * 100) / 100,
+    totalOut: Math.round(totalOut * 100) / 100,
+    ending: rows.length ? rows[rows.length - 1].balance : startingBalance,
+    startingBalance,
+  };
+}
+
 // Running cash balance across a day window, given a starting balance and a map of
 // {day: netAmountThatDay}. Returns {balances: {day: balance}, firstShortfall: {day, amount}|null,
 // largestShortfall: {day, amount}|null, positiveAgain: day|null} — the pieces the Whiteboard's

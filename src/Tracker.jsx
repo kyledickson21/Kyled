@@ -13,6 +13,7 @@ import {
 import {
   nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary, withinWindow,
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
+  buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary,
 } from './whiteboard-forecast.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -8411,6 +8412,113 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
   );
 };
 
+// ─── Board view — a running-balance ledger table (cash-flow-forecast best practice: sticky
+// header, a clear starting-balance row, green/red IN/OUT, a running balance column, the lowest
+// point and every shortfall day called out with the amount needed, optional week subtotals,
+// and a summary strip up top). Entirely display-only — every number it shows comes straight
+// from WhiteboardPage's own `ledgerRows`/`ledgerSum` (built from the exact same dayCols/
+// balances/cards the Calendar view uses), so it can't compute, store, or drift from anything.
+const WhiteboardBoardRow = ({ row, h$, navigate }) => {
+  const short = row.balance < 0;
+  return (
+    <tr className={short ? "bg-red-50 dark:bg-red-900/10" : ""}>
+      <td className="px-3 py-2 align-top whitespace-nowrap text-xs font-semibold text-slate-500 dark:text-zinc-400">{wbFmtDate(row.day)}<div className="text-[10px] font-normal text-slate-300 dark:text-zinc-600">{wbWeekday(row.day)}</div></td>
+      <td className="px-3 py-2 align-top text-xs text-slate-700 dark:text-zinc-200">
+        {row.entries.map(e=>(
+          <div key={e.id} className="truncate max-w-[220px]">
+            {e.propId ? (
+              <button onClick={()=>navigate&&navigate({type:'property',id:e.propId})} className="hover:underline text-teal-600 dark:text-teal-400">{e.label}</button>
+            ) : e.label}
+          </div>
+        ))}
+      </td>
+      <td className="px-3 py-2 align-top text-right text-xs font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+        {row.netIn>0 && <>+{h$(row.netIn)}</>}
+      </td>
+      <td className="px-3 py-2 align-top text-right text-xs font-semibold tabular-nums text-red-600 dark:text-red-400">
+        {row.netOut>0 && <>−{h$(row.netOut)}</>}
+      </td>
+      <td className="px-3 py-2 align-top text-right">
+        <div className={`text-sm font-black tabular-nums ${short?"text-red-600 dark:text-red-400":"text-slate-800 dark:text-zinc-100"}`}>{short?"−":""}{h$(Math.abs(row.balance))}</div>
+        {short && <div className="text-[10px] font-semibold text-red-500 dark:text-red-400">Need {h$(-row.balance)}</div>}
+      </td>
+    </tr>
+  );
+};
+
+function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, navigate }) {
+  const hasShortfall = ledgerSum.lowest && ledgerSum.lowest.balance < 0;
+  return (
+    <div>
+      {/* Summary strip — lowest balance (+ date), total in, total out, ending balance */}
+      <div className="flex gap-3 mb-4 flex-wrap">
+        <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Lowest Balance</div>
+          {ledgerSum.lowest ? (<>
+            <div className={`text-lg font-black tabular-nums ${hasShortfall?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{hasShortfall?"−":""}{h$(Math.abs(ledgerSum.lowest.balance))}</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500">on {wbFmtDate(ledgerSum.lowest.day)}</div>
+          </>) : <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">—</div>}
+        </div>
+        <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
+          <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(ledgerSum.totalIn)}</div>
+        </div>
+        <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
+          <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(ledgerSum.totalOut)}</div>
+        </div>
+        <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Ending Balance</div>
+          <div className={`text-lg font-black tabular-nums ${ledgerSum.ending<0?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{ledgerSum.ending<0?"−":""}{h$(Math.abs(ledgerSum.ending))}</div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[560px]">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-slate-50 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
+                <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Date</th>
+                <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Address</th>
+                <th className="px-3 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400">In (+)</th>
+                <th className="px-3 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400">Out (−)</th>
+                <th className="px-3 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">New Balance</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+              <tr className="bg-slate-50/70 dark:bg-zinc-800/50">
+                <td className="px-3 py-2 text-xs font-bold text-slate-500 dark:text-zinc-400">Current</td>
+                <td className="px-3 py-2 text-xs text-slate-400 dark:text-zinc-500">{startingLabel}</td>
+                <td className="px-3 py-2"></td>
+                <td className="px-3 py-2"></td>
+                <td className="px-3 py-2 text-right text-sm font-black tabular-nums text-slate-800 dark:text-zinc-100">{h$(startingBalance)}</td>
+              </tr>
+              {ledgerWeeks.map(week=>{
+                const visibleRows = week.rows.filter(r=>r.entries.length>0);
+                if (!visibleRows.length) return null;
+                return (
+                  <Fragment key={week.weekStart}>
+                    <tr className="bg-slate-100/70 dark:bg-zinc-900/40">
+                      <td colSpan={2} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Week of {wbFmtDate(week.weekStart)}</td>
+                      <td className="px-3 py-1.5 text-right text-[10px] font-bold tabular-nums text-emerald-500 dark:text-emerald-400">{week.totalIn>0?`+${h$(week.totalIn)}`:""}</td>
+                      <td className="px-3 py-1.5 text-right text-[10px] font-bold tabular-nums text-red-500 dark:text-red-400">{week.totalOut>0?`−${h$(week.totalOut)}`:""}</td>
+                      <td></td>
+                    </tr>
+                    {visibleRows.map(row=><WhiteboardBoardRow key={row.day} row={row} h$={h$} navigate={navigate}/>)}
+                  </Fragment>
+                );
+              })}
+              {ledgerWeeks.every(w=>w.rows.every(r=>r.entries.length===0)) && (
+                <tr><td colSpan={5} className="px-3 py-10 text-center text-xs text-slate-400 dark:text-zinc-500 italic">Nothing scheduled in this window</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WhiteboardPage({ data, update }) {
   const readOnly = useReadOnly();
   const prv = usePrivacy();
@@ -8423,6 +8531,11 @@ function WhiteboardPage({ data, update }) {
   const [addingSetAside,setAddingSetAside] = useState(false);
   const [editingSetAside,setEditingSetAside] = useState(null);
   const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
+  // Calendar (the existing day-column board) vs. Board (a running-balance ledger table) —
+  // purely a display choice, remembered per device/browser (not synced to Supabase, so it
+  // doesn't need to live in whiteboardOverrides). Board view computes nothing of its own; it
+  // reads the exact same dayCols/balances/cards this component already builds below.
+  const [boardView,setBoardView] = usePersistedState("nx-whiteboardView","calendar");
 
   const [windowDays,setWindowDays] = useState(45);
   const DAYS = windowDays;
@@ -8729,6 +8842,25 @@ function WhiteboardPage({ data, update }) {
   const [sbInput,setSbInput] = useState(String(startingBalanceManual||""));
   useEffect(()=>{ setSbInput(String(startingBalanceManual||"")); }, [startingBalanceManual]);
 
+  // ─── Board (ledger) view data — built from the exact same per-day arrays/balances above,
+  // so it can't drift from the Calendar view by a cent. One entries array per day, covering
+  // every money-moving thing Calendar already shows: manual cards (on the day they actually
+  // SETTLE, same as netFor), the auto loan-payment cards, sell/buy auto cards (closed/moved
+  // overrides already applied upstream), and dated Set Aside cards.
+  const entriesByDay = {};
+  dayCols.forEach(day => {
+    entriesByDay[day] = [
+      ...cards.filter(c=>c.day && wbEffectiveDate(c)===day).map(c=>({ id:c.id, label:c.address || (c.kind==="bill"?"Bill":"Card"), amount:c.amount||0, direction:c.direction, propId:c.kind==="property"?c.propId:null })),
+      ...autoCardsFor(day).map(c=>({ id:c.id, label:c.lenderName ? (c.address?`${c.lenderName} (${c.address})`:c.lenderName) : (c.address||"Loan payment"), amount:c.amount||0, direction:"out", propId:c.propId })),
+      ...sellCardsFor(day).map(c=>({ id:c.id, label:c.address, amount:c.amount||0, direction:"in", propId:c.propId })),
+      ...buyCardsFor(day).map(c=>({ id:c.id, label:c.address, amount:c.amount||0, direction:"out" })),
+      ...setAsideCardsFor(day).map(c=>({ id:c.id, label:c.label, amount:c.amount||0, direction:"out" })),
+    ];
+  });
+  const ledgerRows = buildLedgerRows(dayCols, entriesByDay, balances);
+  const ledgerWeeks = groupLedgerRowsByWeek(ledgerRows);
+  const ledgerSum = ledgerSummary(ledgerRows, startingBalance);
+
   return (
     <div>
       <div className="flex items-start justify-between gap-3 mb-4">
@@ -8736,9 +8868,14 @@ function WhiteboardPage({ data, update }) {
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
           <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board — drag cards onto a day to plan upcoming money in and out. Incoming money takes 1 business day to clear; loan payments, upcoming sales, and upcoming buys are pulled in automatically; bills with no due date live in the Due Now queue on the left.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
-            {[45,90].map(n=>(
+            {["calendar","board"].map(v=>(
+              <button key={v} onClick={()=>setBoardView(v)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all capitalize ${boardView===v?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{v}</button>
+            ))}
+          </div>
+          <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
+            {[30,45,90].map(n=>(
               <button key={n} onClick={()=>setWindowDays(n)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${windowDays===n?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{n}d</button>
             ))}
           </div>
@@ -8771,35 +8908,37 @@ function WhiteboardPage({ data, update }) {
             </>
           )}
         </div>
-        {firstShortfall && (
-          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-0.5">First Shortfall</div>
-            <div className="text-lg font-black tabular-nums text-red-600 dark:text-red-400">Need {h$(firstShortfall.amount)}</div>
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500">by {wbFmtDate(firstShortfall.day)}</div>
-          </div>
-        )}
-        {largestShortfall && (
-          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-0.5">Largest Shortfall</div>
-            <div className="text-lg font-black tabular-nums text-red-600 dark:text-red-400">{h$(largestShortfall.amount)}</div>
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500">on {wbFmtDate(largestShortfall.day)}</div>
-          </div>
-        )}
-        {firstShortfall && (
-          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400 mb-0.5">Positive Again</div>
-            <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{positiveAgain?wbFmtDate(positiveAgain):`Not within ${windowDays}d`}</div>
-          </div>
-        )}
-        {(cards.length>0||autoCards.length>0||activeSellCards.length>0||activeBuyCards.length>0||setAsideCardsList.length>0)&&(<>
-          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
-            <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(totalIn)}</div>
-          </div>
-          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
-            <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(totalOut)}</div>
-          </div>
+        {boardView==="calendar" && (<>
+          {firstShortfall && (
+            <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-0.5">First Shortfall</div>
+              <div className="text-lg font-black tabular-nums text-red-600 dark:text-red-400">Need {h$(firstShortfall.amount)}</div>
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500">by {wbFmtDate(firstShortfall.day)}</div>
+            </div>
+          )}
+          {largestShortfall && (
+            <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-0.5">Largest Shortfall</div>
+              <div className="text-lg font-black tabular-nums text-red-600 dark:text-red-400">{h$(largestShortfall.amount)}</div>
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500">on {wbFmtDate(largestShortfall.day)}</div>
+            </div>
+          )}
+          {firstShortfall && (
+            <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400 mb-0.5">Positive Again</div>
+              <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{positiveAgain?wbFmtDate(positiveAgain):`Not within ${windowDays}d`}</div>
+            </div>
+          )}
+          {(cards.length>0||autoCards.length>0||activeSellCards.length>0||activeBuyCards.length>0||setAsideCardsList.length>0)&&(<>
+            <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
+              <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(totalIn)}</div>
+            </div>
+            <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
+              <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(totalOut)}</div>
+            </div>
+          </>)}
         </>)}
       </div>
 
@@ -8859,7 +8998,12 @@ function WhiteboardPage({ data, update }) {
 
       <WhiteboardClosedPanel items={closedItems} h$={h$} onUndo={readOnly?undefined:undoClosed}/>
 
-      {cards.length===0&&autoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
+      {boardView==="board" && (
+        <WhiteboardBoardView startingBalance={startingBalance} startingLabel={usingMercury?`Mercury ${mercury.source||""}`.trim():"Manual balance"}
+          ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} navigate={navigate}/>
+      )}
+
+      {boardView==="calendar" && (cards.length===0&&autoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
         <div className="text-center py-16 text-slate-400 dark:text-zinc-500">
           <div className="text-4xl mb-3">📌</div>
           <p className="font-semibold">Nothing on the board yet</p>
@@ -8901,7 +9045,7 @@ function WhiteboardPage({ data, update }) {
             )}
           </DragOverlay>
         </DndContext>
-      )}
+      ))}
 
       {(addOpen||editCard)&&(
         <WhiteboardCardModal properties={data.properties} init={editCard}
