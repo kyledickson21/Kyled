@@ -154,6 +154,42 @@ export function applyMovedDate(card, movedDates) {
   return { ...card, day: override.date, manualDate: true, originalDate: override.originalDate, sourceDate: card.day };
 }
 
+// A manual $ override on an existing (real, auto-computed) sell/buy card — independent of,
+// and composable with, applyMovedDate's date override. `amountOverrides` is
+// data.whiteboardOverrides.amountOverrides, {[cardId]: amount}.
+export function applyAmountOverride(card, amountOverrides) {
+  const override = amountOverrides?.[card.id];
+  if (override == null) return card;
+  return { ...card, amount: override, originalAmount: card.amount, manualAmount: true };
+}
+
+// Synthesizes a sell/buy card from data.whiteboardOverrides.manualFill — Kyle's own pencilled-
+// in amount+date for a property/lead the real data (REsimpli/the Sheet) couldn't find a date
+// or amount for (a Needs Info item). `manualFill` is {[cardId]: {kind, key, address, amount,
+// date}}; `existingIds` is every id that ALREADY has a real, auto-computed card — manual fill
+// only ever stands in for a MISSING card, never duplicates or overrides a real one (once real
+// data shows up, the caller drops the stale manualFill entry — see WhiteboardPage's auto-clear
+// effect). Only produces a card once BOTH amount and date are filled in; either alone just
+// stays as a note on the Needs Info row. `nextBusinessDayFn` mirrors a real sell card's own
+// "sale date + 1 business day" clearing rule — passed in so this module never needs its own
+// copy of nextBusinessDay's logic.
+export function manualFillCards(manualFill, existingIds, kind, nextBusinessDayFn) {
+  const existing = existingIds instanceof Set ? existingIds : new Set(existingIds || []);
+  return Object.entries(manualFill || {})
+    .filter(([id, entry]) => entry && entry.kind === kind && entry.amount != null && entry.date && !existing.has(id))
+    .map(([id, entry]) => ({
+      id,
+      propId: kind === "sell" ? entry.key : undefined,
+      address: entry.address,
+      amount: entry.amount,
+      day: kind === "sell" ? nextBusinessDayFn(entry.date) : entry.date,
+      manualEntry: true,
+      ...(kind === "sell"
+        ? { breakdown: { purchasePrice: 0, hardLoans: [], hardInterestPaidTotal: 0, saleDate: entry.date, dateSource: "manual", privateLoans: [] } }
+        : { date: entry.date, dateFromAnalytics: null, dateFromContract: null }),
+    }));
+}
+
 // Total of every "Set aside" entry with NO date — subtracted straight from Starting Cash
 // (money already spoken for, not yet scheduled to leave on any particular day).
 export function undatedSetAsideTotal(setAsides) {

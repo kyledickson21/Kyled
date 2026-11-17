@@ -110,10 +110,14 @@ test("ledgerSummary with no rows falls back to the starting balance as ending", 
 });
 
 // ─── Display-only guarantee: the Board view never receives or calls `update` ───────────────
-test("WhiteboardBoardView and WhiteboardBoardRow never take an `update` prop or call update(...)", () => {
+// (11/17: the Board view gained real interactivity — drag-to-reschedule, inline amount edit,
+// a date picker, and "take off the timeline" — but strictly through named callback props
+// (onPickDate/onSetAmount/onMarkClosed/etc.) owned and written by WhiteboardPage itself; these
+// three components still never see nexus_data's `update` function directly.)
+test("WhiteboardBoardView, WhiteboardBoardRow, and WhiteboardBoardEntry never take an `update` prop or call update(...)", () => {
   const text = readFileSync(path.join(repoRoot, "src/Tracker.jsx"), "utf8");
   const lines = text.split("\n");
-  for (const name of ["WhiteboardBoardView", "WhiteboardBoardRow"]) {
+  for (const name of ["WhiteboardBoardView", "WhiteboardBoardRow", "WhiteboardBoardEntry"]) {
     const startIdx = lines.findIndex(l => l.includes(`function ${name}(`) || l.startsWith(`const ${name} =`));
     assert.ok(startIdx !== -1, `${name} not found`);
     const nextDeclIdx = lines.findIndex((l, i) => i > startIdx && /^(function |const [A-Za-z]|class )/.test(l));

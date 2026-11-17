@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
+  applyAmountOverride, manualFillCards,
 } from "../src/whiteboard-forecast.mjs";
 
 test("filterClosed drops a card whose id is marked closed", () => {
@@ -120,4 +121,65 @@ test("groupedStageSortKey is identical for the same property whether or not whit
   const prop = withOverrides().properties[0];
   const propNoOverrides = baseData().properties[0];
   assert.equal(groupedStageSortKey(prop), groupedStageSortKey(propNoOverrides));
+});
+
+// ─── 11/17: manual amount override + manual fill-in cards (drag/edit-in-Board-view feature) ─
+
+test("applyAmountOverride leaves a card untouched when there's no override for it", () => {
+  const card = { id: "sell-p1", amount: 500 };
+  assert.deepEqual(applyAmountOverride(card, {}), card);
+  assert.deepEqual(applyAmountOverride(card, null), card);
+  assert.deepEqual(applyAmountOverride(card, { "sell-p2": 999 }), card);
+});
+
+test("applyAmountOverride overrides amount and carries originalAmount/manualAmount", () => {
+  const card = { id: "sell-p1", amount: 500 };
+  const out = applyAmountOverride(card, { "sell-p1": 750 });
+  assert.equal(out.amount, 750);
+  assert.equal(out.originalAmount, 500);
+  assert.equal(out.manualAmount, true);
+});
+
+test("applyAmountOverride composes with applyMovedDate — both overrides can apply to the same card independently", () => {
+  const card = { id: "sell-p1", amount: 500, day: "2026-12-01" };
+  const dated = applyMovedDate(card, { "sell-p1": { date: "2026-12-05", originalDate: "2026-12-01" } });
+  const both = applyAmountOverride(dated, { "sell-p1": 750 });
+  assert.equal(both.day, "2026-12-05");
+  assert.equal(both.manualDate, true);
+  assert.equal(both.amount, 750);
+  assert.equal(both.manualAmount, true);
+});
+
+test("manualFillCards only produces a card once BOTH amount and date are present, and only for the matching kind", () => {
+  const manualFill = {
+    "sell-p1": { kind: "sell", key: "p1", address: "1 Main St", amount: 1000, date: "2026-12-01" },
+    "sell-p2": { kind: "sell", key: "p2", address: "2 Main St", amount: 1000 }, // no date — stays a note only
+    "buy-l1": { kind: "buy", key: "l1", address: "3 Main St", amount: 2000, date: "2026-12-10" },
+  };
+  const nextBusinessDay = d => d; // identity stand-in, real fn tested elsewhere
+  const sellCards = manualFillCards(manualFill, new Set(), "sell", nextBusinessDay);
+  assert.equal(sellCards.length, 1);
+  assert.equal(sellCards[0].id, "sell-p1");
+  assert.equal(sellCards[0].propId, "p1");
+  assert.equal(sellCards[0].manualEntry, true);
+  assert.ok(sellCards[0].breakdown); // minimal valid breakdown shape for WhiteboardSellCard
+  const buyCards = manualFillCards(manualFill, new Set(), "buy", nextBusinessDay);
+  assert.equal(buyCards.length, 1);
+  assert.equal(buyCards[0].id, "buy-l1");
+  assert.equal(buyCards[0].date, "2026-12-10");
+});
+
+test("manualFillCards never duplicates or overrides an id that already has a real, auto-computed card", () => {
+  const manualFill = { "sell-p1": { kind: "sell", key: "p1", address: "1 Main St", amount: 1000, date: "2026-12-01" } };
+  const existingIds = new Set(["sell-p1"]); // a real card already exists for this id
+  assert.deepEqual(manualFillCards(manualFill, existingIds, "sell", d => d), []);
+});
+
+test("manualFillCards' sell output applies the same next-business-day clearing rule a real sell card uses", () => {
+  const manualFill = { "sell-p1": { kind: "sell", key: "p1", address: "1 Main St", amount: 1000, date: "2026-12-01" } };
+  let calledWith = null;
+  const spy = d => { calledWith = d; return "2026-12-02"; };
+  const cards = manualFillCards(manualFill, new Set(), "sell", spy);
+  assert.equal(calledWith, "2026-12-01");
+  assert.equal(cards[0].day, "2026-12-02");
 });

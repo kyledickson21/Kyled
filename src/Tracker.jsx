@@ -14,6 +14,7 @@ import {
   nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary, withinWindow,
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
   buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary, shortAddress, groupLoanPaymentEntries,
+  applyAmountOverride, manualFillCards,
 } from './whiteboard-forecast.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -8312,7 +8313,7 @@ const WhiteboardClosedPanel = ({ items, h$, onUndo }) => {
       <div className="space-y-1 max-h-32 overflow-y-auto">
         {items.map(it => (
           <div key={it.id} className="flex items-center justify-between gap-2 text-[11px] text-slate-600 dark:text-zinc-300">
-            <span className="truncate">{it.kind==="sell"?"Sell:":"Buy:"} {it.address} ({h$(it.amount)})</span>
+            <span className="truncate">{it.kind==="sell"?"Sell:":it.kind==="buy"?"Buy:":it.kind==="loanPayment"?"Loan payment:":"Set aside:"} {it.address} ({h$(it.amount)})</span>
             {onUndo && <button onClick={()=>onUndo(it.id)} className="font-semibold text-teal-600 dark:text-teal-400 hover:underline shrink-0">Undo</button>}
           </div>
         ))}
@@ -8418,33 +8419,117 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
 // and a summary strip up top). Entirely display-only — every number it shows comes straight
 // from WhiteboardPage's own `ledgerRows`/`ledgerSum` (built from the exact same dayCols/
 // balances/cards the Calendar view uses), so it can't compute, store, or drift from anything.
-const WhiteboardBoardRow = ({ row, h$, navigate }) => {
+// A single sell/buy line within a Board row — draggable onto another row to reschedule (see
+// WhiteboardBoardView's own DndContext), with inline amount editing and a tap-to-pick-date
+// fallback (same reasoning as the Calendar cards: touch-dragging across a table is unreliable
+// on a phone). "Mark Closed" reuses the exact same override as Calendar's sell/buy cards.
+const WhiteboardBoardEntry = ({ e, h$, navigate, readOnly, compact, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed }) => {
+  const [editingAmount, setEditingAmount] = useState(false);
+  const [amountDraft, setAmountDraft] = useState(String(e.amount||""));
+  const [pickingDate, setPickingDate] = useState(false);
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: e.id, disabled: readOnly });
+  const dragStyle = transform ? { transform:`translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
+  const saveAmount = () => {
+    const v = parseFloat(amountDraft);
+    if (!isNaN(v) && v>=0) onSetAmount(e.id, Math.round(v*100)/100);
+    setEditingAmount(false);
+  };
+  return (
+    <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
+      className={`${compact?"mb-0.5 pb-0.5":"mb-1 pb-1"} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
+      <div className="flex items-center justify-between gap-1.5">
+        <div className="truncate" title={e.fullLabel||e.label}>
+          {e.propId ? (
+            <button onClick={ev=>{ev.stopPropagation();navigate&&navigate({type:'property',id:e.propId});}} className="hover:underline text-teal-600 dark:text-teal-400">{e.label}</button>
+          ) : <span>{e.label}</span>}
+          {e.manualEntry && <span className="ml-1 text-[9px] font-bold uppercase text-violet-500 dark:text-violet-400">manual</span>}
+        </div>
+        {!readOnly && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={ev=>{ev.stopPropagation();setPickingDate(p=>!p);}} title="Pick a date" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[10px]">📅</button>
+            <button onClick={ev=>{ev.stopPropagation();setEditingAmount(x=>!x);setAmountDraft(String(e.amount||""));}} title="Edit amount" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[10px]">✏️</button>
+            <button onClick={ev=>{ev.stopPropagation();onMarkClosed();}} title="Take off the timeline / mark closed" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-[10px]">✕</button>
+          </div>
+        )}
+      </div>
+      {pickingDate && !readOnly && (
+        <input type="date" defaultValue={e.day} onClick={ev=>ev.stopPropagation()}
+          onChange={ev=>{ if(ev.target.value){ onPickDate(ev.target.value); setPickingDate(false); } }}
+          className="text-[10px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 mt-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 w-full focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+      )}
+      {editingAmount && !readOnly ? (
+        <div className="flex items-center gap-1 mt-0.5">
+          <input type="number" step="0.01" autoFocus value={amountDraft} onClick={ev=>ev.stopPropagation()}
+            onChange={ev=>setAmountDraft(ev.target.value)}
+            onKeyDown={ev=>{ if(ev.key==="Enter") saveAmount(); if(ev.key==="Escape") setEditingAmount(false); }}
+            onBlur={saveAmount}
+            className="w-24 text-[11px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+        </div>
+      ) : (
+        e.manualAmount && (
+          <div className="text-[9px] text-indigo-600 dark:text-indigo-400 mt-0.5">
+            edited (was {h$(e.originalAmount)}){!readOnly && onResetAmount && <button onClick={ev=>{ev.stopPropagation();onResetAmount();}} className="ml-1 font-semibold hover:underline">Reset</button>}
+          </div>
+        )
+      )}
+      {e.manualDate && (
+        <div className="text-[9px] text-violet-600 dark:text-violet-400 mt-0.5">
+          📌 moved{e.sourceDate && e.sourceDate!==e.day?` (source says ${wbFmtDate(e.sourceDate)})`:""}{!readOnly && onResetDate && <button onClick={ev=>{ev.stopPropagation();onResetDate();}} className="ml-1 font-semibold hover:underline">Reset</button>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany }) => {
   const [loansOpen, setLoansOpen] = useState(false);
   const short = row.balance < 0;
   const { loanPayments, other, grouped, loanTotal } = groupLoanPaymentEntries(row.entries);
+  const sellBuyEntries = other.filter(e=>e.kind==="sell"||e.kind==="buy");
+  const plainOther = other.filter(e=>e.kind!=="sell"&&e.kind!=="buy");
+  const { setNodeRef: setRowDropRef, isOver } = useDroppable({ id: row.day });
+  const td = compact ? "px-1.5 py-0.5" : "px-3 py-2";
+  const txt = compact ? "text-[10px]" : "text-xs";
   return (
-    <tr className={short ? "bg-red-50 dark:bg-red-900/10" : ""}>
-      <td className="px-3 py-2 align-top whitespace-nowrap text-xs font-semibold text-slate-500 dark:text-zinc-400">{wbFmtDate(row.day)}<div className="text-[10px] font-normal text-slate-300 dark:text-zinc-600">{wbWeekday(row.day)}</div></td>
-      <td className="px-3 py-2 align-top text-xs text-slate-700 dark:text-zinc-200">
-        {other.map(e=>(
-          <div key={e.id} className="truncate max-w-[180px]" title={e.fullLabel||e.label}>
-            {e.propId ? (
-              <button onClick={()=>navigate&&navigate({type:'property',id:e.propId})} className="hover:underline text-teal-600 dark:text-teal-400">{e.label}</button>
-            ) : e.label}
+    <tr ref={setRowDropRef} className={`${short ? "bg-red-50 dark:bg-red-900/10" : ""} ${isOver?"ring-2 ring-inset ring-teal-400":""}`}>
+      <td className={`${td} align-top whitespace-nowrap ${txt} font-semibold text-slate-500 dark:text-zinc-400`}>{wbFmtDate(row.day)}<div className={`${compact?"text-[8px]":"text-[10px]"} font-normal text-slate-300 dark:text-zinc-600`}>{wbWeekday(row.day)}</div></td>
+      <td className={`${td} align-top ${txt} text-slate-700 dark:text-zinc-200`}>
+        {plainOther.map(e=>(
+          <div key={e.id} className="truncate max-w-[180px] flex items-center justify-between gap-1" title={e.fullLabel||e.label}>
+            <span className="truncate">{e.label}</span>
+            {!readOnly && e.kind==="setAside" && onMarkClosed && (
+              <button onClick={()=>onMarkClosed(e)} title="Remove from timeline" className="w-4 h-4 shrink-0 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-[10px]">✕</button>
+            )}
           </div>
+        ))}
+        {sellBuyEntries.map(e=>(
+          <WhiteboardBoardEntry key={e.id} e={e} h$={h$} navigate={navigate} readOnly={readOnly} compact={compact}
+            onPickDate={readOnly?undefined:(newDate)=>onPickDate(e, newDate)}
+            onSetAmount={readOnly?undefined:(id,amt)=>onSetAmount(id,amt)}
+            onResetAmount={readOnly||!e.manualAmount?undefined:()=>onResetAmount(e.id)}
+            onResetDate={readOnly||!e.manualDate?undefined:()=>onResetDate(e.id)}
+            onMarkClosed={()=>onMarkClosed(e)}/>
         ))}
         {loanPayments.length>0 && (grouped ? (
           <div className="mt-0.5">
-            <button onClick={()=>setLoansOpen(o=>!o)} className="w-full flex items-center justify-between gap-2 text-left hover:text-teal-600 dark:hover:text-teal-400">
-              <span className="truncate">{loansOpen?"▾":"▸"} Loan payments ({loanPayments.length})</span>
-              <span className="tabular-nums text-red-600 dark:text-red-400 shrink-0">−{h$(loanTotal)}</span>
-            </button>
+            <div className="flex items-center justify-between gap-2">
+              <button onClick={()=>setLoansOpen(o=>!o)} className="flex-1 flex items-center justify-between gap-2 text-left hover:text-teal-600 dark:hover:text-teal-400 min-w-0">
+                <span className="truncate">{loansOpen?"▾":"▸"} Loan payments ({loanPayments.length})</span>
+                <span className="tabular-nums text-red-600 dark:text-red-400 shrink-0">−{h$(loanTotal)}</span>
+              </button>
+              {!readOnly && onExcludeMany && (
+                <button onClick={()=>onExcludeMany(loanPayments)} title="Take all of these off the timeline" className="text-[9px] font-semibold text-slate-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 shrink-0">Remove all</button>
+              )}
+            </div>
             {loansOpen && (
               <div className="mt-1 pl-3 space-y-0.5 border-l border-slate-200 dark:border-zinc-700">
                 {loanPayments.map(e=>(
                   <div key={e.id} className="flex items-center justify-between gap-2 text-[10px] text-slate-500 dark:text-zinc-400" title={e.fullLabel||e.lenderName}>
                     <span className="truncate">{e.lenderName}{e.address?` · ${shortAddress(e.address)}`:""}</span>
-                    <span className="tabular-nums shrink-0">{h$(e.amount)}</span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      <span className="tabular-nums">{h$(e.amount)}</span>
+                      {!readOnly && onMarkClosed && <button onClick={()=>onMarkClosed(e)} title="Remove from timeline" className="w-4 h-4 flex items-center justify-center rounded hover:text-red-500 dark:hover:text-red-400 text-[10px]">✕</button>}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -8452,91 +8537,165 @@ const WhiteboardBoardRow = ({ row, h$, navigate }) => {
           </div>
         ) : (
           loanPayments.map(e=>(
-            <div key={e.id} className="truncate max-w-[180px]" title={e.fullLabel||e.lenderName}>{e.lenderName}{e.address?` (${shortAddress(e.address)})`:""}</div>
+            <div key={e.id} className="truncate max-w-[180px] flex items-center justify-between gap-1" title={e.fullLabel||e.lenderName}>
+              <span className="truncate">{e.lenderName}{e.address?` (${shortAddress(e.address)})`:""}</span>
+              {!readOnly && onMarkClosed && <button onClick={()=>onMarkClosed(e)} title="Remove from timeline" className="w-4 h-4 shrink-0 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-[10px]">✕</button>}
+            </div>
           ))
         ))}
       </td>
-      <td className="px-3 py-2 align-top text-right text-xs font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+      <td className={`${td} align-top text-right ${txt} font-semibold tabular-nums text-emerald-600 dark:text-emerald-400`}>
         {row.netIn>0 && <>+{h$(row.netIn)}</>}
       </td>
-      <td className="px-3 py-2 align-top text-right text-xs font-semibold tabular-nums text-red-600 dark:text-red-400">
+      <td className={`${td} align-top text-right ${txt} font-semibold tabular-nums text-red-600 dark:text-red-400`}>
         {row.netOut>0 && <>−{h$(row.netOut)}</>}
       </td>
-      <td className="px-3 py-2 align-top text-right">
-        <div className={`text-sm font-black tabular-nums ${short?"text-red-600 dark:text-red-400":"text-slate-800 dark:text-zinc-100"}`}>{short?"−":""}{h$(Math.abs(row.balance))}</div>
-        {short && <div className="text-[10px] font-semibold text-red-500 dark:text-red-400">Need {h$(-row.balance)}</div>}
+      <td className={`${td} align-top text-right`}>
+        <div className={`${compact?"text-xs":"text-sm"} font-black tabular-nums ${short?"text-red-600 dark:text-red-400":"text-slate-800 dark:text-zinc-100"}`}>{short?"−":""}{h$(Math.abs(row.balance))}</div>
+        {short && <div className={`${compact?"text-[8px]":"text-[10px]"} font-semibold text-red-500 dark:text-red-400`}>Need {h$(-row.balance)}</div>}
       </td>
     </tr>
   );
 };
 
-function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, navigate }) {
+function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, navigate, readOnly,
+  onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany,
+  noDateItems, onAssignDate }) {
   const hasShortfall = ledgerSum.lowest && ledgerSum.lowest.balance < 0;
+  // "TV Mode" — fullscreens just this view (via the Fullscreen API, which takes over the whole
+  // screen with ONLY this element, hiding the sidebar/nav/everything else automatically) and
+  // switches to a denser layout so a typical dataset fits without scrolling. True pixel-perfect
+  // no-scroll for an arbitrarily large dataset isn't promised — the table body can still scroll
+  // on its own if the window/data is unusually large — but the page chrome is gone and the type
+  // is as small as stays legible from across a room.
+  const [tvMode, setTvMode] = useState(false);
+  const containerRef = useRef(null);
+  useEffect(() => {
+    const onFsChange = () => { if (!document.fullscreenElement) setTvMode(false); };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+  const enterTvMode = async () => {
+    try { await containerRef.current?.requestFullscreen?.(); } catch {}
+    setTvMode(true);
+  };
+  const exitTvMode = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(()=>{});
+    setTvMode(false);
+  };
+  const compact = tvMode;
+  const effReadOnly = readOnly || tvMode; // TV mode hides every edit affordance — it's for viewing, not editing
+  // This view's own DndContext (Calendar's is a separate render branch entirely) — drags a
+  // sell/buy entry chip onto a different row to reschedule it, same override Mark Closed/the
+  // 📅 picker use (setMovedDate), just reached by drop instead of by hand.
+  const boardDragSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const handleBoardDragEnd = ({active, over}) => {
+    if (!over || effReadOnly) return;
+    const id = String(active.id);
+    for (const week of ledgerWeeks) {
+      for (const row of week.rows) {
+        const found = row.entries.find(en => en.id === id && (en.kind==="sell"||en.kind==="buy"));
+        if (found) { onPickDate?.(found, String(over.id)); return; }
+      }
+    }
+  };
   return (
-    <div>
+    <div ref={containerRef} className={tvMode ? "bg-[#F2F2F7] dark:bg-[#14161F] p-3 h-screen w-screen flex flex-col overflow-hidden" : ""}>
+      {tvMode && (
+        <div className="flex items-center justify-between mb-2 shrink-0">
+          <div className="text-sm font-black text-slate-700 dark:text-zinc-200">Nexus Homes — Cash Flow</div>
+          <button onClick={exitTvMode} className="text-xs font-semibold px-3 py-1 rounded-lg bg-slate-200 dark:bg-zinc-700 text-slate-600 dark:text-zinc-300">Exit TV Mode (Esc)</button>
+        </div>
+      )}
+      {!tvMode && (
+        <div className="flex justify-end mb-2">
+          <button onClick={enterTvMode} title="Fullscreen, compact layout for a TV or large display" className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400">📺 TV Mode</button>
+        </div>
+      )}
       {/* Summary strip — lowest balance (+ date), total in, total out, ending balance */}
-      <div className="flex gap-3 mb-4 flex-wrap">
-        <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Lowest Balance</div>
+      <div className={`flex gap-2 flex-wrap shrink-0 ${compact?"mb-2":"mb-4 gap-3"}`}>
+        <div className={`flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
+          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Lowest Balance</div>
           {ledgerSum.lowest ? (<>
-            <div className={`text-lg font-black tabular-nums ${hasShortfall?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{hasShortfall?"−":""}{h$(Math.abs(ledgerSum.lowest.balance))}</div>
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500">on {wbFmtDate(ledgerSum.lowest.day)}</div>
-          </>) : <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">—</div>}
+            <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums ${hasShortfall?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{hasShortfall?"−":""}{h$(Math.abs(ledgerSum.lowest.balance))}</div>
+            {!compact && <div className="text-[10px] text-slate-400 dark:text-zinc-500">on {wbFmtDate(ledgerSum.lowest.day)}</div>}
+          </>) : <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums text-slate-700 dark:text-zinc-200`}>—</div>}
         </div>
-        <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
-          <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(ledgerSum.totalIn)}</div>
+        <div className={`flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
+          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Total In</div>
+          <div className={`${compact?"text-sm":"text-lg"} font-black text-emerald-600 dark:text-emerald-400 tabular-nums`}>+{h$(ledgerSum.totalIn)}</div>
         </div>
-        <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
-          <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(ledgerSum.totalOut)}</div>
+        <div className={`flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
+          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Total Out</div>
+          <div className={`${compact?"text-sm":"text-lg"} font-black text-red-600 dark:text-red-400 tabular-nums`}>−{h$(ledgerSum.totalOut)}</div>
         </div>
-        <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Ending Balance</div>
-          <div className={`text-lg font-black tabular-nums ${ledgerSum.ending<0?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{ledgerSum.ending<0?"−":""}{h$(Math.abs(ledgerSum.ending))}</div>
+        <div className={`flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
+          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Ending Balance</div>
+          <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums ${ledgerSum.ending<0?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{ledgerSum.ending<0?"−":""}{h$(Math.abs(ledgerSum.ending))}</div>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse min-w-[560px]">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-slate-50 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
-                <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Date</th>
-                <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Address</th>
-                <th className="px-3 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400">In (+)</th>
-                <th className="px-3 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400">Out (−)</th>
-                <th className="px-3 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">New Balance</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-              <tr className="bg-slate-50/70 dark:bg-zinc-800/50">
-                <td className="px-3 py-2 text-xs font-bold text-slate-500 dark:text-zinc-400">Current</td>
-                <td className="px-3 py-2 text-xs text-slate-400 dark:text-zinc-500">{startingLabel}</td>
-                <td className="px-3 py-2"></td>
-                <td className="px-3 py-2"></td>
-                <td className="px-3 py-2 text-right text-sm font-black tabular-nums text-slate-800 dark:text-zinc-100">{h$(startingBalance)}</td>
-              </tr>
-              {ledgerWeeks.map(week=>{
-                const visibleRows = week.rows.filter(r=>r.entries.length>0);
-                if (!visibleRows.length) return null;
-                return (
-                  <Fragment key={week.weekStart}>
-                    <tr className="bg-slate-100/70 dark:bg-zinc-900/40">
-                      <td colSpan={2} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Week of {wbFmtDate(week.weekStart)}</td>
-                      <td className="px-3 py-1.5 text-right text-[10px] font-bold tabular-nums text-emerald-500 dark:text-emerald-400">{week.totalIn>0?`+${h$(week.totalIn)}`:""}</td>
-                      <td className="px-3 py-1.5 text-right text-[10px] font-bold tabular-nums text-red-500 dark:text-red-400">{week.totalOut>0?`−${h$(week.totalOut)}`:""}</td>
-                      <td></td>
-                    </tr>
-                    {visibleRows.map(row=><WhiteboardBoardRow key={row.day} row={row} h$={h$} navigate={navigate}/>)}
-                  </Fragment>
-                );
-              })}
-              {ledgerWeeks.every(w=>w.rows.every(r=>r.entries.length===0)) && (
-                <tr><td colSpan={5} className="px-3 py-10 text-center text-xs text-slate-400 dark:text-zinc-500 italic">Nothing scheduled in this window</td></tr>
-              )}
-            </tbody>
-          </table>
+      {!compact && !effReadOnly && noDateItems && noDateItems.length>0 && (
+        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-2xl p-3 mb-4">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 mb-1.5">🧾 Due now / no date yet — plug in free money whenever it shows up</div>
+          <div className="space-y-1">
+            {noDateItems.map(c=>(
+              <div key={c.id} className="flex items-center justify-between gap-2 text-xs text-slate-600 dark:text-zinc-300">
+                <span className="truncate">{c.kind==="property"?shortAddress(c.address):(c.address||(c.kind==="bill"?"Bill":"Card"))}</span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <span className={`tabular-nums font-semibold ${c.direction==="in"?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{c.direction==="in"?"+":"−"}{h$(c.amount||0)}</span>
+                  <input type="date" onChange={ev=>{ if(ev.target.value) onAssignDate?.(c.id, ev.target.value); }} className="text-[10px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${compact?"flex-1 flex flex-col min-h-0":""}`}>
+        <div className={compact ? "flex-1 overflow-auto" : "overflow-x-auto"}>
+          <DndContext sensors={effReadOnly?[]:boardDragSensors} onDragEnd={handleBoardDragEnd}>
+            <table className={`w-full border-collapse min-w-[560px] ${compact?"text-[10px]":""}`}>
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-slate-50 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
+                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-left ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Date</th>
+                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-left ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Address</th>
+                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400`}>In (+)</th>
+                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-red-500 dark:text-red-400`}>Out (−)</th>
+                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>New Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                <tr className="bg-slate-50/70 dark:bg-zinc-800/50">
+                  <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} ${compact?"text-[10px]":"text-xs"} font-bold text-slate-500 dark:text-zinc-400`}>Current</td>
+                  <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} ${compact?"text-[10px]":"text-xs"} text-slate-400 dark:text-zinc-500`}>{startingLabel}</td>
+                  <td className={compact?"px-1.5 py-1":"px-3 py-2"}></td>
+                  <td className={compact?"px-1.5 py-1":"px-3 py-2"}></td>
+                  <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-xs":"text-sm"} font-black tabular-nums text-slate-800 dark:text-zinc-100`}>{h$(startingBalance)}</td>
+                </tr>
+                {ledgerWeeks.map(week=>{
+                  const visibleRows = week.rows.filter(r=>r.entries.length>0);
+                  if (!visibleRows.length) return null;
+                  return (
+                    <Fragment key={week.weekStart}>
+                      <tr className="bg-slate-100/70 dark:bg-zinc-900/40">
+                        <td colSpan={2} className={`${compact?"px-1.5 py-0.5":"px-3 py-1.5"} ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Week of {wbFmtDate(week.weekStart)}</td>
+                        <td className={`${compact?"px-1.5 py-0.5":"px-3 py-1.5"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold tabular-nums text-emerald-500 dark:text-emerald-400`}>{week.totalIn>0?`+${h$(week.totalIn)}`:""}</td>
+                        <td className={`${compact?"px-1.5 py-0.5":"px-3 py-1.5"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold tabular-nums text-red-500 dark:text-red-400`}>{week.totalOut>0?`−${h$(week.totalOut)}`:""}</td>
+                        <td></td>
+                      </tr>
+                      {visibleRows.map(row=><WhiteboardBoardRow key={row.day} row={row} h$={h$} navigate={navigate} readOnly={effReadOnly} compact={compact}
+                        onPickDate={(e,newDate)=>onPickDate?.(e,newDate)} onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate}
+                        onMarkClosed={onMarkClosed} onExcludeMany={onExcludeMany}/>)}
+                    </Fragment>
+                  );
+                })}
+                {ledgerWeeks.every(w=>w.rows.every(r=>r.entries.length===0)) && (
+                  <tr><td colSpan={5} className="px-3 py-10 text-center text-xs text-slate-400 dark:text-zinc-500 italic">Nothing scheduled in this window</td></tr>
+                )}
+              </tbody>
+            </table>
+          </DndContext>
         </div>
       </div>
     </div>
@@ -8548,6 +8707,11 @@ function WhiteboardPage({ data, update }) {
   const prv = usePrivacy();
   const navigate = usePanel();
   const h$ = v => prv?maskMoney($$p(v)):$$p(v);
+  // Which Needs Info row (by cardId) currently has its own "Fill in" amount+date form open —
+  // one at a time, same pattern as editingSetAside/editCard below.
+  const [fillingIn, setFillingIn] = useState(null);
+  const [fillAmount, setFillAmount] = useState("");
+  const [fillDate, setFillDate] = useState("");
   const cards = data.whiteboard?.cards || [];
   const [addOpen,setAddOpen] = useState(false);
   const [editCard,setEditCard] = useState(null);
@@ -8617,7 +8781,7 @@ function WhiteboardPage({ data, update }) {
   sellingProps.forEach(prop => {
     const dateInfo = sellDateById[prop.id];
     if (!dateInfo || !dateInfo.date) {
-      needsInfoSell.push({ address: prop.address, reason: dateInfo?.reason || "Sell date lookup hasn't returned yet" });
+      needsInfoSell.push({ id: prop.id, address: prop.address, reason: dateInfo?.reason || "Sell date lookup hasn't returned yet" });
       return;
     }
     const active = prop.loans.filter(l=>!l.endDate);
@@ -8649,26 +8813,45 @@ function WhiteboardPage({ data, update }) {
     date: r.date, dateFromAnalytics: r.dateFromAnalytics, dateFromContract: r.dateFromContract,
   }));
 
-  // ─── Whiteboard-only overrides (data.whiteboardOverrides) — Mark Closed, moved dates, and
-  // Set Aside entries. Stored in their own top-level key, read ONLY here — see CLAUDE.md
-  // "Whiteboard Cash-Flow Forecast — Whiteboard-only overrides" and
-  // whiteboard-forecast.mjs's filterClosed/applyMovedDate/undatedSetAsideTotal/availableCash/
-  // datedSetAsideCards (the pure, unit-tested functions actually doing this work). Nothing
-  // here ever touches a property/loan/lender/REsimpli field.
+  // ─── Whiteboard-only overrides (data.whiteboardOverrides) — Mark Closed/Remove-from-
+  // timeline, moved dates, amount overrides, manual fill-ins for Needs Info items, and Set
+  // Aside entries. Stored in their own top-level key, read ONLY here — see CLAUDE.md
+  // "Whiteboard Cash-Flow Forecast — Whiteboard-only overrides" and whiteboard-forecast.mjs's
+  // filterClosed/applyMovedDate/applyAmountOverride/manualFillCards/undatedSetAsideTotal/
+  // availableCash/datedSetAsideCards (the pure, unit-tested functions actually doing this
+  // work). Nothing here ever touches a property/loan/lender/REsimpli field.
   const closedOverrides = data.whiteboardOverrides?.closed || {};
   const movedDates = data.whiteboardOverrides?.movedDates || {};
+  const amountOverrides = data.whiteboardOverrides?.amountOverrides || {};
+  const manualFill = data.whiteboardOverrides?.manualFill || {};
   const setAsides = data.whiteboardOverrides?.setAsides || [];
-  // Closed items are pulled OUT of the forecast entirely (cash in/out, running balance,
-  // shortfall cards all stop counting them) and shown in their own panel instead — built from
-  // the raw (pre-filter) arrays above, before any date override, since a closed item's display
-  // shouldn't jump around from a manual-date edit that no longer matters once it's closed.
+
+  // Manual fill-in: a card Kyle penciled in by hand for a property/lead the real data had no
+  // date or amount for (see the "Fill in" action on Needs Info rows). Only ever stands in for
+  // a MISSING card — once a real one shows up for the same id, the auto-clear effect below
+  // drops the stale manual entry.
+  const realSellIds = new Set(sellCardsInfo.map(c=>c.id));
+  const realBuyIds = new Set(buyCardsInfo.map(c=>c.id));
+  const allSellCardsInfo = [...sellCardsInfo, ...manualFillCards(manualFill, realSellIds, "sell", fcNextBusinessDay)];
+  const allBuyCardsInfo = [...buyCardsInfo, ...manualFillCards(manualFill, realBuyIds, "buy", fcNextBusinessDay)];
+
+  // Closed/removed items are pulled OUT of the forecast entirely (cash in/out, running
+  // balance, shortfall cards all stop counting them) and shown in their own panel instead —
+  // built from the raw (pre-filter) arrays, before any date/amount override, since a removed
+  // item's display shouldn't jump around from an edit that no longer matters once it's gone.
+  // Sell/buy use "Mark Closed" (auto-clears once the real data confirms it — see below); loan
+  // payments and dated Set Aside entries use a plain "Remove from timeline" with no auto-clear
+  // signal to key off of — Kyle has to Undo those himself.
   const closedItems = [
-    ...sellCardsInfo.filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"sell", address:c.address, amount:c.amount })),
-    ...buyCardsInfo.filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"buy", address:c.address, amount:c.amount })),
+    ...allSellCardsInfo.filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"sell", address:c.address, amount:c.amount })),
+    ...allBuyCardsInfo.filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"buy", address:c.address, amount:c.amount })),
+    ...autoCards.filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"loanPayment", address:c.lenderName?(c.address?`${c.lenderName} (${c.address})`:c.lenderName):(c.address||"Loan payment"), amount:c.amount })),
+    ...datedSetAsideCards(setAsides).filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"setAside", address:c.label, amount:c.amount })),
   ];
-  const activeSellCards = filterClosed(sellCardsInfo, closedOverrides).map(c=>applyMovedDate(c, movedDates));
-  const activeBuyCards = filterClosed(buyCardsInfo, closedOverrides).map(c=>applyMovedDate(c, movedDates));
-  const setAsideCardsList = datedSetAsideCards(setAsides);
+  const activeSellCards = filterClosed(allSellCardsInfo, closedOverrides).map(c=>applyMovedDate(c, movedDates)).map(c=>applyAmountOverride(c, amountOverrides));
+  const activeBuyCards = filterClosed(allBuyCardsInfo, closedOverrides).map(c=>applyMovedDate(c, movedDates)).map(c=>applyAmountOverride(c, amountOverrides));
+  const activeAutoCards = filterClosed(autoCards, closedOverrides);
+  const setAsideCardsList = filterClosed(datedSetAsideCards(setAsides), closedOverrides);
   const sellCardsFor = day => activeSellCards.filter(c=>c.day===day);
   const buyCardsFor = day => activeBuyCards.filter(c=>c.day===day);
   const setAsideCardsFor = day => setAsideCardsList.filter(c=>c.day===day);
@@ -8676,12 +8859,15 @@ function WhiteboardPage({ data, update }) {
   // Auto-clear: once the real data confirms a closing — a sell property gets dateSold or
   // leaves Under Contract/Inventory (drops out of sellingProps), or a buy lead leaves Under
   // Contract (drops out of buysResult.rows) or the lead's property now actually exists in the
-  // tracker (matched by any id storedIdsFor collects) — the override is stale and removed
-  // automatically, same as Kyle clicking Undo himself. Runs after every fetch/data change;
-  // a no-op (no update() call) when nothing's stale, so this never fights an in-flight edit.
+  // tracker (matched by any id storedIdsFor collects) — a "closed" override for it is stale
+  // and removed automatically, same as Kyle clicking Undo himself; a "loanPayment"/"setAside"
+  // removal has no such signal and is left alone (manual Undo only). A manualFill entry is
+  // stale the moment a REAL sell/buy card exists for the same id, regardless of kind. Runs
+  // after every fetch/data change; a no-op (no update() call) when nothing's stale, so this
+  // never fights an in-flight edit.
   useEffect(() => {
     const closed = data.whiteboardOverrides?.closed || {};
-    const staleKeys = Object.keys(closed).filter(key => {
+    const staleClosedKeys = Object.keys(closed).filter(key => {
       const o = closed[key];
       if (o.kind === "sell") return !sellingProps.some(p => p.id === o.key);
       if (o.kind === "buy") {
@@ -8693,22 +8879,26 @@ function WhiteboardPage({ data, update }) {
         const nowInTracker = (data.properties||[]).some(p => storedIdsFor(p).has(o.key));
         return !stillUnderContract || nowInTracker;
       }
-      return false;
+      return false; // loanPayment/setAside removals never auto-clear
     });
-    if (!staleKeys.length) return;
+    const fill = data.whiteboardOverrides?.manualFill || {};
+    const staleFillKeys = Object.keys(fill).filter(id => realSellIds.has(id) || realBuyIds.has(id));
+    if (!staleClosedKeys.length && !staleFillKeys.length) return;
     update(d => {
-      const next = { ...(d.whiteboardOverrides?.closed||{}) };
-      staleKeys.forEach(k => delete next[k]);
-      return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, closed: next } };
+      const nextClosed = { ...(d.whiteboardOverrides?.closed||{}) };
+      staleClosedKeys.forEach(k => delete nextClosed[k]);
+      const nextFill = { ...(d.whiteboardOverrides?.manualFill||{}) };
+      staleFillKeys.forEach(k => delete nextFill[k]);
+      return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, closed: nextClosed, manualFill: nextFill } };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sellingPropsKey, buysResult, data.properties, data.whiteboardOverrides?.closed]);
+  }, [sellingPropsKey, buysResult, data.properties, data.whiteboardOverrides?.closed, data.whiteboardOverrides?.manualFill]);
 
   // A bill counts as "in the Due Now queue" only while it has no day — drag it onto a day and
   // it shows up there like any other card instead (still excluded from Unscheduled, since a
   // dayless bill belongs in Due Now, not that column).
   const cardsFor = day => cards.filter(c=>(c.day||null)===day && (day!=null || c.kind!=="bill"));
-  const autoCardsFor = day => autoCards.filter(c=>c.day===day);
+  const autoCardsFor = day => activeAutoCards.filter(c=>c.day===day);
   const unscheduled = cardsFor(null);
   const bills = cards.filter(c=>c.kind==="bill" && !c.day).sort((a,b)=>(a.order??0)-(b.order??0));
   const billsTotal = bills.reduce((s,c)=>s+(c.amount||0),0);
@@ -8745,10 +8935,14 @@ function WhiteboardPage({ data, update }) {
   const netByDay = {};
   dayCols.forEach(day => { netByDay[day] = netFor(day); });
   const { balances, firstShortfall, largestShortfall, positiveAgain } = computeForecastSummary(dayCols, netByDay, startingBalance);
+  // A Needs Info row whose id already has a manualFill entry has a real (synthesized) card in
+  // the forecast now (see allSellCardsInfo/allBuyCardsInfo above) — drop it from this list so
+  // it isn't shown as both "excluded" and "in the forecast" at once; Kyle manages it from then
+  // on via the card itself (its own ✏️/📅/✕ in Calendar or Board), not this panel.
   const needsInfoAll = [
-    ...needsInfoSell.map(n=>({...n, kind:"sell"})),
-    ...(buysResult.needsInfo||[]).map(n=>({...n, kind:"buy"})),
-  ];
+    ...needsInfoSell.map(n=>({...n, kind:"sell", cardId:`sell-${n.id}`})),
+    ...(buysResult.needsInfo||[]).map(n=>({...n, kind:"buy", cardId:`buy-${n.leadId}`})),
+  ].filter(n => !manualFill[n.cardId]);
   // Current liens on a linked property, pulled live every render — so if a loan gets paid
   // off or a new one's added, the card reflects it automatically without re-entering anything.
   const liensFor = propId => {
@@ -8806,6 +9000,13 @@ function WhiteboardPage({ data, update }) {
     delete next[cardId];
     return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, closed: next } };
   });
+  // Bulk "take all of these off the timeline" — e.g. the Board view's grouped loan-payments
+  // row ("Remove all"). One update() call for every entry at once, not one per entry.
+  const excludeMany = entries => update(d => {
+    const nextClosed = { ...(d.whiteboardOverrides?.closed||{}) };
+    entries.forEach(e => { nextClosed[e.id] = { kind: e.kind||"loanPayment", key: e.id, address: e.fullLabel||e.label, amount: e.amount, closedAt: new Date().toISOString() }; });
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, closed: nextClosed } };
+  });
   // originalDate is pinned the FIRST time a card is moved and never overwritten by a later
   // move — Reset always restores the true real source date, not whatever it was most
   // recently moved from.
@@ -8829,6 +9030,37 @@ function WhiteboardPage({ data, update }) {
     if (!window.confirm("Remove this set-aside entry?")) return;
     update(d => ({ ...d, whiteboardOverrides: { ...d.whiteboardOverrides, setAsides: (d.whiteboardOverrides?.setAsides||[]).filter(x=>x.id!==id) } }));
   };
+  // Manual $ override on an existing sell/buy card — "manually change ... amounts".
+  const setAmountOverride = (cardId, amount) => update(d => ({
+    ...d,
+    whiteboardOverrides: { ...d.whiteboardOverrides, amountOverrides: { ...(d.whiteboardOverrides?.amountOverrides||{}), [cardId]: amount } },
+  }));
+  const resetAmountOverride = cardId => update(d => {
+    const next = { ...(d.whiteboardOverrides?.amountOverrides||{}) };
+    delete next[cardId];
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, amountOverrides: next } };
+  });
+  // Pencils in a date+amount for a Needs Info item (no real auto-card exists yet) —
+  // "manually add dates and amounts to stuff where it can't find that". Auto-clears itself
+  // once real data shows up for the same id (see the auto-clear effect above).
+  const saveManualFill = (cardId, entry) => update(d => ({
+    ...d,
+    whiteboardOverrides: { ...d.whiteboardOverrides, manualFill: { ...(d.whiteboardOverrides?.manualFill||{}), [cardId]: entry } },
+  }));
+  const deleteManualFill = cardId => update(d => {
+    const next = { ...(d.whiteboardOverrides?.manualFill||{}) };
+    delete next[cardId];
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, manualFill: next } };
+  });
+  // Board view wrappers — its rows pass back the same entriesByDay-shaped objects (id, kind,
+  // amount, address/fullLabel/label, sourceDate/day), not a raw card, so these adapt that
+  // shape onto the same setMovedDate/markClosed calls the Calendar cards already use directly.
+  const handleBoardPickDate = (entry, newDate) => setMovedDate(entry.id, newDate, entry.sourceDate ?? entry.day);
+  const handleBoardMarkClosed = entry => markClosed(entry.id, entry.kind, entry.id, entry.fullLabel||entry.address||entry.label, entry.amount);
+  // "Plug in free money with no date yet" — Board view's own compact surface for the same
+  // Unscheduled cards + Due Now bills Calendar already shows, so Kyle doesn't have to switch
+  // views just to see/assign them.
+  const boardNoDateItems = [...bills, ...unscheduled];
 
   const handleDragEnd = ({active,over}) => {
     setActiveId(null);
@@ -8862,7 +9094,7 @@ function WhiteboardPage({ data, update }) {
   // used/tested for this, so the totals can't drift from what the day columns themselves add up to.
   const scheduledCards = withinWindow(cards.filter(c=>c.day), dayCols, wbEffectiveDate);
   const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0) + withinWindow(activeSellCards, dayCols).reduce((s,c)=>s+(c.amount||0),0);
-  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + withinWindow(autoCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(activeBuyCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(setAsideCardsList, dayCols).reduce((s,c)=>s+(c.amount||0),0);
+  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + withinWindow(activeAutoCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(activeBuyCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(setAsideCardsList, dayCols).reduce((s,c)=>s+(c.amount||0),0);
   const [sbInput,setSbInput] = useState(String(startingBalanceManual||""));
   useEffect(()=>{ setSbInput(String(startingBalanceManual||"")); }, [startingBalanceManual]);
 
@@ -8890,9 +9122,9 @@ function WhiteboardPage({ data, update }) {
         fullLabel: c.lenderName ? (c.address?`${c.lenderName} — ${c.address}`:c.lenderName) : (c.address||"Loan payment"),
         amount:c.amount||0, direction:"out", propId:c.propId,
       })),
-      ...sellCardsFor(day).map(c=>({ id:c.id, label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"in", propId:c.propId })),
-      ...buyCardsFor(day).map(c=>({ id:c.id, label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"out" })),
-      ...setAsideCardsFor(day).map(c=>({ id:c.id, label:c.label, amount:c.amount||0, direction:"out" })),
+      ...sellCardsFor(day).map(c=>({ id:c.id, kind:"sell", label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"in", day:c.day, propId:c.propId, manualEntry:!!c.manualEntry, manualAmount:!!c.manualAmount, originalAmount:c.originalAmount, manualDate:!!c.manualDate, originalDate:c.originalDate, sourceDate:c.sourceDate })),
+      ...buyCardsFor(day).map(c=>({ id:c.id, kind:"buy", label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"out", day:c.day, manualEntry:!!c.manualEntry, manualAmount:!!c.manualAmount, originalAmount:c.originalAmount, manualDate:!!c.manualDate, originalDate:c.originalDate, sourceDate:c.sourceDate })),
+      ...setAsideCardsFor(day).map(c=>({ id:c.id, kind:"setAside", label:c.label, amount:c.amount||0, direction:"out" })),
     ];
   });
   const ledgerRows = buildLedgerRows(dayCols, entriesByDay, balances);
@@ -8967,7 +9199,7 @@ function WhiteboardPage({ data, update }) {
               <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{positiveAgain?wbFmtDate(positiveAgain):`Not within ${windowDays}d`}</div>
             </div>
           )}
-          {(cards.length>0||autoCards.length>0||activeSellCards.length>0||activeBuyCards.length>0||setAsideCardsList.length>0)&&(<>
+          {(cards.length>0||activeAutoCards.length>0||activeSellCards.length>0||activeBuyCards.length>0||setAsideCardsList.length>0)&&(<>
             <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
               <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
               <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(totalIn)}</div>
@@ -9023,14 +9255,34 @@ function WhiteboardPage({ data, update }) {
       {needsInfoAll.length>0 && (
         <div className="mb-4 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 p-3">
           <div className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1.5">⚠️ Needs Info — {needsInfoAll.length} excluded from the forecast</div>
-          <div className="space-y-1 max-h-32 overflow-y-auto">
+          <div className="space-y-1 max-h-48 overflow-y-auto">
             {needsInfoAll.map((n,i)=>(
-              <div key={i} className="text-[11px] text-amber-800 dark:text-amber-300 flex gap-1.5">
-                <span className="font-semibold shrink-0">{n.kind==="sell"?"Sell:":"Buy:"}</span>
-                <span className="truncate">{n.address} — {n.reason}</span>
+              <div key={i} className="text-[11px] text-amber-800 dark:text-amber-300">
+                <div className="flex gap-1.5 items-center justify-between">
+                  <div className="flex gap-1.5 truncate min-w-0">
+                    <span className="font-semibold shrink-0">{n.kind==="sell"?"Sell:":"Buy:"}</span>
+                    <span className="truncate">{n.address} — {n.reason}</span>
+                  </div>
+                  {!readOnly && (
+                    <button onClick={()=>{ if(fillingIn===n.cardId){setFillingIn(null);} else {setFillingIn(n.cardId);setFillAmount("");setFillDate("");} }}
+                      className="font-semibold text-teal-700 dark:text-teal-400 hover:underline shrink-0 ml-2">{fillingIn===n.cardId?"Cancel":"Fill in"}</button>
+                  )}
+                </div>
+                {fillingIn===n.cardId && !readOnly && (
+                  <div className="flex items-center gap-1.5 mt-1 ml-4">
+                    <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>
+                    <input type="date" value={fillDate} onChange={e=>setFillDate(e.target.value)}
+                      className="text-[10px] border border-amber-300 dark:border-amber-700 rounded-lg px-1.5 py-1 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+                    <button disabled={!fillAmount||!fillDate} onClick={()=>{
+                      saveManualFill(n.cardId, { kind:n.kind, key:n.kind==="sell"?n.id:n.leadId, address:n.address, amount: parseFloat(fillAmount)||0, date: fillDate });
+                      setFillingIn(null);
+                    }} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-teal-600 text-white disabled:opacity-40">Save</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
+          <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 italic">Pencil in an amount + date by hand if you already know it — it joins the forecast like a real card, and drops back here on its own if the real data catches up.</div>
         </div>
       )}
 
@@ -9038,10 +9290,14 @@ function WhiteboardPage({ data, update }) {
 
       {boardView==="board" && (
         <WhiteboardBoardView startingBalance={startingBalance} startingLabel={usingMercury?`Mercury ${mercury.source||""}`.trim():"Manual balance"}
-          ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} navigate={navigate}/>
+          ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} navigate={navigate} readOnly={readOnly}
+          onPickDate={readOnly?undefined:handleBoardPickDate} onSetAmount={readOnly?undefined:setAmountOverride}
+          onResetAmount={readOnly?undefined:resetAmountOverride} onResetDate={readOnly?undefined:resetMovedDate}
+          onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}
+          noDateItems={readOnly?undefined:boardNoDateItems} onAssignDate={readOnly?undefined:setCardDay}/>
       )}
 
-      {boardView==="calendar" && (cards.length===0&&autoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
+      {boardView==="calendar" && (cards.length===0&&activeAutoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
         <div className="text-center py-16 text-slate-400 dark:text-zinc-500">
           <div className="text-4xl mb-3">📌</div>
           <p className="font-semibold">Nothing on the board yet</p>
