@@ -15,6 +15,7 @@ import {
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
   buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary, shortAddress, groupLoanPaymentEntries,
   applyAmountOverride, manualFillCards, clampToToday, roundDown5k, roundUp5k,
+  sortByPriorityOrder, firstBelowThreshold, effectiveMovedDate,
 } from './whiteboard-forecast.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -8570,9 +8571,8 @@ const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, o
   );
 };
 
-function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, navigate, readOnly, roundMode,
-  onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany,
-  noDateItems, onAssignDate }) {
+function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, navigate, readOnly, roundMode, firstBelow10k,
+  onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany }) {
   const hasShortfall = ledgerSum.lowest && ledgerSum.lowest.balance < 0;
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
@@ -8627,45 +8627,56 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
           <button onClick={enterTvMode} title="Fullscreen, compact layout for a TV or large display" className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400">📺 TV Mode</button>
         </div>
       )}
-      {/* Summary strip — lowest balance (+ date), total in, total out, ending balance */}
+      {/* Summary strip. Normal Board view: lowest balance (+date), total in/out, ending
+          balance. TV Mode swaps in the two numbers that actually matter for a glance-from-
+          across-the-room readout — how much to find and by when, and the date the account
+          would first dip under the $10k floor — per Kyle's own framing of what's useful there. */}
       <div className={`flex gap-2 flex-wrap shrink-0 ${compact?"mb-2":"mb-4 gap-3"}`}>
-        <div className={`flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
-          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Lowest Balance</div>
-          {ledgerSum.lowest ? (<>
-            <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums ${hasShortfall?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{hasShortfall?"−":""}{h$(Math.abs(rBal(ledgerSum.lowest.balance)))}</div>
-            {!compact && <div className="text-[10px] text-slate-400 dark:text-zinc-500">on {wbFmtDate(ledgerSum.lowest.day)}</div>}
-          </>) : <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums text-slate-700 dark:text-zinc-200`}>—</div>}
-        </div>
-        <div className={`flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
-          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Total In</div>
-          <div className={`${compact?"text-sm":"text-lg"} font-black text-emerald-600 dark:text-emerald-400 tabular-nums`}>+{h$(rIn(ledgerSum.totalIn))}</div>
-        </div>
-        <div className={`flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
-          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Total Out</div>
-          <div className={`${compact?"text-sm":"text-lg"} font-black text-red-600 dark:text-red-400 tabular-nums`}>−{h$(rOut(ledgerSum.totalOut))}</div>
-        </div>
-        <div className={`flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
-          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Ending Balance</div>
-          <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums ${ledgerSum.ending<0?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{ledgerSum.ending<0?"−":""}{h$(Math.abs(rBal(ledgerSum.ending)))}</div>
-        </div>
-      </div>
-
-      {!compact && !effReadOnly && noDateItems && noDateItems.length>0 && (
-        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-2xl p-3 mb-4">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 mb-1.5">🧾 Due now / no date yet — plug in free money whenever it shows up</div>
-          <div className="space-y-1">
-            {noDateItems.map(c=>(
-              <div key={c.id} className="flex items-center justify-between gap-2 text-xs text-slate-600 dark:text-zinc-300">
-                <span className="truncate">{c.kind==="property"?shortAddress(c.address):(c.address||(c.kind==="bill"?"Bill":"Card"))}</span>
-                <span className="flex items-center gap-2 shrink-0">
-                  <span className={`tabular-nums font-semibold ${c.direction==="in"?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{c.direction==="in"?"+":"−"}{h$(c.amount||0)}</span>
-                  <input type="date" onChange={ev=>{ if(ev.target.value) onAssignDate?.(c.id, ev.target.value); }} className="text-[10px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-                </span>
-              </div>
-            ))}
+        {compact ? (<>
+          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Need to Find</div>
+            {hasShortfall ? (<>
+              <div className="text-sm font-black tabular-nums text-red-600 dark:text-red-400">{h$(Math.abs(rBal(ledgerSum.lowest.balance)))}</div>
+              <div className="text-[9px] text-slate-400 dark:text-zinc-500">by {wbFmtDate(ledgerSum.lowest.day)}</div>
+            </>) : <div className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">✓ none</div>}
           </div>
-        </div>
-      )}
+          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Under $10k</div>
+            {firstBelow10k ? (<>
+              <div className="text-sm font-black tabular-nums text-amber-600 dark:text-amber-400">{wbFmtDate(firstBelow10k.day)}</div>
+              <div className="text-[9px] text-slate-400 dark:text-zinc-500">{h$(rBal(firstBelow10k.balance))} that day</div>
+            </>) : <div className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">✓ stays above</div>}
+          </div>
+          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
+            <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(rIn(ledgerSum.totalIn))}</div>
+          </div>
+          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
+            <div className="text-sm font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(rOut(ledgerSum.totalOut))}</div>
+          </div>
+        </>) : (<>
+          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Lowest Balance</div>
+            {ledgerSum.lowest ? (<>
+              <div className={`text-lg font-black tabular-nums ${hasShortfall?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{hasShortfall?"−":""}{h$(Math.abs(rBal(ledgerSum.lowest.balance)))}</div>
+              <div className="text-[10px] text-slate-400 dark:text-zinc-500">on {wbFmtDate(ledgerSum.lowest.day)}</div>
+            </>) : <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">—</div>}
+          </div>
+          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
+            <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(rIn(ledgerSum.totalIn))}</div>
+          </div>
+          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
+            <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(rOut(ledgerSum.totalOut))}</div>
+          </div>
+          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Ending Balance</div>
+            <div className={`text-lg font-black tabular-nums ${ledgerSum.ending<0?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{ledgerSum.ending<0?"−":""}{h$(Math.abs(rBal(ledgerSum.ending)))}</div>
+          </div>
+        </>)}
+      </div>
 
       <div className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${compact?"flex-1 flex flex-col min-h-0":""}`}>
         <div className={compact ? "flex-1 overflow-auto" : "overflow-x-auto"}>
@@ -8977,6 +8988,28 @@ function WhiteboardPage({ data, update }) {
     ...needsInfoSell.map(n=>({...n, kind:"sell", cardId:`sell-${n.id}`})),
     ...(buysResult.needsInfo||[]).map(n=>({...n, kind:"buy", cardId:`buy-${n.leadId}`})),
   ].filter(n => !manualFill[n.cardId]);
+  // Unified "No Date" list — Kyle: put manual no-date cards/bills AND REsimpli/Sheet
+  // properties we're unsure about on ONE list, ranked by priority. `noDateOrder` (a new
+  // whiteboardOverrides sub-key, {array of ids}) is the explicit hand-picked rank; anything
+  // not yet ranked keeps its natural order at the end (sortByPriorityOrder, whiteboard-
+  // forecast.mjs). Shown once, shared above Calendar/Board exactly like the old Needs-Info-
+  // only panel was, so it never needs to be duplicated per view.
+  const noDateOrder = data.whiteboardOverrides?.noDateOrder || [];
+  const noDateAll = [
+    ...bills.map(c=>({ id:c.id, kind:"bill", label:shortAddress(c.address)||c.address||"Bill", amount:c.amount||0, direction:c.direction })),
+    ...unscheduled.map(c=>({ id:c.id, kind:"unscheduled", label:c.kind==="property"?shortAddress(c.address):(c.address||"Card"), amount:c.amount||0, direction:c.direction })),
+    ...needsInfoAll.map(n=>({ id:n.cardId, kind:n.kind==="sell"?"needsInfoSell":"needsInfoBuy", label:n.address, reason:n.reason, raw:n })),
+  ];
+  const noDateSorted = sortByPriorityOrder(noDateAll, noDateOrder);
+  const moveNoDatePriority = (id, dir) => {
+    const ids = noDateSorted.map(x=>x.id);
+    const idx = ids.indexOf(id);
+    const swapIdx = idx+dir;
+    if (idx<0||swapIdx<0||swapIdx>=ids.length) return;
+    const next = [...ids];
+    [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+    update(d=>({...d, whiteboardOverrides:{...d.whiteboardOverrides, noDateOrder:next}}));
+  };
   // Current liens on a linked property, pulled live every render — so if a loan gets paid
   // off or a new one's added, the card reflects it automatically without re-entering anything.
   const liensFor = propId => {
@@ -9043,11 +9076,16 @@ function WhiteboardPage({ data, update }) {
   });
   // originalDate is pinned the FIRST time a card is moved and never overwritten by a later
   // move — Reset always restores the true real source date, not whatever it was most
-  // recently moved from.
+  // recently moved from. effectiveMovedDate (whiteboard-forecast.mjs) applies the same
+  // next-business-day clearing shift to a manually dragged/picked SELL date that the
+  // auto-placed version already gets — "the date money comes in reflects it doesn't hit until
+  // the next business day" regardless of how that date got set. Buy cards are an outflow, so
+  // left exactly as picked.
   const setMovedDate = (cardId, newDate, sourceDateNow) => update(d => {
     const existing = d.whiteboardOverrides?.movedDates?.[cardId];
     const originalDate = existing?.originalDate ?? sourceDateNow;
-    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, movedDates: { ...(d.whiteboardOverrides?.movedDates||{}), [cardId]: { date: newDate, originalDate } } } };
+    const effectiveDate = effectiveMovedDate(cardId, newDate, fcNextBusinessDay);
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, movedDates: { ...(d.whiteboardOverrides?.movedDates||{}), [cardId]: { date: effectiveDate, originalDate } } } };
   });
   const resetMovedDate = cardId => update(d => {
     const next = { ...(d.whiteboardOverrides?.movedDates||{}) };
@@ -9091,10 +9129,6 @@ function WhiteboardPage({ data, update }) {
   // shape onto the same setMovedDate/markClosed calls the Calendar cards already use directly.
   const handleBoardPickDate = (entry, newDate) => setMovedDate(entry.id, newDate, entry.sourceDate ?? entry.day);
   const handleBoardMarkClosed = entry => markClosed(entry.id, entry.kind, entry.id, entry.fullLabel||entry.address||entry.label, entry.amount);
-  // "Plug in free money with no date yet" — Board view's own compact surface for the same
-  // Unscheduled cards + Due Now bills Calendar already shows, so Kyle doesn't have to switch
-  // views just to see/assign them.
-  const boardNoDateItems = [...bills, ...unscheduled];
 
   const handleDragEnd = ({active,over}) => {
     setActiveId(null);
@@ -9288,29 +9322,43 @@ function WhiteboardPage({ data, update }) {
         </div>
       )}
 
-      {needsInfoAll.length>0 && (
+      {noDateSorted.length>0 && (
         <div className="mb-4 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 p-3">
-          <div className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1.5">⚠️ Needs Info — {needsInfoAll.length} excluded from the forecast</div>
-          <div className="space-y-1 max-h-48 overflow-y-auto">
-            {needsInfoAll.map((n,i)=>(
-              <div key={i} className="text-[11px] text-amber-800 dark:text-amber-300">
+          <div className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1.5">📋 No Date — {noDateSorted.length}, ranked by priority</div>
+          <div className="space-y-1 max-h-56 overflow-y-auto">
+            {noDateSorted.map((n,i)=>(
+              <div key={n.id} className="text-[11px] text-amber-800 dark:text-amber-300">
                 <div className="flex gap-1.5 items-center justify-between">
-                  <div className="flex gap-1.5 truncate min-w-0">
-                    <span className="font-semibold shrink-0">{n.kind==="sell"?"Sell:":"Buy:"}</span>
-                    <span className="truncate">{n.address} — {n.reason}</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {!readOnly && (<>
+                      <button onClick={()=>moveNoDatePriority(n.id,-1)} disabled={i===0} title="Move up in priority" className="w-4 h-4 flex items-center justify-center rounded hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-25">▲</button>
+                      <button onClick={()=>moveNoDatePriority(n.id,1)} disabled={i===noDateSorted.length-1} title="Move down in priority" className="w-4 h-4 flex items-center justify-center rounded hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-25">▼</button>
+                    </>)}
                   </div>
-                  {!readOnly && (
-                    <button onClick={()=>{ if(fillingIn===n.cardId){setFillingIn(null);} else {setFillingIn(n.cardId);setFillAmount("");setFillDate("");} }}
-                      className="font-semibold text-teal-700 dark:text-teal-400 hover:underline shrink-0 ml-2">{fillingIn===n.cardId?"Cancel":"Fill in"}</button>
-                  )}
+                  <div className="flex gap-1.5 truncate min-w-0 flex-1">
+                    <span className="font-semibold shrink-0">{n.kind==="needsInfoSell"?"Sell:":n.kind==="needsInfoBuy"?"Buy:":n.kind==="bill"?"Bill:":"Card:"}</span>
+                    <span className="truncate">{n.label}{n.reason?` — ${n.reason}`:""}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!n.reason && (
+                      <span className={`tabular-nums font-semibold ${n.direction==="in"?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{n.direction==="in"?"+":"−"}{h$(n.amount||0)}</span>
+                    )}
+                    {!readOnly && (n.reason ? (
+                      <button onClick={()=>{ if(fillingIn===n.id){setFillingIn(null);} else {setFillingIn(n.id);setFillAmount("");setFillDate("");} }}
+                        className="font-semibold text-teal-700 dark:text-teal-400 hover:underline">{fillingIn===n.id?"Cancel":"Fill in"}</button>
+                    ) : (
+                      <input type="date" onChange={ev=>{ if(ev.target.value) setCardDay(n.id, ev.target.value); }}
+                        className="text-[10px] border border-amber-300 dark:border-amber-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+                    ))}
+                  </div>
                 </div>
-                {fillingIn===n.cardId && !readOnly && (
-                  <div className="flex items-center gap-1.5 mt-1 ml-4">
+                {fillingIn===n.id && !readOnly && n.reason && (
+                  <div className="flex items-center gap-1.5 mt-1 ml-9">
                     <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>
                     <input type="date" value={fillDate} onChange={e=>setFillDate(e.target.value)}
                       className="text-[10px] border border-amber-300 dark:border-amber-700 rounded-lg px-1.5 py-1 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
                     <button disabled={!fillAmount||!fillDate} onClick={()=>{
-                      saveManualFill(n.cardId, { kind:n.kind, key:n.kind==="sell"?n.id:n.leadId, address:n.address, amount: parseFloat(fillAmount)||0, date: fillDate });
+                      saveManualFill(n.id, { kind:n.kind==="needsInfoSell"?"sell":"buy", key:n.raw.kind==="sell"?n.raw.id:n.raw.leadId, address:n.raw.address, amount: parseFloat(fillAmount)||0, date: fillDate });
                       setFillingIn(null);
                     }} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-teal-600 text-white disabled:opacity-40">Save</button>
                   </div>
@@ -9318,7 +9366,7 @@ function WhiteboardPage({ data, update }) {
               </div>
             ))}
           </div>
-          <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 italic">Pencil in an amount + date by hand if you already know it — it joins the forecast like a real card, and drops back here on its own if the real data catches up.</div>
+          <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 italic">Manual cards/bills with no date yet, plus REsimpli/Sheet properties missing a date or amount — ▲▼ to re-rank by priority. Pencil in an amount+date on a Sell/Buy row to add it to the forecast like a real card (it drops back here on its own if the real data catches up); pick a date on a Bill/Card row to schedule it.</div>
         </div>
       )}
 
@@ -9327,10 +9375,10 @@ function WhiteboardPage({ data, update }) {
       {boardView==="board" && (
         <WhiteboardBoardView startingBalance={startingBalance} startingLabel={usingMercury?`Mercury ${mercury.source||""}`.trim():"Manual balance"}
           ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} navigate={navigate} readOnly={readOnly} roundMode={roundMode}
+          firstBelow10k={firstBelowThreshold(ledgerRows, 10000)}
           onPickDate={readOnly?undefined:handleBoardPickDate} onSetAmount={readOnly?undefined:setAmountOverride}
           onResetAmount={readOnly?undefined:resetAmountOverride} onResetDate={readOnly?undefined:resetMovedDate}
-          onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}
-          noDateItems={readOnly?undefined:boardNoDateItems} onAssignDate={readOnly?undefined:setCardDay}/>
+          onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}/>
       )}
 
       {boardView==="calendar" && (cards.length===0&&activeAutoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(

@@ -305,6 +305,49 @@ export function clampToToday(dateStr, today) {
 export function roundDown5k(v) { return Math.floor((v || 0) / 5000) * 5000; }
 export function roundUp5k(v) { return Math.ceil((v || 0) / 5000) * 5000; }
 
+// A manually dragged/picked date for a sell/buy auto card — the actual date value to store as
+// the override. A sell card is an INFLOW: the auto-placed version already pushes its real
+// close date forward to the next business day before using it as the settle day (money
+// doesn't actually hit the account same-day — see nextBusinessDay above), so a manual
+// drag/pick gets that same treatment, staying just as honest about when the cash really lands
+// as the auto-computed placement is. A buy card is an outflow — no clearing delay applies, so
+// the picked date is used exactly as given. `cardId` is the only thing available at every call
+// site (drag, tap-to-pick, Board's own picker) to tell which kind a given override is for —
+// same `sell-`/`buy-` prefix scheme used everywhere else in this id space.
+export function effectiveMovedDate(cardId, newDate, nextBusinessDayFn) {
+  return cardId.startsWith("sell-") ? nextBusinessDayFn(newDate) : newDate;
+}
+
+// Sorts a list of items (each with its own `.id`) by an explicit priority order — an array of
+// ids, earliest first. An item whose id isn't in `order` keeps its original relative position,
+// appended after every explicitly-ranked item (Array#sort is a stable sort in every engine this
+// app targets, so ties — items with no explicit rank — never reshuffle relative to each other).
+// Used for the Whiteboard's "No Date" list (manual cards/bills with no day yet, plus REsimpli/
+// Sheet properties missing a date or amount) so Kyle can hand-rank what matters most regardless
+// of which of those three sources an item came from.
+export function sortByPriorityOrder(items, order) {
+  if (!order || !order.length) return items;
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return [...items].sort((a, b) => {
+    const ra = rank.has(a.id) ? rank.get(a.id) : Infinity;
+    const rb = rank.has(b.id) ? rank.get(b.id) : Infinity;
+    return ra - rb;
+  });
+}
+
+// Finds the first ledger row whose balance drops below an arbitrary dollar floor — generalizes
+// the $0 shortfall check (computeForecastSummary's firstShortfall) to any threshold Kyle wants
+// to watch for, e.g. "tell me the first day we'd have less than $10k on hand." `rows` is the
+// FULL row set (every day in the window, not just the ones with visible entries — Board view's
+// own "skip an empty day" display filter must never affect this, since the balance still
+// carries forward through an empty day). Returns null if the balance never drops below it.
+export function firstBelowThreshold(rows, threshold) {
+  for (const r of rows) {
+    if (r.balance < threshold) return { day: r.day, balance: r.balance };
+  }
+  return null;
+}
+
 // Running cash balance across a day window, given a starting balance and a map of
 // {day: netAmountThatDay}. Returns {balances: {day: balance}, firstShortfall: {day, amount}|null,
 // largestShortfall: {day, amount}|null, positiveAgain: day|null} — the pieces the Whiteboard's

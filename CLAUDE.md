@@ -1150,6 +1150,13 @@ types.
   switches to a denser layout (smaller padding/fonts, edit icons hidden) so a typical dataset
   fits without scrolling. Not a promise of zero scroll for an arbitrarily large dataset — the
   table body can still scroll on its own — just chrome-free and as dense as stays legible.
+  **Summary tiles are TV-specific (11/17 update, Kyle: "headings that are actually useful")**
+  — normal Board view keeps Lowest Balance/Total In/Total Out/Ending Balance, but TV Mode
+  swaps the first and last for "Need to Find" (the shortfall amount + "by \<date\>", or
+  "✓ none" if the balance never goes negative — reuses `ledgerSum.lowest`, just reframed as an
+  action rather than a balance reading) and "Under $10k" (the date the balance first drops
+  below that floor, or "✓ stays above" — `firstBelowThreshold(ledgerRows, 10000)`, computed in
+  `WhiteboardPage` and passed down as `firstBelow10k`).
 - **Tests**: `tests/whiteboard-overrides.test.mjs` — `applyAmountOverride`/`manualFillCards`
   (composability with `applyMovedDate`, never duplicating an id that already has a real card,
   the next-business-day clearing rule). `tests/whiteboard-ledger.test.mjs`'s "never calls
@@ -1209,6 +1216,49 @@ it's set.
   disagrees with what's displayed).
 - **Tests**: `roundDown5k`/`roundUp5k` (positive and negative balances, zero, an amount already
   on a $5k line).
+
+### A manually moved sell date still clears next business day (11/17)
+Kyle: "the dates that money comes in, it reflects that the money doesn't hit until the next
+business day." Already true for every AUTO-placed inflow (`fcNextBusinessDay` on a sell card's
+real close date; `wbEffectiveDate` on any manual "in"-direction card) — the one gap was a
+manually dragged/picked sell date (`setMovedDate`, used by Calendar's drag + 📅 picker and
+Board's drag + ✏️/📅), which stored the picked day exactly as given, with no clearing shift
+re-applied. **`effectiveMovedDate(cardId, newDate, nextBusinessDayFn)`** (pure, `whiteboard-
+forecast.mjs`) fixes this: a `sell-`-prefixed id gets `newDate` pushed to the next business
+day before it's stored as the override (same as the original auto-placement); a `buy-`-
+prefixed id (an outflow, no clearing delay asked for) is left exactly as picked. `setMovedDate`
+in `WhiteboardPage` is the one caller — every drag/pick path (Calendar card, Board entry, Board
+row drop) already funnels through it, so this one change covers all of them.
+- **Tests**: `effectiveMovedDate` (sell shifts via the passed-in next-business-day function,
+  buy passes through untouched — asserting the fn is never even called for a buy id).
+
+### Unified "No Date" priority list (11/17)
+Kyle: "can we put stuff with no date, or properties where we're unsure, on one no-date list
+and sort it by priority?" Previously these lived in three separate, unconnected places: Due
+Now bills and Unscheduled manual cards (Calendar only, no ranking beyond bills' own existing
+▲▼), and the "Needs Info" panel (REsimpli/Sheet properties missing a date or amount, no
+ranking at all). They're now ONE shared panel — replacing the old Needs-Info-only box, shown
+once above both Calendar/Board exactly as that box was — with a single hand-ranked priority
+order spanning all three sources.
+- **`noDateOrder`** — new `data.whiteboardOverrides` sub-key, a plain array of ids in Kyle's
+  chosen priority order (earliest = highest priority). `sortByPriorityOrder(items, order)`
+  (pure, `whiteboard-forecast.mjs`) sorts any `{id, ...}` array by it — an id not yet in
+  `order` keeps its natural relative position, appended after every explicitly-ranked one
+  (relies on `Array#sort` being a stable sort, true in every engine this app targets).
+- **`noDateAll`** (`WhiteboardPage`) normalizes all three sources into one shape (`{id, kind,
+  label, amount, direction}` for a bill/unscheduled card; `{id, kind, label, reason, raw}` for
+  a Needs Info sell/buy row — `reason` is what distinguishes the two for display/action
+  purposes, not a separate flag), sorted via `sortByPriorityOrder(noDateAll, noDateOrder)`.
+  `moveNoDatePriority(id, dir)` swaps a row with its neighbor in the CURRENTLY DISPLAYED sorted
+  order and writes the resulting full id list back as `noDateOrder` — every move "fixes" the
+  whole list's order going forward, so the first move on an unranked list already produces a
+  complete, fully-explicit ranking.
+- **Per-row actions, same as before, just unified**: a bill/unscheduled row gets a date-assign
+  `<input type="date">` (→ `setCardDay`); a Needs Info row gets the existing "Fill in" amount+
+  date form (→ `saveManualFill`, unchanged from the prior phase). ▲▼ priority buttons (gated
+  `!readOnly`) are on every row regardless of kind.
+- **Tests**: `sortByPriorityOrder` (no-op with no order, ranked-first ordering, unranked items
+  keep relative order appended after).
 
 ## Closed Deals Tab
 - Flip/Rental tab switcher at the top

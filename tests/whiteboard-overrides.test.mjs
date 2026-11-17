@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
   applyAmountOverride, manualFillCards, clampToToday, roundDown5k, roundUp5k,
+  sortByPriorityOrder, firstBelowThreshold, effectiveMovedDate,
 } from "../src/whiteboard-forecast.mjs";
 
 test("filterClosed drops a card whose id is marked closed", () => {
@@ -220,4 +221,59 @@ test("roundUp5k ceils an out-amount/shortfall magnitude away from zero (assume i
   assert.equal(roundUp5k(5000), 5000);
   assert.equal(roundUp5k(1), 5000);
   assert.equal(roundUp5k(0), 0);
+});
+
+// ─── 11/17: unified "No Date" priority list ────────────────────────────────────────────────
+
+test("sortByPriorityOrder with no order is a no-op", () => {
+  const items = [{ id: "a" }, { id: "b" }];
+  assert.deepEqual(sortByPriorityOrder(items, []), items);
+  assert.deepEqual(sortByPriorityOrder(items, null), items);
+});
+
+test("sortByPriorityOrder puts explicitly-ranked items first, in rank order", () => {
+  const items = [{ id: "a" }, { id: "b" }, { id: "c" }];
+  const sorted = sortByPriorityOrder(items, ["c", "a"]);
+  assert.deepEqual(sorted.map(x => x.id), ["c", "a", "b"]);
+});
+
+test("sortByPriorityOrder keeps unranked items in their original relative order, appended after ranked ones", () => {
+  const items = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }];
+  const sorted = sortByPriorityOrder(items, ["c"]);
+  assert.deepEqual(sorted.map(x => x.id), ["c", "a", "b", "d"]);
+});
+
+// ─── 11/17: "first day below a dollar floor" (generalizes the $0 shortfall check) ──────────
+
+test("firstBelowThreshold finds the first row under the floor", () => {
+  const rows = [
+    { day: "2026-12-01", balance: 20000 },
+    { day: "2026-12-02", balance: 8000 },
+    { day: "2026-12-03", balance: 3000 },
+  ];
+  assert.deepEqual(firstBelowThreshold(rows, 10000), { day: "2026-12-02", balance: 8000 });
+});
+
+test("firstBelowThreshold returns null when the balance never drops below the floor", () => {
+  const rows = [{ day: "2026-12-01", balance: 20000 }, { day: "2026-12-02", balance: 15000 }];
+  assert.equal(firstBelowThreshold(rows, 10000), null);
+});
+
+test("firstBelowThreshold works for the $0 shortfall floor too (a negative balance)", () => {
+  const rows = [{ day: "2026-12-01", balance: 500 }, { day: "2026-12-02", balance: -200 }];
+  assert.deepEqual(firstBelowThreshold(rows, 0), { day: "2026-12-02", balance: -200 });
+});
+
+// ─── 11/17: a manually moved sell date still clears next business day, like the auto one ──
+
+test("effectiveMovedDate pushes a sell card's picked date to the next business day", () => {
+  let calledWith = null;
+  const spy = d => { calledWith = d; return "2026-12-02"; };
+  assert.equal(effectiveMovedDate("sell-p1", "2026-12-01", spy), "2026-12-02");
+  assert.equal(calledWith, "2026-12-01");
+});
+
+test("effectiveMovedDate leaves a buy card's picked date exactly as given (no clearing delay on an outflow)", () => {
+  const spy = () => { throw new Error("must not be called for a buy card"); };
+  assert.equal(effectiveMovedDate("buy-l1", "2026-12-01", spy), "2026-12-01");
 });
