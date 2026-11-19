@@ -8572,14 +8572,12 @@ const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, o
           ))
         ))}
       </td>
-      <td className={`${td} align-top text-right ${txt} font-semibold tabular-nums text-emerald-600 dark:text-emerald-400`}>
-        {row.netIn>0 && <>+{h$(rIn(row.netIn))}</>}
-      </td>
-      <td className={`${td} align-top text-right ${txt} font-semibold tabular-nums text-red-600 dark:text-red-400`}>
-        {row.netOut>0 && <>−{h$(rOut(row.netOut))}</>}
+      <td className={`${td} align-top text-right ${txt} font-semibold tabular-nums text-slate-600 dark:text-zinc-300`}>
+        {row.netIn>0 && <div>+{h$(rIn(row.netIn))}</div>}
+        {row.netOut>0 && <div>−{h$(rOut(row.netOut))}</div>}
       </td>
       <td className={`${td} align-top text-right`}>
-        <div className={`${compact?"text-xs":"text-sm"} font-black tabular-nums ${short?"text-red-600 dark:text-red-400":"text-slate-800 dark:text-zinc-100"}`}>{short?"−":""}{h$(Math.abs(rBal(row.balance)))}</div>
+        <div className={`${compact?"text-xs":"text-sm"} font-black tabular-nums ${short?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{short?"−":""}{h$(Math.abs(rBal(row.balance)))}</div>
         {short && <div className={`${compact?"text-[8px]":"text-[10px]"} font-semibold text-red-500 dark:text-red-400`}>Need {h$(-rBal(row.balance))}</div>}
       </td>
     </tr>
@@ -8704,8 +8702,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                 <tr className="bg-slate-50 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
                   <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-left ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Date</th>
                   <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-left ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Address</th>
-                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400`}>In (+)</th>
-                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-red-500 dark:text-red-400`}>Out (−)</th>
+                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Amount</th>
                   <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>New Balance</th>
                 </tr>
               </thead>
@@ -8714,8 +8711,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                   <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} ${compact?"text-[10px]":"text-xs"} font-bold text-slate-500 dark:text-zinc-400`}>Current</td>
                   <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} ${compact?"text-[10px]":"text-xs"} text-slate-400 dark:text-zinc-500`}>{startingLabel}</td>
                   <td className={compact?"px-1.5 py-1":"px-3 py-2"}></td>
-                  <td className={compact?"px-1.5 py-1":"px-3 py-2"}></td>
-                  <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-xs":"text-sm"} font-black tabular-nums text-slate-800 dark:text-zinc-100`}>{h$(rBal(startingBalance))}</td>
+                  <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-xs":"text-sm"} font-black tabular-nums ${rBal(startingBalance)<0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{h$(rBal(startingBalance))}</td>
                 </tr>
                 {ledgerWeeks.map(week=>{
                   const visibleRows = week.rows.filter(r=>r.entries.length>0);
@@ -8724,8 +8720,10 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                     <Fragment key={week.weekStart}>
                       <tr className="bg-slate-100/70 dark:bg-zinc-900/40">
                         <td colSpan={2} className={`${compact?"px-1.5 py-0.5":"px-3 py-1.5"} ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Week of {wbFmtDate(week.weekStart)}</td>
-                        <td className={`${compact?"px-1.5 py-0.5":"px-3 py-1.5"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold tabular-nums text-emerald-500 dark:text-emerald-400`}>{week.totalIn>0?`+${h$(rIn(week.totalIn))}`:""}</td>
-                        <td className={`${compact?"px-1.5 py-0.5":"px-3 py-1.5"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold tabular-nums text-red-500 dark:text-red-400`}>{week.totalOut>0?`−${h$(rOut(week.totalOut))}`:""}</td>
+                        <td className={`${compact?"px-1.5 py-0.5":"px-3 py-1.5"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold tabular-nums text-slate-500 dark:text-zinc-400`}>
+                          {week.totalIn>0 && <div>+{h$(rIn(week.totalIn))}</div>}
+                          {week.totalOut>0 && <div>−{h$(rOut(week.totalOut))}</div>}
+                        </td>
                         <td></td>
                       </tr>
                       {visibleRows.map(row=><WhiteboardBoardRow key={row.day} row={row} h$={h$} navigate={navigate} readOnly={effReadOnly} compact={compact} roundMode={roundMode}
@@ -8735,7 +8733,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                   );
                 })}
                 {ledgerWeeks.every(w=>w.rows.every(r=>r.entries.length===0)) && (
-                  <tr><td colSpan={5} className="px-3 py-10 text-center text-xs text-slate-400 dark:text-zinc-500 italic">Nothing scheduled in this window</td></tr>
+                  <tr><td colSpan={4} className="px-3 py-10 text-center text-xs text-slate-400 dark:text-zinc-500 italic">Nothing scheduled in this window</td></tr>
                 )}
               </tbody>
             </table>

@@ -1064,7 +1064,8 @@ data.whiteboardOverrides = {
 
 ### Board view — a running-balance ledger (Calendar ↔ Board toggle)
 A second Whiteboard layout (Kyle, 11/17, shipped straight to production): a classic cash-flow
-ledger table — DATE | ADDRESS | IN (+) | OUT (−) | NEW BALANCE, a "Current" starting-balance
+ledger table — DATE | ADDRESS | AMOUNT | NEW BALANCE (originally two separate IN (+)/OUT (−)
+columns; Kyle asked 11/19 to combine them into one — see below), a "Current" starting-balance
 row, a sticky header, a summary strip (lowest balance + its date, total in, total out, ending
 balance), week subtotal rows, and a red highlight + "Need $X" on any day the balance goes
 negative. Loosely inspired by Kyle's own physical office whiteboard, but built to cash-flow-
@@ -1361,6 +1362,26 @@ values (no migration needed for existing `localStorage` choices), labeled "Row"/
   The one real behavior change (`handleDragEnd`'s Unscheduled/Due Now drop for sell/buy) is
   covered by the same manual-testing expectation as the rest of the drag system (dnd-kit
   interactions aren't unit-tested anywhere in this suite).
+
+### Board view table: one combined Amount column, color moved to the balance only (11/19)
+Kyle: combine the separate "In (+)"/"Out (−)" columns into one, and stop coloring that
+combined number — color ONLY the "New Balance" column, green if positive, red if negative.
+Pure display change in `WhiteboardBoardRow`/`WhiteboardBoardView` — `row.netIn`/`row.netOut`
+are still computed and tracked exactly as before (nothing about the underlying ledger math
+changed, so `tests/whiteboard-ledger.test.mjs`'s `buildLedgerRows`/`ledgerSummary` assertions
+are untouched), only how they're RENDERED changed.
+- Table is now DATE | ADDRESS | AMOUNT | NEW BALANCE. The merged Amount cell stacks `+$X`
+  (if `netIn>0`) and `−$Y` (if `netOut>0`) as plain neutral-colored lines (`text-slate-600`/
+  `dark:text-zinc-300`) in one `<td>` — no more emerald/red on the in/out figures themselves.
+  Same merge for the week-subtotal row's totalIn/totalOut cell (neutral `text-slate-500`) and
+  the table header (one "Amount" `<th>`, neutral).
+- **New Balance is now green when positive, red when negative** (previously red-when-negative
+  but plain slate otherwise) — on the per-row balance cell, AND the "Current" starting-balance
+  row's own balance cell, which gets the identical sign check (`rBal(startingBalance)<0`) so
+  it's visually consistent with every row below it. The red "Need $X" sub-line under a
+  shortfall row is unchanged. This is scoped to the ledger TABLE specifically — the Lowest
+  Balance/Total In/Total Out/Ending Balance summary tiles above the table, and TV Mode's
+  "Under $10k"/"Goes Negative" bubbles, were not touched (not part of what was asked).
 
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view
