@@ -883,9 +883,10 @@ of rolling it" checkbox, set from `WhiteboardSellCard`).
   `etLocalStringToUtcIso` (`whiteboard-forecast.mjs`, the DST-correct reverse of
   `etEpochToDateStr`) and shown on the Whiteboard page as "last checked \<time\> (Xh ago)",
   flagged amber when over 26h old (skipped entirely while the sheet is disconnected — nothing
-  to check). The sell card's day is `saleDate` + 1 business day (the
-  existing inflow-clearing rule, applied once up front since this card is placed automatically
-  rather than dragged); amount = `sellCashAmount()` (`whiteboard-forecast.mjs`) = purchase
+  to check). The sell card's day is the sale date itself (see "Sell cards now display on their
+  real day..." below for the corrected display-day/settle-day split — superseding the original
+  "day is saleDate + 1 business day" design this bullet described); amount = `sellCashAmount()`
+  (`whiteboard-forecast.mjs`) = purchase
   price − every active hard loan's principal (draws excluded — cash close) − every **checked**
   private loan's principal (unchecked, including the 0%-rate internal Nexus lines, assumed to
   roll) + hard-money interest already paid through the sale date — summed directly from
@@ -1128,7 +1129,7 @@ types.
 - **`amountOverrides`** (`{[cardId]: amount}`) and **`manualFill`**
   (`{[cardId]: {kind, key, address, amount, date}}`) — new `data.whiteboardOverrides` sub-keys.
   `applyAmountOverride(card, amountOverrides)` and `manualFillCards(manualFill, existingIds,
-  kind, nextBusinessDayFn)` (both pure, `whiteboard-forecast.mjs`) compose with the existing
+  kind)` (both pure, `whiteboard-forecast.mjs`) compose with the existing
   `applyMovedDate` exactly like `manualDate`/`originalDate` do — a card can carry a manual date
   AND a manual amount at once, independently.
 - **Editing a sell/buy entry** (Board's `WhiteboardBoardEntry`, and the same ✏️/📅 added to
@@ -1174,8 +1175,9 @@ types.
   all — `ledgerSummary()` itself is untouched and still computes/tests them, just unused here.)
 - **Tests**: `tests/whiteboard-overrides.test.mjs` — `applyAmountOverride`/`manualFillCards`
   (composability with `applyMovedDate`, never duplicating an id that already has a real card,
-  the next-business-day clearing rule). `tests/whiteboard-ledger.test.mjs`'s "never calls
-  `update()`" check now also covers `WhiteboardBoardEntry`.
+  using the entry's date exactly as given — see "Sell cards now display on their real day..."
+  below for why that's no longer shifted here). `tests/whiteboard-ledger.test.mjs`'s "never
+  calls `update()`" check now also covers `WhiteboardBoardEntry`.
 
 ### A past-due sale/buy no longer silently vanishes from the forecast (11/17)
 Kyle: "a house that closed yesterday but hasn't hit the account yet, I still want it to
@@ -1190,9 +1192,10 @@ was sell-only in practice, but both got the same fix for consistency.
   is pulled up to `today` instead of left as-is. Applied to the sell card's computed `day`
   (`sellCardsInfo`) and defensively to the buy card's `day` (`buyCardsInfo` — never expected to
   actually fire there, since the server already excludes it, but kept consistent). The card
-  carries `pastDue: day!==rawDay` so the UI can say so: `WhiteboardSellCard`/`WhiteboardBuyCard`
-  show "⏰ closed/was due \<real date\> — showing today since it hasn't hit the account yet"
-  (skipped if the card was ALSO manually moved — `manualDate` already shows its own note), and
+  carries `pastDue: day!==dateInfo.date` (sell) / `day!==r.date` (buy) so the UI can say so:
+  `WhiteboardSellCard`/`WhiteboardBuyCard` show "⏰ closed/was due \<real date\> — showing today
+  since it hasn't hit the account yet" (skipped if the card was ALSO manually moved —
+  `manualDate` already shows its own note), and
   Board view's `WhiteboardBoardEntry` shows a small "⏰ overdue" badge. `card.breakdown.saleDate`
   (sell) / `card.date` (buy) still hold the true original close date throughout, so nothing
   about the real date is lost — only WHERE it's forecast-placed changes.
@@ -1232,20 +1235,51 @@ it's set.
 - **Tests**: `roundDown5k`/`roundUp5k` (positive and negative balances, zero, an amount already
   on a $5k line).
 
-### A manually moved sell date still clears next business day (11/17)
-Kyle: "the dates that money comes in, it reflects that the money doesn't hit until the next
-business day." Already true for every AUTO-placed inflow (`fcNextBusinessDay` on a sell card's
-real close date; `wbEffectiveDate` on any manual "in"-direction card) — the one gap was a
-manually dragged/picked sell date (`setMovedDate`, used by Calendar's drag + 📅 picker and
-Board's drag + ✏️/📅), which stored the picked day exactly as given, with no clearing shift
-re-applied. **`effectiveMovedDate(cardId, newDate, nextBusinessDayFn)`** (pure, `whiteboard-
-forecast.mjs`) fixes this: a `sell-`-prefixed id gets `newDate` pushed to the next business
-day before it's stored as the override (same as the original auto-placement); a `buy-`-
-prefixed id (an outflow, no clearing delay asked for) is left exactly as picked. `setMovedDate`
-in `WhiteboardPage` is the one caller — every drag/pick path (Calendar card, Board entry, Board
-row drop) already funnels through it, so this one change covers all of them.
-- **Tests**: `effectiveMovedDate` (sell shifts via the passed-in next-business-day function,
-  buy passes through untouched — asserting the fn is never even called for a buy id).
+### Sell cards now display on their real day; only the balance waits a business day (11/19)
+Kyle corrected an 11/17 misunderstanding (the section this one replaces): *"I know I said I
+wanted it to show up and reflect on the balance a day later, but you're moving the whole thing
+to the next day (like the whole actual house). I want to see the house on the day, but it just
+doesn't reflect in the current balance until the next day."* The original design (both the
+auto-placed sell card's own `day` and the now-removed `effectiveMovedDate` shift on a manually
+moved one) pushed the ENTIRE card — display and balance both — forward to the next business
+day after the real close date. That's wrong: Kyle wants to see the house land on its real date;
+only the CASH should lag a day.
+- **Sell cards split display day from settle day.** A sell card's `day` (`sellCardsInfo`,
+  `manualFillCards`) is now always the house's own real, `clampToToday`-clamped close date —
+  never pre-shifted. A separate `settleDay` is derived uniformly for EVERY sell card (real,
+  manually moved, or manually filled in alike) in one place — `sellWithOverrides` in
+  `WhiteboardPage`, `fcNextBusinessDay(c.day)`, applied AFTER `applyMovedDate`/
+  `applyAmountOverride` so a dragged/picked date gets the exact same one-day clearing delay the
+  auto-placed version gets, re-derived from wherever the card currently sits. A buy card has no
+  such split (an outflow, no clearing delay) and carries no `settleDay`.
+- **Display (Calendar/Month/Board) groups by `day` as before** — `sellCardsFor(day)` is
+  unchanged, so `cardsFor`/`sellCardsFor`/`buyCardsFor` already being display-day-based (see
+  the Month view note above) means the house shows up on its real day in all three views with
+  no further change needed there.
+- **Balance/totals group by `settleDay` instead** — `netFor(day)`'s sell term now sums
+  `activeSellCards.filter(c=>c.settleDay===day)` rather than `sellCardsFor(day)`, and the
+  headline Total In figure's `withinWindow(activeSellCards, dayCols, ...)` call now passes
+  `c=>c.settleDay` as the day-accessor instead of the default `c.day`. `settledInFor(day)` (the
+  "+$X clearing from {address} ({day})" note already shown on a manual card's settle-day
+  column) now also includes a sell card whose `settleDay` lands on `day` while its own `day` is
+  earlier, for the same reason. `WhiteboardSellCard` shows a small "Available \<settleDay\>"
+  line (next to the existing Sale-date/pastDue/manualDate notes) so Kyle can see exactly which
+  day the cash counts, without the card's headline date itself moving.
+- **`setMovedDate` simplified** — stores a dragged/picked sell date exactly as given now (no
+  shift at write time); `settleDay` being re-derived downstream from wherever `day` currently
+  sits means a moved sell card keeps the same one-day delay automatically, with no special-
+  casing in the writer itself. `effectiveMovedDate` (the function this replaces) is removed.
+- **`manualFillCards`** no longer shifts a pencilled-in sell date either — `day` is the entry's
+  date exactly as typed, same uniform `settleDay` derivation applies to it downstream.
+- Board view is unaffected in its own display logic (`entriesByDay`'s sell/buy portion already
+  used `sellCardsFor(day)`/`buyCardsFor(day)`, i.e. `day`-based), so it inherits the same real-
+  day display for free; its own Balance column still reflects the correctly-lagged
+  `balances[day]` it always has, so the two can visibly disagree on a day the house is shown
+  but hasn't cleared yet — that's the intended picture.
+- **Tests**: the settle-day shift itself is just the already-tested `nextBusinessDay` applied
+  directly in `WhiteboardPage` (wiring, not new calculation logic — no new pure-function test
+  needed, matching how this feature's other UI-only changes are covered). `manualFillCards`'s
+  test was updated to assert no shift; the 2 `effectiveMovedDate` tests were removed.
 
 ### Unified "No Date" priority list (11/17)
 Kyle: "can we put stuff with no date, or properties where we're unsure, on one no-date list

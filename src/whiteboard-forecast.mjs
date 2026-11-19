@@ -170,10 +170,11 @@ export function applyAmountOverride(card, amountOverrides) {
 // only ever stands in for a MISSING card, never duplicates or overrides a real one (once real
 // data shows up, the caller drops the stale manualFill entry — see WhiteboardPage's auto-clear
 // effect). Only produces a card once BOTH amount and date are filled in; either alone just
-// stays as a note on the Needs Info row. `nextBusinessDayFn` mirrors a real sell card's own
-// "sale date + 1 business day" clearing rule — passed in so this module never needs its own
-// copy of nextBusinessDay's logic.
-export function manualFillCards(manualFill, existingIds, kind, nextBusinessDayFn) {
+// stays as a note on the Needs Info row. `day` is always the real date exactly as typed — no
+// clearing-delay shift here (the caller derives a sell card's separate settle day uniformly for
+// every sell card, auto-computed or manually filled in alike — see "Display day vs. settle day"
+// below), matching how a real sell card now stores `day`.
+export function manualFillCards(manualFill, existingIds, kind) {
   const existing = existingIds instanceof Set ? existingIds : new Set(existingIds || []);
   return Object.entries(manualFill || {})
     .filter(([id, entry]) => entry && entry.kind === kind && entry.amount != null && entry.date && !existing.has(id))
@@ -182,7 +183,7 @@ export function manualFillCards(manualFill, existingIds, kind, nextBusinessDayFn
       propId: kind === "sell" ? entry.key : undefined,
       address: entry.address,
       amount: entry.amount,
-      day: kind === "sell" ? nextBusinessDayFn(entry.date) : entry.date,
+      day: entry.date,
       manualEntry: true,
       ...(kind === "sell"
         ? { breakdown: { purchasePrice: 0, hardLoans: [], hardInterestPaidTotal: 0, saleDate: entry.date, dateSource: "manual", privateLoans: [] } }
@@ -304,19 +305,6 @@ export function clampToToday(dateStr, today) {
 // expected). See CLAUDE.md "Whiteboard Cash-Flow Forecast" for exactly where each is applied.
 export function roundDown5k(v) { return Math.floor((v || 0) / 5000) * 5000; }
 export function roundUp5k(v) { return Math.ceil((v || 0) / 5000) * 5000; }
-
-// A manually dragged/picked date for a sell/buy auto card — the actual date value to store as
-// the override. A sell card is an INFLOW: the auto-placed version already pushes its real
-// close date forward to the next business day before using it as the settle day (money
-// doesn't actually hit the account same-day — see nextBusinessDay above), so a manual
-// drag/pick gets that same treatment, staying just as honest about when the cash really lands
-// as the auto-computed placement is. A buy card is an outflow — no clearing delay applies, so
-// the picked date is used exactly as given. `cardId` is the only thing available at every call
-// site (drag, tap-to-pick, Board's own picker) to tell which kind a given override is for —
-// same `sell-`/`buy-` prefix scheme used everywhere else in this id space.
-export function effectiveMovedDate(cardId, newDate, nextBusinessDayFn) {
-  return cardId.startsWith("sell-") ? nextBusinessDayFn(newDate) : newDate;
-}
 
 // Sorts a list of items (each with its own `.id`) by an explicit priority order — an array of
 // ids, earliest first. An item whose id isn't in `order` keeps its original relative position,

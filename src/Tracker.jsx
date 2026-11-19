@@ -15,7 +15,7 @@ import {
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
   buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary, shortAddress, groupLoanPaymentEntries,
   applyAmountOverride, manualFillCards, clampToToday, roundDown5k, roundUp5k,
-  sortByPriorityOrder, firstBelowThreshold, effectiveMovedDate,
+  sortByPriorityOrder, firstBelowThreshold,
 } from './whiteboard-forecast.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -8243,6 +8243,9 @@ const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onPickDa
           {onResetDate && <button onClick={e=>{e.stopPropagation();onResetDate();}} className="font-semibold hover:underline shrink-0">Reset</button>}
         </div>
       )}
+      {card.settleDay && card.settleDay !== card.day && (
+        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Available {wbFmtDate(card.settleDay)}</div>
+      )}
       <button onClick={() => setOpen(o => !o)} className="text-[10px] font-semibold text-teal-500 dark:text-teal-400 hover:underline mt-1">{open ? "Hide breakdown" : "Show breakdown"}</button>
       {open && (
         <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-700 space-y-0.5 text-[10px] text-slate-500 dark:text-zinc-400">
@@ -8440,56 +8443,22 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
 // from WhiteboardPage's own `ledgerRows`/`ledgerSum` (built from the exact same dayCols/
 // balances/cards the Calendar view uses), so it can't compute, store, or drift from anything.
 // A single sell/buy line within a Board row — draggable onto another row to reschedule (see
-// WhiteboardBoardView's own DndContext). Streamlined twice over (Kyle, 11/19): first to
-// click-to-edit instead of a row of icon buttons, then refined again — "click on the amount
-// to edit it, click on the date to edit it, not just the address for everything... thinner
-// rows... get rid of all the extra text saying it was moved/edited, maybe just some symbol."
-// So: the date and the amount are each their OWN small clickable value (not one combined
-// editor), and an edited value shows a tiny ↺ undo arrow right next to it instead of a
-// sentence — click the ↺ (after confirming) to put it back, click the value itself to edit it
-// again. One compact line per entry; no more "manual"/multi-line note blocks.
-const WhiteboardBoardEntry = ({ e, h$, readOnly, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onSendToNoDate }) => {
-  const [editingAmount, setEditingAmount] = useState(false);
-  const [editingDate, setEditingDate] = useState(false);
-  const [amountDraft, setAmountDraft] = useState(String(e.amount||""));
+// WhiteboardBoardView's own DndContext). Streamlined three times over now (Kyle, 11/19) — the
+// last round: "just put the undo button next to the number and date that's already there" —
+// the date/amount a Kyle clicks to edit are the ROW's own Date/New Balance... no, Amount
+// column cells (see WhiteboardBoardRow below), not a second copy re-shown inside the entry
+// itself (showing "Nov 19" again here when the row it's IN already says "Nov 19" was exactly
+// the "extra stuff" he meant). This component is back to just the address + badges + drag +
+// 📋/✕ — no date, no amount, no ↺ of its own.
+const WhiteboardBoardEntry = ({ e, readOnly, onMarkClosed, onSendToNoDate }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: e.id, disabled: readOnly });
   const dragStyle = transform ? { transform:`translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
-  const saveAmount = () => {
-    const v = parseFloat(amountDraft);
-    if (!isNaN(v) && v>=0 && v!==e.amount) onSetAmount(e.id, Math.round(v*100)/100);
-    setEditingAmount(false);
-  };
-  const resetAmount = ev => { ev.stopPropagation(); if (window.confirm(`Reset the amount back to ${h$(e.originalAmount)}?`)) onResetAmount(); };
-  const resetDate = ev => { ev.stopPropagation(); if (window.confirm(`Reset the date back to ${e.sourceDate?wbFmtDate(e.sourceDate):"its original"}?`)) onResetDate(); };
   return (
     <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
       className={`flex items-center gap-1 text-[10px] mb-0.5 ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
       <span className="truncate flex-1 min-w-0" title={e.fullLabel||e.label}>
         {e.pastDue && !e.manualDate && <span title="Hasn't hit the account yet">⏰</span>} {e.label}
       </span>
-      {editingDate && !readOnly ? (
-        <input type="date" autoFocus defaultValue={e.day} onClick={ev=>ev.stopPropagation()}
-          onChange={ev=>{ if(ev.target.value && ev.target.value!==e.day) onPickDate(ev.target.value); setEditingDate(false); }}
-          onBlur={()=>setEditingDate(false)}
-          className="w-[100px] shrink-0 border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-      ) : (
-        <span className="shrink-0 flex items-center gap-0.5">
-          {e.manualDate && onResetDate && <button onClick={resetDate} title="Edited — click to undo" className="text-violet-500 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300">↺</button>}
-          <button onClick={ev=>{ev.stopPropagation();if(!readOnly)setEditingDate(true);}} className={`text-slate-500 dark:text-zinc-400 ${readOnly?"":"hover:underline"}`}>{wbFmtDate(e.day)}</button>
-        </span>
-      )}
-      {editingAmount && !readOnly ? (
-        <input type="number" step="0.01" autoFocus value={amountDraft} onClick={ev=>ev.stopPropagation()}
-          onChange={ev=>setAmountDraft(ev.target.value)}
-          onKeyDown={ev=>{ if(ev.key==="Enter") saveAmount(); if(ev.key==="Escape") setEditingAmount(false); }}
-          onBlur={saveAmount}
-          className="w-16 shrink-0 border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-      ) : (
-        <span className="shrink-0 flex items-center gap-0.5">
-          {e.manualAmount && onResetAmount && <button onClick={resetAmount} title="Edited — click to undo" className="text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">↺</button>}
-          <button onClick={ev=>{ev.stopPropagation();if(!readOnly){setAmountDraft(String(e.amount||""));setEditingAmount(true);}}} className={`font-semibold tabular-nums text-slate-600 dark:text-zinc-300 ${readOnly?"":"hover:underline"}`}>{h$(e.amount)}</button>
-        </span>
-      )}
       {!readOnly && onSendToNoDate && <button onClick={ev=>{ev.stopPropagation();onSendToNoDate();}} title="Move to No-Date" className="shrink-0 text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400">📋</button>}
       {!readOnly && <button onClick={ev=>{ev.stopPropagation();onMarkClosed();}} title="Take off the timeline" className="shrink-0 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>}
     </div>
@@ -8498,6 +8467,9 @@ const WhiteboardBoardEntry = ({ e, h$, readOnly, onPickDate, onSetAmount, onRese
 
 const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate }) => {
   const [loansOpen, setLoansOpen] = useState(false);
+  const [editingDate, setEditingDate] = useState(false);
+  const [editingAmount, setEditingAmount] = useState(false);
+  const [amountDraft, setAmountDraft] = useState("");
   const short = row.balance < 0;
   const { loanPayments, other, grouped, loanTotal } = groupLoanPaymentEntries(row.entries);
   // Round only the row's own AGGREGATE figures (netIn/netOut/balance/the grouped loan-payment
@@ -8507,6 +8479,19 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onPickDate,
   const rBal = v => roundMode ? roundDown5k(v) : v;
   const sellBuyEntries = other.filter(e=>e.kind==="sell"||e.kind==="buy");
   const plainOther = other.filter(e=>e.kind!=="sell"&&e.kind!=="buy");
+  // The ROW's own Date/Amount cells become click-to-edit only when there's exactly one thing
+  // on this day and it's a sell/buy entry — otherwise which entry "the date"/"the amount"
+  // would mean is ambiguous (Kyle, 11/19: "just put the undo button next to the number and
+  // date that's already there" — not a second copy of them re-shown inside the entry itself).
+  const editableEntry = sellBuyEntries.length===1 && plainOther.length===0 && loanPayments.length===0 ? sellBuyEntries[0] : null;
+  const saveAmount = () => {
+    if (!editableEntry) return;
+    const v = parseFloat(amountDraft);
+    if (!isNaN(v) && v>=0 && v!==editableEntry.amount) onSetAmount(editableEntry.id, Math.round(v*100)/100);
+    setEditingAmount(false);
+  };
+  const resetDate = ev => { ev.stopPropagation(); if (window.confirm(`Reset the date back to ${editableEntry.sourceDate?wbFmtDate(editableEntry.sourceDate):"its original"}?`)) onResetDate(editableEntry.id); };
+  const resetAmount = ev => { ev.stopPropagation(); if (window.confirm(`Reset the amount back to ${h$(editableEntry.originalAmount)}?`)) onResetAmount(editableEntry.id); };
   const { setNodeRef: setRowDropRef, isOver } = useDroppable({ id: row.day });
   const td = compact ? "px-1.5 py-0.5" : "px-3 py-1";
   const txt = compact ? "text-[10px]" : "text-xs";
@@ -8529,7 +8514,22 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onPickDate,
   }
   return (
     <tr ref={setRowDropRef} className={`${rowBg} ${isOver?"ring-2 ring-inset ring-teal-400":""}`}>
-      <td className={`${td} align-top whitespace-nowrap ${txt} font-semibold text-slate-500 dark:text-zinc-400`}>{wbFmtDate(row.day)}<div className={`${compact?"text-[8px]":"text-[10px]"} font-normal text-slate-300 dark:text-zinc-600`}>{wbWeekday(row.day)}</div></td>
+      <td className={`${td} align-top whitespace-nowrap ${txt} font-semibold text-slate-500 dark:text-zinc-400`}>
+        {editableEntry && !readOnly ? (
+          editingDate ? (
+            <input type="date" autoFocus defaultValue={row.day}
+              onChange={ev=>{ if(ev.target.value && ev.target.value!==row.day) onPickDate(editableEntry, ev.target.value); setEditingDate(false); }}
+              onBlur={()=>setEditingDate(false)}
+              className="w-[105px] text-[10px] border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+          ) : (
+            <span className="flex items-center gap-0.5">
+              {editableEntry.manualDate && onResetDate && <button onClick={resetDate} title="Edited — click to undo" className="text-violet-500 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300">↺</button>}
+              <button onClick={()=>setEditingDate(true)} className="hover:underline">{wbFmtDate(row.day)}</button>
+            </span>
+          )
+        ) : wbFmtDate(row.day)}
+        <div className={`${compact?"text-[8px]":"text-[10px]"} font-normal text-slate-300 dark:text-zinc-600`}>{wbWeekday(row.day)}</div>
+      </td>
       <td className={`${td} align-top ${txt} text-slate-700 dark:text-zinc-200`}>
         {plainOther.map(e=>(
           <div key={e.id} className="truncate max-w-[180px] flex items-center justify-between gap-1" title={e.fullLabel||e.label}>
@@ -8540,11 +8540,7 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onPickDate,
           </div>
         ))}
         {sellBuyEntries.map(e=>(
-          <WhiteboardBoardEntry key={e.id} e={e} h$={h$} readOnly={readOnly}
-            onPickDate={readOnly?undefined:(newDate)=>onPickDate(e, newDate)}
-            onSetAmount={readOnly?undefined:(id,amt)=>onSetAmount(id,amt)}
-            onResetAmount={readOnly||!e.manualAmount?undefined:()=>onResetAmount(e.id)}
-            onResetDate={readOnly||!e.manualDate?undefined:()=>onResetDate(e.id)}
+          <WhiteboardBoardEntry key={e.id} e={e} readOnly={readOnly}
             onMarkClosed={()=>onMarkClosed(e)}
             onSendToNoDate={readOnly?undefined:()=>onSendToNoDate(e.id)}/>
         ))}
@@ -8583,8 +8579,25 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onPickDate,
         ))}
       </td>
       <td className={`${td} align-top text-right ${txt} font-semibold tabular-nums text-slate-600 dark:text-zinc-300`}>
-        {row.netIn>0 && <div>+{h$(rIn(row.netIn))}</div>}
-        {row.netOut>0 && <div>−{h$(rOut(row.netOut))}</div>}
+        {editableEntry && !readOnly ? (
+          editingAmount ? (
+            <input type="number" step="0.01" autoFocus value={amountDraft} onClick={ev=>ev.stopPropagation()}
+              onChange={ev=>setAmountDraft(ev.target.value)}
+              onKeyDown={ev=>{ if(ev.key==="Enter") saveAmount(); if(ev.key==="Escape") setEditingAmount(false); }}
+              onBlur={saveAmount}
+              className="w-20 text-[11px] border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+          ) : (
+            <span className="inline-flex items-center gap-0.5">
+              {editableEntry.manualAmount && onResetAmount && <button onClick={resetAmount} title="Edited — click to undo" className="text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">↺</button>}
+              <button onClick={()=>{setAmountDraft(String(editableEntry.amount||""));setEditingAmount(true);}} className="hover:underline">
+                {editableEntry.direction==="in"?"+":"−"}{h$(editableEntry.amount)}
+              </button>
+            </span>
+          )
+        ) : (<>
+          {row.netIn>0 && <div>+{h$(rIn(row.netIn))}</div>}
+          {row.netOut>0 && <div>−{h$(rOut(row.netOut))}</div>}
+        </>)}
       </td>
       <td className={`${td} align-top text-right`}>
         <div className={`${compact?"text-xs":"text-sm"} font-black tabular-nums ${short?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{short?"−":""}{h$(Math.abs(rBal(row.balance)))}</div>
@@ -8911,13 +8924,15 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     const hardInterestPaidTotal = hardLoans.reduce((s,l)=>s+hardPaymentSchedule(l, data, dateInfo.date).reduce((s2,p)=>s2+p.amount,0),0);
     const checkedPrivatePrincipalTotal = privateLoans.filter(l=>payingBack[prop.id]?.[l.id]).reduce((s,l)=>s+(l.principal||0),0);
     const amount = sellCashAmount({ purchasePrice: prop.purchasePrice||0, hardPrincipalTotal, checkedPrivatePrincipalTotal, hardInterestPaidTotal });
-    // A sale that already closed days ago but whose cash hasn't hit Mercury yet would otherwise
-    // compute a `day` before TODAY and vanish entirely (dayCols never goes that far back) — this
-    // is money that still HASN'T cleared, so clamp it to TODAY instead of silently dropping it.
-    const rawDay = fcNextBusinessDay(dateInfo.date);
-    const day = clampToToday(rawDay, TODAY);
+    // `day` is the house's real, DISPLAYED close date — a sale that already closed days ago but
+    // whose cash hasn't hit Mercury yet would otherwise compute a `day` before TODAY and vanish
+    // entirely (dayCols never goes that far back), so it's clamped to TODAY instead of silently
+    // dropped. Kyle, 11/19, correcting an earlier misunderstanding: this must stay the house's
+    // own date, never pre-shifted forward — see `settleDay` (computed uniformly for every sell
+    // card, below, after any manual move) for the separate date the cash actually counts on.
+    const day = clampToToday(dateInfo.date, TODAY);
     sellCardsInfo.push({
-      id: `sell-${prop.id}`, propId: prop.id, address: prop.address, amount, day, pastDue: day!==rawDay,
+      id: `sell-${prop.id}`, propId: prop.id, address: prop.address, amount, day, pastDue: day!==dateInfo.date,
       breakdown: {
         purchasePrice: prop.purchasePrice||0, hardLoans, hardInterestPaidTotal, saleDate: dateInfo.date, dateSource: dateInfo.source,
         privateLoans: privateLoans.map(l=>({id:l.id, lenderName:l.lenderName, principal:l.principal||0, checked: !!payingBack[prop.id]?.[l.id]})),
@@ -8962,8 +8977,8 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // drops the stale manual entry.
   const realSellIds = new Set(sellCardsInfo.map(c=>c.id));
   const realBuyIds = new Set(buyCardsInfo.map(c=>c.id));
-  const allSellCardsInfo = [...sellCardsInfo, ...manualFillCards(manualFill, realSellIds, "sell", fcNextBusinessDay)];
-  const allBuyCardsInfo = [...buyCardsInfo, ...manualFillCards(manualFill, realBuyIds, "buy", fcNextBusinessDay)];
+  const allSellCardsInfo = [...sellCardsInfo, ...manualFillCards(manualFill, realSellIds, "sell")];
+  const allBuyCardsInfo = [...buyCardsInfo, ...manualFillCards(manualFill, realBuyIds, "buy")];
 
   // Closed/removed items are pulled OUT of the forecast entirely (cash in/out, running
   // balance, shortfall cards all stop counting them) and shown in their own panel instead —
@@ -8978,7 +8993,12 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     ...autoCards.filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"loanPayment", address:c.lenderName?(c.address?`${c.lenderName} (${c.address})`:c.lenderName):(c.address||"Loan payment"), amount:c.amount })),
     ...datedSetAsideCards(setAsides).filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"setAside", address:c.label, amount:c.amount })),
   ];
-  const sellWithOverrides = allSellCardsInfo.map(c=>applyMovedDate(c, movedDates)).map(c=>applyAmountOverride(c, amountOverrides));
+  // settleDay: the day a sell card's cash actually counts toward the balance/Total In — always
+  // the next business day after wherever `day` (the house's own, DISPLAYED date) currently
+  // sits, re-derived here AFTER any manual move, so a dragged/picked date keeps the exact same
+  // one-day clearing delay the auto-placed version gets. A buy card has no such split (an
+  // outflow, no clearing delay), so it isn't given one.
+  const sellWithOverrides = allSellCardsInfo.map(c=>applyMovedDate(c, movedDates)).map(c=>applyAmountOverride(c, amountOverrides)).map(c=>({ ...c, settleDay: fcNextBusinessDay(c.day) }));
   const buyWithOverrides = allBuyCardsInfo.map(c=>applyMovedDate(c, movedDates)).map(c=>applyAmountOverride(c, amountOverrides));
   const activeSellCards = filterClosed(filterClosed(sellWithOverrides, closedOverrides), noDateForced);
   const activeBuyCards = filterClosed(filterClosed(buyWithOverrides, closedOverrides), noDateForced);
@@ -9037,18 +9057,25 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // Net for a day counts out-cards placed that day plus in-cards that actually SETTLE
   // that day (1 business day after the day they're dropped on), not cards merely placed
   // there — so a Thursday deposit doesn't look available for a Thursday closing. Auto loan
-  // payments, auto sell cards, and auto buy cards always land on their own already-settled
-  // day with no further delay (a sell card's day is already sale-date + 1 business day).
+  // payments and auto buy cards always land on their own already-settled day with no further
+  // delay. A sell card is the one auto card that does split: it's DISPLAYED on `day` (its real
+  // close date, via sellCardsFor) but its cash only counts here on `settleDay` (next business
+  // day) — so the sum below deliberately filters activeSellCards by settleDay, not day.
   const netFor = day => cards
     .filter(c=>c.day && wbEffectiveDate(c)===day)
     .reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0)
     - autoCardsFor(day).reduce((s,c)=>s+(c.amount||0),0)
-    + sellCardsFor(day).reduce((s,c)=>s+(c.amount||0),0)
+    + activeSellCards.filter(c=>c.settleDay===day).reduce((s,c)=>s+(c.amount||0),0)
     - buyCardsFor(day).reduce((s,c)=>s+(c.amount||0),0)
     - setAsideCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
   // A card dragged onto day X but settling on day Y (see wbEffectiveDate) still shows on X —
-  // this is what lets Y's balance jump make sense without hunting for the card.
-  const settledInFor = day => cards.filter(c=>c.day && c.day!==day && c.direction==="in" && (c.amount||0)>0 && wbEffectiveDate(c)===day);
+  // this is what lets Y's balance jump make sense without hunting for the card. A sell card
+  // showing on an earlier day than it settles gets the same "+$X clearing from..." note on its
+  // settle day, for the same reason.
+  const settledInFor = day => [
+    ...cards.filter(c=>c.day && c.day!==day && c.direction==="in" && (c.amount||0)>0 && wbEffectiveDate(c)===day),
+    ...activeSellCards.filter(c=>c.day!==day && c.settleDay===day).map(c=>({ address: c.address, amount: c.amount, day: c.day })),
+  ];
   // Running cash balance through each day, so a shortfall shows up on the exact day it
   // happens instead of needing to be worked out by hand. Only counts money that's actually
   // on a date — Due Now bills and Unscheduled cards have no date, so they sit outside this
@@ -9190,16 +9217,15 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   });
   // originalDate is pinned the FIRST time a card is moved and never overwritten by a later
   // move — Reset always restores the true real source date, not whatever it was most
-  // recently moved from. effectiveMovedDate (whiteboard-forecast.mjs) applies the same
-  // next-business-day clearing shift to a manually dragged/picked SELL date that the
-  // auto-placed version already gets — "the date money comes in reflects it doesn't hit until
-  // the next business day" regardless of how that date got set. Buy cards are an outflow, so
-  // left exactly as picked.
+  // recently moved from. Stores a sell/buy card's dragged/picked date exactly as given — a sell
+  // card's own `settleDay` (derived uniformly above, after this override is applied) is what
+  // still applies the one-business-day clearing delay, so the picked date itself is never
+  // pre-shifted (Kyle, 11/19: "I want to see the house on the day" — a moved date is no
+  // exception).
   const setMovedDate = (cardId, newDate, sourceDateNow) => update(d => {
     const existing = d.whiteboardOverrides?.movedDates?.[cardId];
     const originalDate = existing?.originalDate ?? sourceDateNow;
-    const effectiveDate = effectiveMovedDate(cardId, newDate, fcNextBusinessDay);
-    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, movedDates: { ...(d.whiteboardOverrides?.movedDates||{}), [cardId]: { date: effectiveDate, originalDate } } } };
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, movedDates: { ...(d.whiteboardOverrides?.movedDates||{}), [cardId]: { date: newDate, originalDate } } } };
   });
   const resetMovedDate = cardId => update(d => {
     const next = { ...(d.whiteboardOverrides?.movedDates||{}) };
@@ -9271,13 +9297,14 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // or this total wouldn't match what the day columns actually add up to. A bill dragged onto
   // a day counts here exactly like any other dated card. Due Now shows its own total on its
   // own box for bills that haven't been given a day yet.
-  // Only count a card toward the totals when its actual settlement day (wbEffectiveDate — the
-  // same day netFor/the running balance already use) falls inside the visible 45/90-day
-  // window — a card dated beyond it isn't part of this forecast and shouldn't inflate the
-  // headline In/Out figures. withinWindow (whiteboard-forecast.mjs) is the same pure filter
-  // used/tested for this, so the totals can't drift from what the day columns themselves add up to.
+  // Only count a card toward the totals when its actual settlement day (wbEffectiveDate for a
+  // manual card, settleDay for a sell card — the same day netFor/the running balance already
+  // use) falls inside the visible 45/90-day window — a card dated beyond it isn't part of this
+  // forecast and shouldn't inflate the headline In/Out figures. withinWindow (whiteboard-
+  // forecast.mjs) is the same pure filter used/tested for this, so the totals can't drift from
+  // what the day columns themselves add up to.
   const scheduledCards = withinWindow(cards.filter(c=>c.day), dayCols, wbEffectiveDate);
-  const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0) + withinWindow(activeSellCards, dayCols).reduce((s,c)=>s+(c.amount||0),0);
+  const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0) + withinWindow(activeSellCards, dayCols, c=>c.settleDay).reduce((s,c)=>s+(c.amount||0),0);
   const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + withinWindow(activeAutoCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(activeBuyCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(setAsideCardsList, dayCols).reduce((s,c)=>s+(c.amount||0),0);
   const [sbInput,setSbInput] = useState(String(startingBalanceManual||""));
   useEffect(()=>{ setSbInput(String(startingBalanceManual||"")); }, [startingBalanceManual]);
@@ -9285,8 +9312,11 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // ─── Board (ledger) view data — built from the exact same per-day arrays/balances above,
   // so it can't drift from the Calendar view by a cent. One entries array per day, covering
   // every money-moving thing Calendar already shows: manual cards (on the day they actually
-  // SETTLE, same as netFor), the auto loan-payment cards, sell/buy auto cards (closed/moved
-  // overrides already applied upstream), and dated Set Aside cards.
+  // SETTLE, same as netFor), the auto loan-payment cards, sell/buy auto cards — DISPLAYED on
+  // their own real day (sellCardsFor/buyCardsFor filter by `.day`), same as Calendar/Month,
+  // even though a sell card's cash only joins that day's `balance` once its separate
+  // `settleDay` arrives (closed/moved overrides already applied upstream) — and dated Set
+  // Aside cards.
   // `label` is always the short, non-truncating display text (shortAddress() for anything
   // address-based); `fullLabel` carries the complete original text for a `title` tooltip.
   // Loan-payment entries are tagged `kind:"loanPayment"` with their own lenderName/address so

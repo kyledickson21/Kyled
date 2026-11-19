@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
   applyAmountOverride, manualFillCards, clampToToday, roundDown5k, roundUp5k,
-  sortByPriorityOrder, firstBelowThreshold, effectiveMovedDate,
+  sortByPriorityOrder, firstBelowThreshold,
 } from "../src/whiteboard-forecast.mjs";
 
 test("filterClosed drops a card whose id is marked closed", () => {
@@ -157,14 +157,13 @@ test("manualFillCards only produces a card once BOTH amount and date are present
     "sell-p2": { kind: "sell", key: "p2", address: "2 Main St", amount: 1000 }, // no date — stays a note only
     "buy-l1": { kind: "buy", key: "l1", address: "3 Main St", amount: 2000, date: "2026-12-10" },
   };
-  const nextBusinessDay = d => d; // identity stand-in, real fn tested elsewhere
-  const sellCards = manualFillCards(manualFill, new Set(), "sell", nextBusinessDay);
+  const sellCards = manualFillCards(manualFill, new Set(), "sell");
   assert.equal(sellCards.length, 1);
   assert.equal(sellCards[0].id, "sell-p1");
   assert.equal(sellCards[0].propId, "p1");
   assert.equal(sellCards[0].manualEntry, true);
   assert.ok(sellCards[0].breakdown); // minimal valid breakdown shape for WhiteboardSellCard
-  const buyCards = manualFillCards(manualFill, new Set(), "buy", nextBusinessDay);
+  const buyCards = manualFillCards(manualFill, new Set(), "buy");
   assert.equal(buyCards.length, 1);
   assert.equal(buyCards[0].id, "buy-l1");
   assert.equal(buyCards[0].date, "2026-12-10");
@@ -173,16 +172,13 @@ test("manualFillCards only produces a card once BOTH amount and date are present
 test("manualFillCards never duplicates or overrides an id that already has a real, auto-computed card", () => {
   const manualFill = { "sell-p1": { kind: "sell", key: "p1", address: "1 Main St", amount: 1000, date: "2026-12-01" } };
   const existingIds = new Set(["sell-p1"]); // a real card already exists for this id
-  assert.deepEqual(manualFillCards(manualFill, existingIds, "sell", d => d), []);
+  assert.deepEqual(manualFillCards(manualFill, existingIds, "sell"), []);
 });
 
-test("manualFillCards' sell output applies the same next-business-day clearing rule a real sell card uses", () => {
+test("manualFillCards' sell output uses the entry's date exactly as given — no clearing-delay shift (the caller derives a separate settle day uniformly for every sell card)", () => {
   const manualFill = { "sell-p1": { kind: "sell", key: "p1", address: "1 Main St", amount: 1000, date: "2026-12-01" } };
-  let calledWith = null;
-  const spy = d => { calledWith = d; return "2026-12-02"; };
-  const cards = manualFillCards(manualFill, new Set(), "sell", spy);
-  assert.equal(calledWith, "2026-12-01");
-  assert.equal(cards[0].day, "2026-12-02");
+  const cards = manualFillCards(manualFill, new Set(), "sell");
+  assert.equal(cards[0].day, "2026-12-01");
 });
 
 // ─── 11/17: a past-but-unsettled date never silently vanishes from the forecast ────────────
@@ -264,16 +260,3 @@ test("firstBelowThreshold works for the $0 shortfall floor too (a negative balan
   assert.deepEqual(firstBelowThreshold(rows, 0), { day: "2026-12-02", balance: -200 });
 });
 
-// ─── 11/17: a manually moved sell date still clears next business day, like the auto one ──
-
-test("effectiveMovedDate pushes a sell card's picked date to the next business day", () => {
-  let calledWith = null;
-  const spy = d => { calledWith = d; return "2026-12-02"; };
-  assert.equal(effectiveMovedDate("sell-p1", "2026-12-01", spy), "2026-12-02");
-  assert.equal(calledWith, "2026-12-01");
-});
-
-test("effectiveMovedDate leaves a buy card's picked date exactly as given (no clearing delay on an outflow)", () => {
-  const spy = () => { throw new Error("must not be called for a buy card"); };
-  assert.equal(effectiveMovedDate("buy-l1", "2026-12-01", spy), "2026-12-01");
-});
