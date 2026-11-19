@@ -8440,52 +8440,47 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
 // from WhiteboardPage's own `ledgerRows`/`ledgerSum` (built from the exact same dayCols/
 // balances/cards the Calendar view uses), so it can't compute, store, or drift from anything.
 // A single sell/buy line within a Board row — draggable onto another row to reschedule (see
-// WhiteboardBoardView's own DndContext), with inline amount editing and a tap-to-pick-date
-// fallback (same reasoning as the Calendar cards: touch-dragging across a table is unreliable
-// on a phone). "Mark Closed" reuses the exact same override as Calendar's sell/buy cards.
-const WhiteboardBoardEntry = ({ e, h$, navigate, readOnly, compact, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onSendToNoDate }) => {
-  const [editingAmount, setEditingAmount] = useState(false);
+// WhiteboardBoardView's own DndContext). Streamlined (Kyle, 11/19: "don't wanna see the
+// calendar and notes and whatever button — just wanna edit it by clicking the thing already
+// on the board"): no row of always-visible icon buttons — clicking the entry itself opens one
+// combined amount+date editor, with "Remove" (Mark Closed) and "No Date" tucked inside that
+// same editor instead of their own permanent buttons.
+const WhiteboardBoardEntry = ({ e, h$, readOnly, compact, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onSendToNoDate }) => {
+  const [editing, setEditing] = useState(false);
   const [amountDraft, setAmountDraft] = useState(String(e.amount||""));
-  const [pickingDate, setPickingDate] = useState(false);
+  const [dateDraft, setDateDraft] = useState(e.day||"");
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: e.id, disabled: readOnly });
   const dragStyle = transform ? { transform:`translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
-  const saveAmount = () => {
+  const openEdit = () => {
+    if (readOnly) return;
+    setAmountDraft(String(e.amount||""));
+    setDateDraft(e.day||"");
+    setEditing(x=>!x);
+  };
+  const save = () => {
     const v = parseFloat(amountDraft);
-    if (!isNaN(v) && v>=0) onSetAmount(e.id, Math.round(v*100)/100);
-    setEditingAmount(false);
+    if (!isNaN(v) && v>=0 && v!==e.amount) onSetAmount(e.id, Math.round(v*100)/100);
+    if (dateDraft && dateDraft!==e.day) onPickDate(dateDraft);
+    setEditing(false);
   };
   return (
-    <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
-      className={`${compact?"mb-0.5 pb-0.5":"mb-1 pb-1"} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
-      <div className="flex items-center justify-between gap-1.5">
-        <div className="truncate" title={e.fullLabel||e.label}>
-          {e.propId ? (
-            <button onClick={ev=>{ev.stopPropagation();navigate&&navigate({type:'property',id:e.propId});}} className="hover:underline text-teal-600 dark:text-teal-400">{e.label}</button>
-          ) : <span>{e.label}</span>}
-          {e.manualEntry && <span className="ml-1 text-[9px] font-bold uppercase text-violet-500 dark:text-violet-400">manual</span>}
-          {e.pastDue && !e.manualDate && <span className="ml-1 text-[9px] font-bold uppercase text-amber-500 dark:text-amber-400" title="Hasn't hit the account yet">⏰ overdue</span>}
-        </div>
-        {!readOnly && (
-          <div className="flex items-center gap-1 shrink-0">
-            <button onClick={ev=>{ev.stopPropagation();setPickingDate(p=>!p);}} title="Pick a date" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[10px]">📅</button>
-            <button onClick={ev=>{ev.stopPropagation();setEditingAmount(x=>!x);setAmountDraft(String(e.amount||""));}} title="Edit amount" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[10px]">✏️</button>
-            {onSendToNoDate && <button onClick={ev=>{ev.stopPropagation();onSendToNoDate();}} title="Move to the No-Date list" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400 text-[10px]">📋</button>}
-            <button onClick={ev=>{ev.stopPropagation();onMarkClosed();}} title="Take off the timeline entirely / mark closed" className="w-4 h-4 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-[10px]">✕</button>
-          </div>
-        )}
+    <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})} onClick={openEdit}
+      className={`${compact?"mb-0.5 pb-0.5":"mb-1 pb-1"} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-pointer touch-none":""}`}>
+      <div className="truncate" title={e.fullLabel||e.label}>
+        <span>{e.label}</span>
+        {e.manualEntry && <span className="ml-1 text-[9px] font-bold uppercase text-violet-500 dark:text-violet-400">manual</span>}
+        {e.pastDue && !e.manualDate && <span className="ml-1 text-[9px] font-bold uppercase text-amber-500 dark:text-amber-400" title="Hasn't hit the account yet">⏰ overdue</span>}
       </div>
-      {pickingDate && !readOnly && (
-        <input type="date" defaultValue={e.day} onClick={ev=>ev.stopPropagation()}
-          onChange={ev=>{ if(ev.target.value){ onPickDate(ev.target.value); setPickingDate(false); } }}
-          className="text-[10px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 mt-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 w-full focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-      )}
-      {editingAmount && !readOnly ? (
-        <div className="flex items-center gap-1 mt-0.5">
-          <input type="number" step="0.01" autoFocus value={amountDraft} onClick={ev=>ev.stopPropagation()}
-            onChange={ev=>setAmountDraft(ev.target.value)}
-            onKeyDown={ev=>{ if(ev.key==="Enter") saveAmount(); if(ev.key==="Escape") setEditingAmount(false); }}
-            onBlur={saveAmount}
-            className="w-24 text-[11px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+      {editing && !readOnly ? (
+        <div onClick={ev=>ev.stopPropagation()} className="flex items-center gap-1 mt-0.5 flex-wrap">
+          <input type="number" step="0.01" autoFocus value={amountDraft} onChange={ev=>setAmountDraft(ev.target.value)}
+            onKeyDown={ev=>{ if(ev.key==="Enter") save(); if(ev.key==="Escape") setEditing(false); }}
+            className="w-20 text-[11px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+          <input type="date" value={dateDraft} onChange={ev=>setDateDraft(ev.target.value)}
+            className="text-[10px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+          <button onClick={save} className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-teal-600 text-white">Save</button>
+          {onSendToNoDate && <button onClick={()=>{onSendToNoDate();setEditing(false);}} className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 hover:underline">No Date</button>}
+          <button onClick={()=>{onMarkClosed();setEditing(false);}} className="text-[10px] font-semibold text-red-500 dark:text-red-400 hover:underline">Remove</button>
         </div>
       ) : (
         e.manualAmount && (
@@ -8503,7 +8498,7 @@ const WhiteboardBoardEntry = ({ e, h$, navigate, readOnly, compact, onPickDate, 
   );
 };
 
-const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate }) => {
+const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate }) => {
   const [loansOpen, setLoansOpen] = useState(false);
   const short = row.balance < 0;
   const { loanPayments, other, grouped, loanTotal } = groupLoanPaymentEntries(row.entries);
@@ -8517,8 +8512,25 @@ const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, o
   const { setNodeRef: setRowDropRef, isOver } = useDroppable({ id: row.day });
   const td = compact ? "px-1.5 py-0.5" : "px-3 py-2";
   const txt = compact ? "text-[10px]" : "text-xs";
+  // Every day in the window gets a row now (Kyle, 11/19: "show each day so we can drag it
+  // easily" — a day with nothing on it used to be skipped entirely, which meant there was no
+  // row to DROP a dragged card onto). An empty day still needs its own useDroppable (above,
+  // called unconditionally either way) but renders collapsed — thin, muted, no per-entry
+  // detail — so a long window doesn't turn into a wall of blank rows. Weekend shading (own
+  // ask, replacing the removed week-subtotal header rows) applies to both branches alike.
+  const isWeekend = wbIsWeekend(row.day);
+  const rowBg = short ? "bg-red-50 dark:bg-red-900/10" : isWeekend ? "bg-slate-50 dark:bg-zinc-900/40" : "";
+  if (row.entries.length===0) {
+    return (
+      <tr ref={setRowDropRef} className={`${rowBg} ${isOver?"ring-2 ring-inset ring-teal-400":""}`}>
+        <td className={`${compact?"px-1.5 py-0.5":"px-3 py-1"} whitespace-nowrap text-[9px] text-slate-300 dark:text-zinc-600`}>{wbFmtDate(row.day)} <span className="opacity-70">{wbWeekday(row.day)}</span></td>
+        <td colSpan={2}></td>
+        <td className={`${compact?"px-1.5 py-0.5":"px-3 py-1"} text-right text-[9px] tabular-nums ${short?"text-red-400 dark:text-red-500":"text-slate-300 dark:text-zinc-600"}`}>{h$(rBal(row.balance))}</td>
+      </tr>
+    );
+  }
   return (
-    <tr ref={setRowDropRef} className={`${short ? "bg-red-50 dark:bg-red-900/10" : ""} ${isOver?"ring-2 ring-inset ring-teal-400":""}`}>
+    <tr ref={setRowDropRef} className={`${rowBg} ${isOver?"ring-2 ring-inset ring-teal-400":""}`}>
       <td className={`${td} align-top whitespace-nowrap ${txt} font-semibold text-slate-500 dark:text-zinc-400`}>{wbFmtDate(row.day)}<div className={`${compact?"text-[8px]":"text-[10px]"} font-normal text-slate-300 dark:text-zinc-600`}>{wbWeekday(row.day)}</div></td>
       <td className={`${td} align-top ${txt} text-slate-700 dark:text-zinc-200`}>
         {plainOther.map(e=>(
@@ -8530,7 +8542,7 @@ const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, o
           </div>
         ))}
         {sellBuyEntries.map(e=>(
-          <WhiteboardBoardEntry key={e.id} e={e} h$={h$} navigate={navigate} readOnly={readOnly} compact={compact}
+          <WhiteboardBoardEntry key={e.id} e={e} h$={h$} readOnly={readOnly} compact={compact}
             onPickDate={readOnly?undefined:(newDate)=>onPickDate(e, newDate)}
             onSetAmount={readOnly?undefined:(id,amt)=>onSetAmount(id,amt)}
             onResetAmount={readOnly||!e.manualAmount?undefined:()=>onResetAmount(e.id)}
@@ -8584,9 +8596,8 @@ const WhiteboardBoardRow = ({ row, h$, navigate, readOnly, compact, roundMode, o
   );
 };
 
-function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, navigate, readOnly, roundMode, firstBelow10k, firstNegative, forceTv,
+function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, readOnly, roundMode, firstBelow10k, firstNegative, forceTv,
   onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate }) {
-  const hasShortfall = ledgerSum.lowest && ledgerSum.lowest.balance < 0;
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
   const rBal = v => roundMode ? roundDown5k(v) : v;
@@ -8643,55 +8654,33 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
           <button onClick={enterTvMode} title="Fullscreen, compact layout for a TV or large display" className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400">📺 TV Mode</button>
         </div>
       )}
-      {/* Summary strip. Normal Board view: lowest balance (+date), total in/out, ending
-          balance. TV Mode swaps in the two dates that actually matter for a glance-from-
-          across-the-room readout — when the account would first dip under $10k, and when it
-          would first go negative — per Kyle's own framing of what's useful there. */}
+      {/* Summary strip — the same 4 tiles in Board view and TV Mode (Kyle, 11/19: "make the
+          regular mode have the same headers as TV mode"); only the sizing (compact) differs.
+          "Under $10k"/"Goes Negative" are the two dates that actually matter for a glance —
+          when the account would first dip under $10k, and when it'd first go negative. */}
       <div className={`flex gap-2 flex-wrap shrink-0 ${compact?"mb-2":"mb-4 gap-3"}`}>
-        {compact ? (<>
-          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
-            <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Under $10k</div>
-            {firstBelow10k ? (<>
-              <div className="text-sm font-black tabular-nums text-amber-600 dark:text-amber-400">{wbFmtDate(firstBelow10k.day)}</div>
-              <div className="text-[9px] text-slate-400 dark:text-zinc-500">{h$(rBal(firstBelow10k.balance))} that day</div>
-            </>) : <div className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">✓ stays above</div>}
-          </div>
-          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
-            <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Goes Negative</div>
-            {firstNegative ? (<>
-              <div className="text-sm font-black tabular-nums text-red-600 dark:text-red-400">{wbFmtDate(firstNegative.day)}</div>
-              <div className="text-[9px] text-slate-400 dark:text-zinc-500">{h$(Math.abs(rBal(firstNegative.balance)))} short that day</div>
-            </>) : <div className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">✓ never</div>}
-          </div>
-          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
-            <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
-            <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(rIn(ledgerSum.totalIn))}</div>
-          </div>
-          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-1.5">
-            <div className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
-            <div className="text-sm font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(rOut(ledgerSum.totalOut))}</div>
-          </div>
-        </>) : (<>
-          <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Lowest Balance</div>
-            {ledgerSum.lowest ? (<>
-              <div className={`text-lg font-black tabular-nums ${hasShortfall?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{hasShortfall?"−":""}{h$(Math.abs(rBal(ledgerSum.lowest.balance)))}</div>
-              <div className="text-[10px] text-slate-400 dark:text-zinc-500">on {wbFmtDate(ledgerSum.lowest.day)}</div>
-            </>) : <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">—</div>}
-          </div>
-          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
-            <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(rIn(ledgerSum.totalIn))}</div>
-          </div>
-          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
-            <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(rOut(ledgerSum.totalOut))}</div>
-          </div>
-          <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Ending Balance</div>
-            <div className={`text-lg font-black tabular-nums ${ledgerSum.ending<0?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{ledgerSum.ending<0?"−":""}{h$(Math.abs(rBal(ledgerSum.ending)))}</div>
-          </div>
-        </>)}
+        <div className={`flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
+          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Under $10k</div>
+          {firstBelow10k ? (<>
+            <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums text-amber-600 dark:text-amber-400`}>{wbFmtDate(firstBelow10k.day)}</div>
+            <div className={`${compact?"text-[9px]":"text-[10px]"} text-slate-400 dark:text-zinc-500`}>{h$(rBal(firstBelow10k.balance))} that day</div>
+          </>) : <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums text-emerald-600 dark:text-emerald-400`}>✓ stays above</div>}
+        </div>
+        <div className={`flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
+          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Goes Negative</div>
+          {firstNegative ? (<>
+            <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums text-red-600 dark:text-red-400`}>{wbFmtDate(firstNegative.day)}</div>
+            <div className={`${compact?"text-[9px]":"text-[10px]"} text-slate-400 dark:text-zinc-500`}>{h$(Math.abs(rBal(firstNegative.balance)))} short that day</div>
+          </>) : <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums text-emerald-600 dark:text-emerald-400`}>✓ never</div>}
+        </div>
+        <div className={`flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
+          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Total In</div>
+          <div className={`${compact?"text-sm":"text-lg"} font-black text-emerald-600 dark:text-emerald-400 tabular-nums`}>+{h$(rIn(ledgerSum.totalIn))}</div>
+        </div>
+        <div className={`flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
+          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Total Out</div>
+          <div className={`${compact?"text-sm":"text-lg"} font-black text-red-600 dark:text-red-400 tabular-nums`}>−{h$(rOut(ledgerSum.totalOut))}</div>
+        </div>
       </div>
 
       <div className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${compact?"flex-1 flex flex-col min-h-0":""}`}>
@@ -8713,28 +8702,15 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                   <td className={compact?"px-1.5 py-1":"px-3 py-2"}></td>
                   <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-xs":"text-sm"} font-black tabular-nums ${rBal(startingBalance)<0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{h$(rBal(startingBalance))}</td>
                 </tr>
-                {ledgerWeeks.map(week=>{
-                  const visibleRows = week.rows.filter(r=>r.entries.length>0);
-                  if (!visibleRows.length) return null;
-                  return (
-                    <Fragment key={week.weekStart}>
-                      <tr className="bg-slate-100/70 dark:bg-zinc-900/40">
-                        <td colSpan={2} className={`${compact?"px-1.5 py-0.5":"px-3 py-1.5"} ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Week of {wbFmtDate(week.weekStart)}</td>
-                        <td className={`${compact?"px-1.5 py-0.5":"px-3 py-1.5"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold tabular-nums text-slate-500 dark:text-zinc-400`}>
-                          {week.totalIn>0 && <div>+{h$(rIn(week.totalIn))}</div>}
-                          {week.totalOut>0 && <div>−{h$(rOut(week.totalOut))}</div>}
-                        </td>
-                        <td></td>
-                      </tr>
-                      {visibleRows.map(row=><WhiteboardBoardRow key={row.day} row={row} h$={h$} navigate={navigate} readOnly={effReadOnly} compact={compact} roundMode={roundMode}
-                        onPickDate={(e,newDate)=>onPickDate?.(e,newDate)} onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate}
-                        onMarkClosed={onMarkClosed} onExcludeMany={onExcludeMany} onSendToNoDate={onSendToNoDate}/>)}
-                    </Fragment>
-                  );
-                })}
-                {ledgerWeeks.every(w=>w.rows.every(r=>r.entries.length===0)) && (
-                  <tr><td colSpan={4} className="px-3 py-10 text-center text-xs text-slate-400 dark:text-zinc-500 italic">Nothing scheduled in this window</td></tr>
-                )}
+                {/* Kyle, 11/19: every day shows now (not just populated ones — see
+                    WhiteboardBoardRow's collapsed branch), so there's always a row to drag a
+                    card onto; the week-subtotal header rows are gone in favor of just shading
+                    weekend rows a touch darker (also in WhiteboardBoardRow) — totals still
+                    live in the summary strip above. */}
+                {ledgerWeeks.flatMap(week=>week.rows).map(row=>
+                  <WhiteboardBoardRow key={row.day} row={row} h$={h$} readOnly={effReadOnly} compact={compact} roundMode={roundMode}
+                    onPickDate={(e,newDate)=>onPickDate?.(e,newDate)} onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate}
+                    onMarkClosed={onMarkClosed} onExcludeMany={onExcludeMany} onSendToNoDate={onSendToNoDate}/>)}
               </tbody>
             </table>
           </DndContext>
@@ -9532,7 +9508,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
 
       {effectiveBoardView==="board" && (
         <WhiteboardBoardView startingBalance={startingBalance} startingLabel={usingMercury?`Mercury ${mercury.source||""}`.trim():"Manual balance"}
-          ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} navigate={navigate} readOnly={readOnly} roundMode={roundMode} forceTv={publicMode}
+          ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} readOnly={readOnly} roundMode={roundMode} forceTv={publicMode}
           firstBelow10k={firstBelowThreshold(ledgerRows, 10000)} firstNegative={firstBelowThreshold(ledgerRows, 0)}
           onPickDate={readOnly?undefined:handleBoardPickDate} onSetAmount={readOnly?undefined:setAmountOverride}
           onResetAmount={readOnly?undefined:resetAmountOverride} onResetDate={readOnly?undefined:resetMovedDate}

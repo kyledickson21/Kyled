@@ -1159,15 +1159,19 @@ types.
   switches to a denser layout (smaller padding/fonts, edit icons hidden) so a typical dataset
   fits without scrolling. Not a promise of zero scroll for an arbitrarily large dataset — the
   table body can still scroll on its own — just chrome-free and as dense as stays legible.
-  **Summary tiles are TV-specific (11/17, two rounds of feedback)** — normal Board view keeps
-  Lowest Balance/Total In/Total Out/Ending Balance, but TV Mode swaps the first and last for
-  two pure-date bubbles: "Under $10k" (the date the balance first drops below that floor, or
-  "✓ stays above") and "Goes Negative" (the date it first goes below $0, or "✓ never") — each
-  a sub-label showing the $ short/remaining that day. Both come from the same generalized
-  `firstBelowThreshold(ledgerRows, threshold)` helper (just called with `10000` and `0`),
-  computed in `WhiteboardPage` and passed down as `firstBelow10k`/`firstNegative`. (An earlier
-  pass combined the negative-balance date into one "Need to Find $X by \<date\>" tile — Kyle
-  asked for it split into its own plain date bubble instead, matching "Under $10k"'s shape.)
+  **Summary tiles are now the same 4 in both Board view and TV Mode (11/17 → 11/19)** — Under
+  $10k | Goes Negative | Total In | Total Out, only `compact` (TV Mode) changing the sizing
+  (padding/font), not which tiles show. "Under $10k" (the date the balance first drops below
+  that floor, or "✓ stays above") and "Goes Negative" (the date it first goes below $0, or
+  "✓ never") each show a sub-label with the $ short/remaining that day, both from the same
+  generalized `firstBelowThreshold(ledgerRows, threshold)` helper (called with `10000` and
+  `0`), computed in `WhiteboardPage` and passed down as `firstBelow10k`/`firstNegative`. (This
+  went through three shapes: first "Lowest Balance"/"Ending Balance" in Board view only, then
+  TV Mode got its own distinct "Need to Find $X by \<date\>" + "Under $10k" pair, then that
+  split into the current "Under $10k"/"Goes Negative" pair — Kyle, 11/19: "make the regular
+  mode have the same headers as what TV mode has now," unifying both views on that last shape.
+  `hasShortfall`/`ledgerSum.lowest`/`ledgerSum.ending` are no longer read by this component at
+  all — `ledgerSummary()` itself is untouched and still computes/tests them, just unused here.)
 - **Tests**: `tests/whiteboard-overrides.test.mjs` — `applyAmountOverride`/`manualFillCards`
   (composability with `applyMovedDate`, never duplicating an id that already has a real card,
   the next-business-day clearing rule). `tests/whiteboard-ledger.test.mjs`'s "never calls
@@ -1373,15 +1377,62 @@ are untouched), only how they're RENDERED changed.
 - Table is now DATE | ADDRESS | AMOUNT | NEW BALANCE. The merged Amount cell stacks `+$X`
   (if `netIn>0`) and `−$Y` (if `netOut>0`) as plain neutral-colored lines (`text-slate-600`/
   `dark:text-zinc-300`) in one `<td>` — no more emerald/red on the in/out figures themselves.
-  Same merge for the week-subtotal row's totalIn/totalOut cell (neutral `text-slate-500`) and
-  the table header (one "Amount" `<th>`, neutral).
+  Same change for the table header (one "Amount" `<th>`, neutral).
 - **New Balance is now green when positive, red when negative** (previously red-when-negative
   but plain slate otherwise) — on the per-row balance cell, AND the "Current" starting-balance
   row's own balance cell, which gets the identical sign check (`rBal(startingBalance)<0`) so
   it's visually consistent with every row below it. The red "Need $X" sub-line under a
-  shortfall row is unchanged. This is scoped to the ledger TABLE specifically — the Lowest
-  Balance/Total In/Total Out/Ending Balance summary tiles above the table, and TV Mode's
-  "Under $10k"/"Goes Negative" bubbles, were not touched (not part of what was asked).
+  shortfall row is unchanged. This was originally scoped to the ledger TABLE only, leaving the
+  summary tiles above it untouched — those tiles were separately unified with TV Mode's right
+  after (see below), so the distinction no longer matters in practice.
+- **The summary tiles were unified with TV Mode the same day** — Kyle: "make the regular mode
+  have the same headers as what TV mode has now." See "Board view interactivity"'s TV Mode
+  bullet above (now says both views share Under $10k/Goes Negative/Total In/Total Out).
+
+### Board view table: every day shows, weekend shading instead of week subtotals (11/19)
+Kyle: "have this view show like each day so that we can drag it easily... collapse them so
+they're smaller... don't really need the week total view, maybe just make the weekend days a
+little darker shade."
+- **Every day in the window gets a row now** — `WhiteboardBoardView` no longer filters
+  `week.rows` down to only populated days before rendering (`ledgerWeeks.flatMap(week=>
+  week.rows)` instead of `visibleRows = week.rows.filter(r=>r.entries.length>0)`). The real
+  reason this mattered: a day with nothing on it used to have NO row at all, so there was
+  nowhere to DROP a dragged card to land it there — showing every day means every day is
+  always a valid `useDroppable` target.
+- **An empty day renders collapsed** — `WhiteboardBoardRow` branches early (after calling
+  `useDroppable` unconditionally, so hook order never depends on which branch runs) into a
+  thin, muted row (`text-[9px]`, tighter padding, no address/amount detail, just the date and
+  that day's running balance) when `row.entries.length===0`, instead of the full detailed row
+  a populated day gets.
+- **Week-subtotal header rows are gone** — replaced with weekend shading: `wbIsWeekend(row.day)`
+  (an existing top-level helper, already used by the inflow-clearing logic) applies a subtle
+  darker background (`bg-slate-50 dark:bg-zinc-900/40`) to a Saturday/Sunday row, in BOTH the
+  collapsed and full branches, so weekends are still visually obvious at a glance without a
+  separate subtotal row breaking up the flow — the real totals still live in the summary strip
+  above the table. A shortfall day's red background still takes priority over weekend shading.
+  `groupLedgerRowsByWeek`/week-level totals themselves are untouched (still computed, still
+  tested) — this is purely that `WhiteboardBoardView` stopped displaying them, not a removal of
+  the underlying pure function.
+
+### Board entries: click to edit, no icon-button row (11/19)
+Kyle: "don't wanna see the calendar and notes and whatever button — just wanna edit it by
+clicking the thing already on the board directly... more streamlined." `WhiteboardBoardEntry`
+no longer shows an always-visible row of 📅/✏️/📋/✕ icon buttons.
+- **Click the entry to open one combined editor** — a single click (dnd-kit's own activation
+  distance already distinguishes a click from a drag, so this never fights the existing
+  drag-to-reschedule behavior) toggles an inline panel with an amount input AND a date input
+  together, a "Save" button that calls `onSetAmount`/`onPickDate` for whichever actually
+  changed, plus "No Date" (`onSendToNoDate`) and "Remove" (`onMarkClosed`) as small text
+  buttons inside that same panel instead of their own permanent icons.
+- **Clicking no longer navigates to the property** — the address was previously a link that
+  opened the property detail panel; that's dropped in favor of click-to-edit being the single,
+  unambiguous click action on a Board entry (property navigation is still one click away via
+  Row view or the Properties page). The "manual"/"⏰ overdue" badges and the "edited (was $X)"/
+  "📌 moved" notes (with their own Reset links) are unchanged — those are state, not buttons,
+  so they stayed.
+- `navigate` is no longer threaded through `WhiteboardBoardEntry`/`WhiteboardBoardRow`/
+  `WhiteboardBoardView` at all (removed from all three signatures and call sites) now that
+  nothing in the Board view's own components still needs it.
 
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view
