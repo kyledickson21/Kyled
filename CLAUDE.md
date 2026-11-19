@@ -1414,25 +1414,41 @@ little darker shade."
   tested) — this is purely that `WhiteboardBoardView` stopped displaying them, not a removal of
   the underlying pure function.
 
-### Board entries: click to edit, no icon-button row (11/19)
+### Board entries: click-to-edit, streamlined twice over (11/19)
 Kyle: "don't wanna see the calendar and notes and whatever button — just wanna edit it by
 clicking the thing already on the board directly... more streamlined." `WhiteboardBoardEntry`
 no longer shows an always-visible row of 📅/✏️/📋/✕ icon buttons.
-- **Click the entry to open one combined editor** — a single click (dnd-kit's own activation
-  distance already distinguishes a click from a drag, so this never fights the existing
-  drag-to-reschedule behavior) toggles an inline panel with an amount input AND a date input
-  together, a "Save" button that calls `onSetAmount`/`onPickDate` for whichever actually
-  changed, plus "No Date" (`onSendToNoDate`) and "Remove" (`onMarkClosed`) as small text
-  buttons inside that same panel instead of their own permanent icons.
-- **Clicking no longer navigates to the property** — the address was previously a link that
-  opened the property detail panel; that's dropped in favor of click-to-edit being the single,
-  unambiguous click action on a Board entry (property navigation is still one click away via
-  Row view or the Properties page). The "manual"/"⏰ overdue" badges and the "edited (was $X)"/
-  "📌 moved" notes (with their own Reset links) are unchanged — those are state, not buttons,
-  so they stayed.
-- `navigate` is no longer threaded through `WhiteboardBoardEntry`/`WhiteboardBoardRow`/
-  `WhiteboardBoardView` at all (removed from all three signatures and call sites) now that
-  nothing in the Board view's own components still needs it.
+- **First pass**: a single click anywhere on the entry (dnd-kit's own activation distance
+  already distinguishes a click from a drag, so this never fights drag-to-reschedule) opened
+  one combined amount+date editor. Clicking stopped navigating to the property (Row view/the
+  Properties page still do) — kept in the final design below too.
+- **Kyle's immediate follow-up, same day — the actual shipped design**: "click on the amount
+  to edit it, click on the date to edit it, not just the address... thinner rows... get rid of
+  the extra text saying it was moved/edited, maybe just some symbol" — then, before that was
+  even built, one more refinement: "just a little undo arrow right next to the actual thing
+  that was edited... it makes us confirm first." One compact single-line entry:
+  `[⏰ if overdue] address  [↺ if moved] date  [↺ if amount-edited] amount  📋  ✕`.
+  - The **date** and **amount** are each their own small clickable value — clicking either
+    swaps just that one value for its own inline input (`<input type="date">` / `<input
+    type="number">`), independent of the other. No combined editor, no Save button — a date
+    picks are applied the moment a value is chosen; an amount commits on blur/Enter (Escape
+    cancels), matching the rest of the app's inline-edit conventions.
+  - A value that's been manually overridden shows a tiny **↺ undo arrow right next to it**
+    (violet for a moved date, indigo for an edited amount) instead of a sentence — clicking it
+    calls `window.confirm("Reset the date/amount back to <original>?")` and only resets
+    (`onResetDate`/`onResetAmount`) if confirmed. The old "manual"/"edited (was $X)"/"📌 moved
+    (source says X)" text blocks are gone entirely; ⏰ (overdue — money hasn't hit the account
+    yet) is the only other symbol left, and only when the date hasn't ALSO been manually moved.
+  - 📋 (Move to No-Date) and ✕ (Mark Closed/remove) stay as small persistent icons at the end
+    of the line — these are distinct, meaningful actions (not a value to click-to-edit), so
+    they keep their own tiny always-visible buttons rather than being folded into anything.
+  - Row padding shrank too (`px-3 py-2` → `px-3 py-1` in normal, non-TV-mode Board view) —
+    combined with entries now being one compact line instead of multi-line note blocks, rows
+    are meaningfully thinner overall, as asked.
+- `navigate`/`compact` are no longer threaded through `WhiteboardBoardEntry` at all (dropped
+  from its own signature and call site along with the rest of this redesign) — neither is read
+  anywhere in the final version; `navigate` is also gone from `WhiteboardBoardRow`/
+  `WhiteboardBoardView`'s signatures and call sites, same as the first pass already noted.
 
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view

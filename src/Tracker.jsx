@@ -8440,60 +8440,58 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
 // from WhiteboardPage's own `ledgerRows`/`ledgerSum` (built from the exact same dayCols/
 // balances/cards the Calendar view uses), so it can't compute, store, or drift from anything.
 // A single sell/buy line within a Board row — draggable onto another row to reschedule (see
-// WhiteboardBoardView's own DndContext). Streamlined (Kyle, 11/19: "don't wanna see the
-// calendar and notes and whatever button — just wanna edit it by clicking the thing already
-// on the board"): no row of always-visible icon buttons — clicking the entry itself opens one
-// combined amount+date editor, with "Remove" (Mark Closed) and "No Date" tucked inside that
-// same editor instead of their own permanent buttons.
-const WhiteboardBoardEntry = ({ e, h$, readOnly, compact, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onSendToNoDate }) => {
-  const [editing, setEditing] = useState(false);
+// WhiteboardBoardView's own DndContext). Streamlined twice over (Kyle, 11/19): first to
+// click-to-edit instead of a row of icon buttons, then refined again — "click on the amount
+// to edit it, click on the date to edit it, not just the address for everything... thinner
+// rows... get rid of all the extra text saying it was moved/edited, maybe just some symbol."
+// So: the date and the amount are each their OWN small clickable value (not one combined
+// editor), and an edited value shows a tiny ↺ undo arrow right next to it instead of a
+// sentence — click the ↺ (after confirming) to put it back, click the value itself to edit it
+// again. One compact line per entry; no more "manual"/multi-line note blocks.
+const WhiteboardBoardEntry = ({ e, h$, readOnly, onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onSendToNoDate }) => {
+  const [editingAmount, setEditingAmount] = useState(false);
+  const [editingDate, setEditingDate] = useState(false);
   const [amountDraft, setAmountDraft] = useState(String(e.amount||""));
-  const [dateDraft, setDateDraft] = useState(e.day||"");
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: e.id, disabled: readOnly });
   const dragStyle = transform ? { transform:`translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
-  const openEdit = () => {
-    if (readOnly) return;
-    setAmountDraft(String(e.amount||""));
-    setDateDraft(e.day||"");
-    setEditing(x=>!x);
-  };
-  const save = () => {
+  const saveAmount = () => {
     const v = parseFloat(amountDraft);
     if (!isNaN(v) && v>=0 && v!==e.amount) onSetAmount(e.id, Math.round(v*100)/100);
-    if (dateDraft && dateDraft!==e.day) onPickDate(dateDraft);
-    setEditing(false);
+    setEditingAmount(false);
   };
+  const resetAmount = ev => { ev.stopPropagation(); if (window.confirm(`Reset the amount back to ${h$(e.originalAmount)}?`)) onResetAmount(); };
+  const resetDate = ev => { ev.stopPropagation(); if (window.confirm(`Reset the date back to ${e.sourceDate?wbFmtDate(e.sourceDate):"its original"}?`)) onResetDate(); };
   return (
-    <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})} onClick={openEdit}
-      className={`${compact?"mb-0.5 pb-0.5":"mb-1 pb-1"} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-pointer touch-none":""}`}>
-      <div className="truncate" title={e.fullLabel||e.label}>
-        <span>{e.label}</span>
-        {e.manualEntry && <span className="ml-1 text-[9px] font-bold uppercase text-violet-500 dark:text-violet-400">manual</span>}
-        {e.pastDue && !e.manualDate && <span className="ml-1 text-[9px] font-bold uppercase text-amber-500 dark:text-amber-400" title="Hasn't hit the account yet">⏰ overdue</span>}
-      </div>
-      {editing && !readOnly ? (
-        <div onClick={ev=>ev.stopPropagation()} className="flex items-center gap-1 mt-0.5 flex-wrap">
-          <input type="number" step="0.01" autoFocus value={amountDraft} onChange={ev=>setAmountDraft(ev.target.value)}
-            onKeyDown={ev=>{ if(ev.key==="Enter") save(); if(ev.key==="Escape") setEditing(false); }}
-            className="w-20 text-[11px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-          <input type="date" value={dateDraft} onChange={ev=>setDateDraft(ev.target.value)}
-            className="text-[10px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-          <button onClick={save} className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-teal-600 text-white">Save</button>
-          {onSendToNoDate && <button onClick={()=>{onSendToNoDate();setEditing(false);}} className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 hover:underline">No Date</button>}
-          <button onClick={()=>{onMarkClosed();setEditing(false);}} className="text-[10px] font-semibold text-red-500 dark:text-red-400 hover:underline">Remove</button>
-        </div>
+    <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
+      className={`flex items-center gap-1 text-[10px] mb-0.5 ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
+      <span className="truncate flex-1 min-w-0" title={e.fullLabel||e.label}>
+        {e.pastDue && !e.manualDate && <span title="Hasn't hit the account yet">⏰</span>} {e.label}
+      </span>
+      {editingDate && !readOnly ? (
+        <input type="date" autoFocus defaultValue={e.day} onClick={ev=>ev.stopPropagation()}
+          onChange={ev=>{ if(ev.target.value && ev.target.value!==e.day) onPickDate(ev.target.value); setEditingDate(false); }}
+          onBlur={()=>setEditingDate(false)}
+          className="w-[100px] shrink-0 border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
       ) : (
-        e.manualAmount && (
-          <div className="text-[9px] text-indigo-600 dark:text-indigo-400 mt-0.5">
-            edited (was {h$(e.originalAmount)}){!readOnly && onResetAmount && <button onClick={ev=>{ev.stopPropagation();onResetAmount();}} className="ml-1 font-semibold hover:underline">Reset</button>}
-          </div>
-        )
+        <span className="shrink-0 flex items-center gap-0.5">
+          {e.manualDate && onResetDate && <button onClick={resetDate} title="Edited — click to undo" className="text-violet-500 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300">↺</button>}
+          <button onClick={ev=>{ev.stopPropagation();if(!readOnly)setEditingDate(true);}} className={`text-slate-500 dark:text-zinc-400 ${readOnly?"":"hover:underline"}`}>{wbFmtDate(e.day)}</button>
+        </span>
       )}
-      {e.manualDate && (
-        <div className="text-[9px] text-violet-600 dark:text-violet-400 mt-0.5">
-          📌 moved{e.sourceDate && e.sourceDate!==e.day?` (source says ${wbFmtDate(e.sourceDate)})`:""}{!readOnly && onResetDate && <button onClick={ev=>{ev.stopPropagation();onResetDate();}} className="ml-1 font-semibold hover:underline">Reset</button>}
-        </div>
+      {editingAmount && !readOnly ? (
+        <input type="number" step="0.01" autoFocus value={amountDraft} onClick={ev=>ev.stopPropagation()}
+          onChange={ev=>setAmountDraft(ev.target.value)}
+          onKeyDown={ev=>{ if(ev.key==="Enter") saveAmount(); if(ev.key==="Escape") setEditingAmount(false); }}
+          onBlur={saveAmount}
+          className="w-16 shrink-0 border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+      ) : (
+        <span className="shrink-0 flex items-center gap-0.5">
+          {e.manualAmount && onResetAmount && <button onClick={resetAmount} title="Edited — click to undo" className="text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">↺</button>}
+          <button onClick={ev=>{ev.stopPropagation();if(!readOnly){setAmountDraft(String(e.amount||""));setEditingAmount(true);}}} className={`font-semibold tabular-nums text-slate-600 dark:text-zinc-300 ${readOnly?"":"hover:underline"}`}>{h$(e.amount)}</button>
+        </span>
       )}
+      {!readOnly && onSendToNoDate && <button onClick={ev=>{ev.stopPropagation();onSendToNoDate();}} title="Move to No-Date" className="shrink-0 text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400">📋</button>}
+      {!readOnly && <button onClick={ev=>{ev.stopPropagation();onMarkClosed();}} title="Take off the timeline" className="shrink-0 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>}
     </div>
   );
 };
@@ -8510,7 +8508,7 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onPickDate,
   const sellBuyEntries = other.filter(e=>e.kind==="sell"||e.kind==="buy");
   const plainOther = other.filter(e=>e.kind!=="sell"&&e.kind!=="buy");
   const { setNodeRef: setRowDropRef, isOver } = useDroppable({ id: row.day });
-  const td = compact ? "px-1.5 py-0.5" : "px-3 py-2";
+  const td = compact ? "px-1.5 py-0.5" : "px-3 py-1";
   const txt = compact ? "text-[10px]" : "text-xs";
   // Every day in the window gets a row now (Kyle, 11/19: "show each day so we can drag it
   // easily" — a day with nothing on it used to be skipped entirely, which meant there was no
@@ -8542,7 +8540,7 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onPickDate,
           </div>
         ))}
         {sellBuyEntries.map(e=>(
-          <WhiteboardBoardEntry key={e.id} e={e} h$={h$} readOnly={readOnly} compact={compact}
+          <WhiteboardBoardEntry key={e.id} e={e} h$={h$} readOnly={readOnly}
             onPickDate={readOnly?undefined:(newDate)=>onPickDate(e, newDate)}
             onSetAmount={readOnly?undefined:(id,amt)=>onSetAmount(id,amt)}
             onResetAmount={readOnly||!e.manualAmount?undefined:()=>onResetAmount(e.id)}
