@@ -504,6 +504,47 @@ into what's treated as in-hand.
   intentionally left untouched for the same reason — only `PropertyDashboard`'s capital
   calculator is about present-tense cash position.
 
+### Properties page — an under-contract property's funding estimate adopts the Whiteboard's real closing date (11/21)
+Kyle: "we estimate how much funding we can apply to a property by also including how much
+we'll pay in monthly payments/holding costs, which estimates by the rehab amount. For anything
+that's under contract, can you change that estimated time to the time it would be with the
+closing according to the whiteboard page if it's placed on a date there? If its not placed on
+a date then just use the estimate." `effectiveMonths(prop)` (top of `Tracker.jsx`) is the
+estimated hold length `propNeeded` multiplies the monthly loan cost against — normally either
+Kyle's own manual `projectMonths` override, or a generic rehab-size guess
+(`Math.ceil((rehab/1000+60)/30)`) when there's nothing else to go on.
+- **`effectiveMonths(prop, closingMonthsOverride)`** and **`propNeeded(prop, activeLoans,
+  closingMonthsOverride)`** each take a new optional last argument (same pattern as
+  `calcIntEarned`'s optional `data` arg — every pre-existing call site across the file omits it
+  and is completely unchanged). `projectMonths` still wins over everything — it's Kyle's own
+  explicit override, not a default this replaces.
+- **`isInventoryResimpli(p)`** (the REsimpli Inventory-pipeline test, previously declared only
+  inside `WhiteboardPage`) is now a module-level helper next to `effectiveMonths`, so both it
+  and `PropertiesPage` share the exact same test instead of risking two copies drifting apart.
+- **`PropertiesPage` itself** filters to its own active, under-contract properties
+  (`!dateSold && isInventoryResimpli(p) && p.resimpli?.stage==="Under Contract"`), fetches their
+  real closing dates via the SAME `fetchSellDates()` endpoint (`api/sell-dates.mjs`) the
+  Whiteboard already uses for this — a plain, read-only lookup that has nothing to do with
+  `whiteboardOverrides` — and converts a resolved date into months-from-today
+  (`daysBetween(TODAY, row.date)/30.44`, floored the same 0.5-month minimum as the manual
+  override path). That per-property map is passed as the new 3rd argument at every
+  `propNeeded(...)` call site inside `PropertiesPage` (the condensed/grid/expanded funded bars,
+  the shortage sort in both places it's computed, and the pipeline-view column cards) — nowhere
+  else in the file.
+- **Deliberately does NOT read any manual Whiteboard-only date/amount override** (a drag, a
+  pencilled-in "+Add Closing" date, a Fill-In, etc. — all of it lives inside the
+  Whiteboard-exclusive override key this file has a dedicated isolation rule/test for, which
+  `PropertiesPage` must never touch). Only REsimpli's own stage plus the real Sheet/REsimpli-
+  fallback date counts as "placed on a date there" for this estimate — so Kyle testing a
+  what-if date shuffle purely for cash-flow forecasting purposes on the Whiteboard can never
+  silently reshape this page's funding math. A property with no resolved date at all (still in
+  Needs Info, or not under contract) falls straight through to the existing rehab-size
+  estimate, unchanged.
+- **Scope**: `PropertiesPage` only — `PropertyDashboard`, `RehabPriorityPage`,
+  `DashboardPage`, and every other `propNeeded`/`effectiveMonths` call site across the file are
+  untouched, same "only the page Kyle actually asked about changes" precedent as the
+  Prop-Dashboard-vs-Properties-tab funded/committed distinction just above.
+
 ## REsimpli Stage Tracking (Properties Page)
 Reference-only metadata (`property.resimpli` — see Data Shape above) for where a deal sits in
 REsimpli's own pipeline. Never touches any money field, loan, lender, or draw.
@@ -1659,6 +1700,51 @@ the no date, and same gray color when it's in the 'hit account' box."
   this explanation the system should be intuitive enough that it needs no instructions." The
   No-Date zone's header is now just "No Date" (the Archive zone's own "📦 Drag here once it's
   hit the real account" label was left alone — not named in this request).
+- **No date button on a plain bill/unscheduled pill — drag only**: Kyle: "why's there still a
+  date button on this bill? It should just be drag just like the rest. Get rid of it." The 📅
+  toggle (added in the uniform-pill-shape pass above) is gone for a plain bill/unscheduled card
+  — it now has NO action button at all at rest, same resting shape as a Sell/Buy pill. Giving it
+  a date is purely a drag now: `handleBoardDragEnd` (inside `WhiteboardBoardView`) gained a new
+  branch — a dragged id found in `noDateSorted` with kind `"bill"`/`"unscheduled"`, dropped on a
+  real day row (not the Archive or No-Date zone itself), calls `setCardDay(id, day)` directly,
+  the same writer Row/Month's own drag-to-schedule already uses. Needs-Info still keeps "Fill
+  in" — there's no underlying `whiteboard.cards` entry yet to drag onto a day until one's
+  pencilled in; `onHold` still keeps its ↩ restore.
+- **Pills centered in both boxes**: the No-Date zone's pill row didn't have `justify-center`
+  (the Archive zone's already did) — added, so a short list of pills centers in the box instead
+  of hugging the left edge in either one.
+- **Street-type suffixes stripped from every Whiteboard address label**: Kyle: "is there a
+  reliable way to get rid of the street type showing to make it more streamlined? Like St, Dr,
+  Blvd, etc?" `stripStreetType(street)` (new, `whiteboard-forecast.mjs`) drops a trailing
+  USPS-style street-type word ("8730 Colvin Dr" → "8730 Colvin") — checked only at (or just
+  before a trailing directional at) the END of the string, so a mid-string word like "Highway"
+  in "2854 Us Highway 62 SW" is left alone rather than mangling a real road name. Deliberately a
+  SEPARATE function from `shortAddress` itself, never a change to it — several tests, and the
+  REsimpli address-matching code elsewhere, rely on `shortAddress` returning the full street
+  line unchanged. `displayAddr(a) = stripStreetType(shortAddress(a))` (module-level, next to
+  `effectiveMonths`) is the one new choke point every Whiteboard pill/chip `label` now goes
+  through instead of a bare `shortAddress(...)` call (Board/Row/Month pills and chips, the
+  No-Date box, loan-payment labels) — a card's `fullLabel`/tooltip still shows the complete
+  original address untouched, only the headline label is shortened.
+- **"Under $10k"/"Goes Negative" removed; replaced by one integrated "Days til negative" line**:
+  Kyle, from a screenshot of the two tiles: "get rid of both these boxes and add an integrated
+  'Days til negative' thing." The two standalone stat tiles above the ledger table (shared by
+  Board view and TV Mode) are gone outright, along with the now-unused `firstBelow10k` prop
+  (its `firstBelowThreshold(ledgerRows, 10000)` computation at the `WhiteboardPage` call site
+  was removed too — nothing else used it). A single small line — "⏳ Nd to negative" (red) or
+  "✓ never negative" (emerald), computed from the already-passed `firstNegative` via
+  `daysBetween(TODAY, firstNegative.day)` — is now folded directly into the Current row, right
+  next to the starting-balance label, the same "fold it into Current instead of a separate box"
+  pattern Set Aside already used.
+- **Column headers removed from the ledger table**: Kyle: "get rid of these headers
+  completely" (the Date/Money Moves/Balance header row). Removed outright — the always-first
+  Current row already orients a new viewer without a header to explain the columns.
+- **Tests**: `stripStreetType` (trailing type word, trailing-directional case, mid-string word
+  left alone, no-type/too-few-words no-op) in `tests/whiteboard-ledger.test.mjs`, alongside the
+  existing `shortAddress` tests. Nothing else in this batch needed new pure-function tests —
+  the drag-to-day-row branch, the removed stat tiles/header row, and the integrated days-to-
+  negative line are wiring/presentation on already-tested pure logic (`firstBelowThreshold`,
+  `daysBetween`), same reasoning as every other UI-only change in this file.
 
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view

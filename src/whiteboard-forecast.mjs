@@ -224,6 +224,46 @@ export function shortAddress(address) {
   return address.split(",")[0].trim();
 }
 
+// Common USPS street-type suffixes, abbreviated and spelled out, lowercased. Kyle, 11/21,
+// looking at a Board view screenshot: "is there a reliable way to get rid of the street type
+// showing to make it more streamlined? Like St, Dr, Blvd, etc?"
+const STREET_TYPE_WORDS = new Set([
+  "st", "street", "dr", "drive", "blvd", "boulevard", "ave", "avenue", "ct", "court",
+  "ln", "lane", "rd", "road", "way", "pl", "place", "cir", "circle", "ter", "terrace",
+  "pkwy", "parkway", "trl", "trail", "sq", "square", "loop", "run", "pass", "xing", "crossing",
+  "aly", "alley", "byp", "bypass", "cv", "cove", "cres", "crescent", "est", "estates",
+  "expy", "expressway", "ext", "extension", "frwy", "freeway", "grn", "green", "grv", "grove",
+  "hts", "heights", "holw", "hollow", "isle", "knl", "knoll", "lndg", "landing", "mnr", "manor",
+  "mdws", "meadows", "mtn", "mountain", "orch", "orchard", "pike", "plz", "plaza", "pt", "point",
+  "rdg", "ridge", "shrs", "shores", "spg", "spring", "sta", "station", "strm", "stream",
+  "trce", "trace", "vly", "valley", "vw", "view", "vlg", "village", "wlk", "walk", "wds", "woods",
+]);
+// A trailing directional sits AFTER the street type ("...St N"), not instead of it — checked
+// so the type word just before it is still found and stripped, rather than treating the
+// directional itself as the (non-matching) last word and stopping there.
+const DIRECTIONAL_WORDS = new Set(["n", "s", "e", "w", "ne", "nw", "se", "sw"]);
+
+// Drops a trailing street-type word from an already-shortened street line (see shortAddress
+// above) for display — "8730 Colvin Dr" -> "8730 Colvin", "4733 Hillcrest St N" -> "4733
+// Hillcrest N". Deliberately only strips a type word found at (or just before a trailing
+// directional at) the END of the string — a mid-string word like "Highway" in "2854 Us Highway
+// 62 SW" is left alone, since stripping it there would mangle the real road name rather than
+// a suffix. Separate from shortAddress itself (which several tests, and the address-matching
+// code elsewhere, rely on returning the FULL street line) — this is purely a display layer on
+// top of it.
+export function stripStreetType(street) {
+  if (!street) return street;
+  const words = street.split(/\s+/);
+  if (words.length < 2) return street;
+  const bare = w => w.replace(/\.$/, "").toLowerCase();
+  let typeIdx = words.length - 1;
+  if (DIRECTIONAL_WORDS.has(bare(words[typeIdx])) && words.length > 2) typeIdx -= 1;
+  if (!STREET_TYPE_WORDS.has(bare(words[typeIdx]))) return street;
+  const next = [...words];
+  next.splice(typeIdx, 1);
+  return next.join(" ");
+}
+
 // Splits a day's entries into {loanPayments, other} and decides whether the loan-payment
 // lines should collapse into one summary row — display-only grouping, never changes any
 // amount: the row's own netIn/netOut/balance (from buildLedgerRows) already sum every entry

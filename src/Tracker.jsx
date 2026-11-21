@@ -13,7 +13,7 @@ import {
 import {
   nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary, withinWindow,
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
-  buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary, shortAddress, groupLoanPaymentEntries,
+  buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary, shortAddress, stripStreetType, groupLoanPaymentEntries,
   applyAmountOverride, manualFillCards, clampToToday, roundDown5k, roundUp5k,
   sortByPriorityOrder, firstBelowThreshold,
 } from './whiteboard-forecast.mjs'
@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "4";
+const APP_VERSION = "5";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -75,6 +75,14 @@ const nextDay = d => { const [y,m,day]=d.split('-').map(Number); const dt=new Da
 // property with no detected date at all falls through to the existing rehab-based estimate
 // below, exactly as before. A manually-set `projectMonths` still wins over both — it's Kyle's
 // own explicit override, not a default to replace.
+// Kyle, 11/21, re: a Whiteboard screenshot: "is there a reliable way to get rid of the street
+// type showing to make it more streamlined? Like St, Dr, Blvd, etc?" A separate display-only
+// wrapper around shortAddress (never shortAddress itself — several tests and the address-
+// matching code elsewhere rely on it returning the full street line) — used for every
+// Whiteboard pill/chip label, never for a `fullLabel`/tooltip, which still shows the complete
+// original address.
+const displayAddr = a => stripStreetType(shortAddress(a));
+
 const effectiveMonths = (prop, closingMonthsOverride) => {
   if (prop?.projectMonths!=null&&prop.projectMonths!=="") return Math.max(0.5,parseFloat(prop.projectMonths)||2);
   if (closingMonthsOverride!=null) return Math.max(0.5, closingMonthsOverride);
@@ -3680,6 +3688,39 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
     onClearPendingAction?.();
   },[pendingAction]);
 
+  // Kyle, 11/21: "we estimate how much funding we can apply to a property by also including
+  // how much we'll pay in monthly payments/holding costs, which estimates by the rehab
+  // amount. For anything that's under contract, can you change that estimated time to the
+  // time it would be with the closing according to the whiteboard page if it's placed on a
+  // date there? If its not placed on a date then just use the estimate." — a property under
+  // contract to sell has a REAL closing date (REsimpli stage + the Sheet/REsimpli-fallback
+  // date the Whiteboard itself resolves via the same `/api/sell-dates` endpoint) that's a far
+  // better estimate of the remaining hold period than the generic rehab-size guess
+  // `effectiveMonths` falls back to. Scoped to real detected dates only — NOT any manual
+  // Whiteboard-only drag/fill date override (that state is used purely for cash-flow
+  // forecasting convenience, and this page must never read it at all — it lives in a Whiteboard-
+  // exclusive key this file has a dedicated isolation rule/test for) — so a Kyle testing a
+  // what-if date shuffle on the Whiteboard
+  // never silently reshapes this page's funding math.
+  const underContractProps = (data.properties||[]).filter(p=>!p.dateSold && isInventoryResimpli(p) && p.resimpli?.stage==="Under Contract");
+  const underContractKey = underContractProps.map(p=>p.id).sort().join(",");
+  const [closingDatesResult,setClosingDatesResult] = useState({rows:[]});
+  useEffect(()=>{
+    let cancelled=false;
+    if(underContractProps.length===0){ setClosingDatesResult({rows:[]}); return; }
+    fetchSellDates(underContractProps.map(p=>({id:p.id,address:p.address,leadId:p.resimpli?.leadId||null})))
+      .then(r=>{ if(!cancelled) setClosingDatesResult(r); })
+      .catch(()=>{});
+    return ()=>{cancelled=true;};
+  },[underContractKey]);
+  const closingMonthsByPropId = {};
+  for (const row of (closingDatesResult.rows||[])) {
+    if (!row.date) continue;
+    // daysBetween floors a past date to 0 rather than going negative — effectiveMonths'
+    // own 0.5-month floor (same as the manual projectMonths path) picks up from there.
+    closingMonthsByPropId[row.id] = Math.max(0.5, daysBetween(TODAY, row.date)/30.44);
+  }
+
   const saveMoneyForm = f => {
     const base=loanFields(f);
     if(f.destination==="unassigned"){
@@ -3897,7 +3938,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         return (ia===-1?Infinity:ia)-(ib===-1?Infinity:ib)||(a.id||"").localeCompare(b.id||"");
       }
       if(propSortMode==="shortage"){
-        const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};
+        const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al,closingMonthsByPropId[p.id])-f);};
         return d*(shortOf(b)-shortOf(a))||(a.id||"").localeCompare(b.id||"");
       }
       if(propSortMode==="rehabPriority")return d*(rehabBurn(b)-rehabBurn(a));
@@ -3914,7 +3955,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         const ia=manualOrder.indexOf(a.id), ib=manualOrder.indexOf(b.id);
         return (ia===-1?Infinity:ia)-(ib===-1?Infinity:ib)||(a.id||"").localeCompare(b.id||"");
       }
-      if(propSortMode==="shortage"){const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al)-f);};return shortOf(b)-shortOf(a)||(a.id||"").localeCompare(b.id||"");}
+      if(propSortMode==="shortage"){const shortOf=p=>{const al=p.loans.filter(l=>!l.endDate);const f=al.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);return Math.max(0,propNeeded(p,al,closingMonthsByPropId[p.id])-f);};return shortOf(b)-shortOf(a)||(a.id||"").localeCompare(b.id||"");}
       if(propSortMode==="rehabPriority")return rehabBurn(b)-rehabBurn(a);
       if(propSortMode==="privateMoney")return privateMoneyOn(b)-privateMoneyOn(a)||(a.id||"").localeCompare(b.id||"");
       if(propSortMode==="dateAcquired")return propPurchaseDate(a).localeCompare(propPurchaseDate(b));
@@ -4096,7 +4137,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         const rows=visible.map(prop=>{
           const active=prop.loans.filter(l=>!l.endDate);
           const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
-          const needed=propNeeded(prop,active);
+          const needed=propNeeded(prop,active,closingMonthsByPropId[prop.id]);
           const short=Math.max(0,needed-funded);
           const _f=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
           const over=needed>0?Math.max(0,funded-needed):0;
@@ -4254,7 +4295,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
           {visible.map(prop=>{
             const active=prop.loans.filter(l=>!l.endDate);
             const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
-            const needed=propNeeded(prop,active);
+            const needed=propNeeded(prop,active,closingMonthsByPropId[prop.id]);
             const short=Math.max(0,needed-funded);
             const full=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
             const under=!prop.dateSold&&short>0&&!full;
@@ -4319,7 +4360,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
         {visible.map((prop,visIdx)=>{
           const active=prop.loans.filter(l=>!l.endDate);
           const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
-          const needed=propNeeded(prop,active);
+          const needed=propNeeded(prop,active,closingMonthsByPropId[prop.id]);
           const short=Math.max(0,needed-funded);
           const full=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
           const under=!prop.dateSold&&short>0&&!full;
@@ -4520,7 +4561,7 @@ function PropertiesPage({ data, update, pendingAction, onClearPendingAction }) {
                 {col.items.map(prop=>{
                   const active=prop.loans.filter(l=>!l.endDate);
                   const funded=active.reduce((s,l)=>s+(l.principal||0)+(l.drawFacility?.committed||0),0);
-                  const needed=propNeeded(prop,active);
+                  const needed=propNeeded(prop,active,closingMonthsByPropId[prop.id]);
                   const short=Math.max(0,needed-funded);
                   const full=!prop.dateSold&&funded>0&&pct(funded,needed)>=95;
                   const under=!prop.dateSold&&short>0&&!full;
@@ -8682,30 +8723,26 @@ const WhiteboardNoDatePillContent = ({ n, readOnly, h$, fillingIn, setFillingIn,
       {!readOnly && isOnHold && (
         <button onClick={ev=>{ev.stopPropagation();restoreFromNoDate(n.id);}} title={`Restore to ${wbFmtDate(n.restoreDay)}`} className="shrink-0 font-semibold hover:underline">↩</button>
       )}
-      {/* Kyle, 11/21, re: a Bill pill looking bulkier than a Buy/Sell pill: "why does this
-          bill look different than the properties. It should look the exact same" — the native
-          <input type="date"> used to sit inline in every resting pill, with its own border,
-          making a bill/unscheduled-card pill visibly bigger than a Sell/Buy/Needs-Info one.
-          Every kind now shows just ONE small action button at rest (↩ / Fill in / 📅), same as
-          the others, with the actual date picker revealed BELOW the pill on click instead —
-          the same `fillingIn` toggle Needs-Info's "Fill in" already used. */}
-      {!readOnly && !isOnHold && (
+      {/* Kyle, 11/21: "why's there still a date button on this bill? It should just be drag
+          just like the rest. Get rid of it." A plain bill/unscheduled card now has NO action
+          button at all — dragging it onto a real day row (handleBoardDragEnd's own
+          noDateBillOrCard branch) is the only way to give it a date, exactly like a Sell/Buy
+          pill's drag-to-reschedule. Needs-Info still keeps "Fill in" — there's no underlying
+          card to drag onto a day until one's pencilled in. */}
+      {!readOnly && !isOnHold && n.reason && (
         <button onClick={ev=>{ev.stopPropagation(); if(fillingIn===n.id){setFillingIn(null);} else {setFillingIn(n.id);setFillAmount("");setFillDate("");}}}
-          className="shrink-0 font-semibold hover:underline">{fillingIn===n.id?"Cancel":n.reason?"Fill in":"📅"}</button>
+          className="shrink-0 font-semibold hover:underline">{fillingIn===n.id?"Cancel":"Fill in"}</button>
       )}
     </div>
-    {fillingIn===n.id && !readOnly && !isOnHold && (
+    {fillingIn===n.id && !readOnly && n.reason && (
       <div className="flex items-center gap-1 mt-0.5 px-1.5">
-        {n.reason && <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>}
-        <input type="date" value={n.reason?fillDate:undefined} onClick={ev=>ev.stopPropagation()}
-          onChange={ev=>{ if(n.reason){ setFillDate(ev.target.value); } else if(ev.target.value){ setCardDay(n.id, ev.target.value); setFillingIn(null); } }}
+        <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>
+        <input type="date" value={fillDate} onClick={ev=>ev.stopPropagation()} onChange={e=>setFillDate(e.target.value)}
           className="text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-        {n.reason && (
-          <button disabled={!fillAmount||!fillDate} onClick={ev=>{ev.stopPropagation();
-            saveManualFill(n.id, { kind:n.kind==="needsInfoSell"?"sell":"buy", key:n.raw.kind==="sell"?n.raw.id:n.raw.leadId, address:n.raw.address, amount: parseFloat(fillAmount)||0, date: fillDate });
-            setFillingIn(null);
-          }} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-600 text-white disabled:opacity-40">Save</button>
-        )}
+        <button disabled={!fillAmount||!fillDate} onClick={ev=>{ev.stopPropagation();
+          saveManualFill(n.id, { kind:n.kind==="needsInfoSell"?"sell":"buy", key:n.raw.kind==="sell"?n.raw.id:n.raw.leadId, address:n.raw.address, amount: parseFloat(fillAmount)||0, date: fillDate });
+          setFillingIn(null);
+        }} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-600 text-white disabled:opacity-40">Save</button>
       </div>
     )}
   </>);
@@ -8735,7 +8772,7 @@ const WhiteboardBoardNoDateZone = ({ compact, readOnly, h$, noDateSorted,
       <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[10px]"} text-amber-700 dark:text-amber-300`}>No Date</div>
       {noDateSorted && noDateSorted.length>0 && (
         <SortableContext items={noDateSorted.map(n=>n.id)} strategy={horizontalListSortingStrategy}>
-          <div className="flex items-start gap-1.5 flex-wrap mt-1">
+          <div className="flex items-start gap-1.5 flex-wrap justify-center mt-1">
             {noDateSorted.map(n=>(
               <WhiteboardNoDatePill key={n.id} n={n} readOnly={readOnly} h$={h$}
                 fillingIn={fillingIn} setFillingIn={setFillingIn} fillAmount={fillAmount} setFillAmount={setFillAmount}
@@ -8791,7 +8828,7 @@ const WhiteboardBoardArchiveZone = ({ compact, readOnly, h$, closedEntries, onUn
   );
 };
 
-function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, readOnly, roundMode, firstBelow10k, firstNegative, forceTv,
+function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, readOnly, roundMode, firstNegative, forceTv,
   usingMercury, sbInput, onSbInputChange, onCommitStartingBalance, mercuryLoading, mercuryReason,
   undatedSetAsides, onEditSetAside, onAddSetAside, onDeleteSetAside,
   onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate,
@@ -8863,6 +8900,14 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
       if (over.id !== "board-archive" && over.id !== "board-nodate") onRestoreClosedToDate?.(id, String(over.id));
       return;
     }
+    // A plain bill/unscheduled card dragged out of the No-Date box onto a real day row — Kyle,
+    // 11/21: "it should just be drag just like the rest" (no separate date button on it). A
+    // drop on the Archive zone is a no-op for these (nothing to "mark reflected" yet).
+    const noDateCard = (noDateSorted||[]).find(en => en.id===id && (en.kind==="bill"||en.kind==="unscheduled"));
+    if (noDateCard) {
+      if (over.id !== "board-archive" && over.id !== "board-nodate") setCardDay?.(id, String(over.id));
+      return;
+    }
     for (const week of ledgerWeeks) {
       for (const row of week.rows) {
         const found = row.entries.find(en => en.id === id && (en.kind==="sell"||en.kind==="buy"));
@@ -8904,27 +8949,6 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
           <button onClick={enterTvMode} title="Fullscreen, compact layout for a TV or large display" className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400">📺 TV Mode</button>
         </div>
       )}
-      {/* Summary strip — the same 4 tiles in Board view and TV Mode (Kyle, 11/19: "make the
-          regular mode have the same headers as TV mode"); only the sizing (compact) differs.
-          "Under $10k"/"Goes Negative" are the two dates that actually matter for a glance —
-          when the account would first dip under $10k, and when it'd first go negative. */}
-      <div className={`flex gap-2 flex-wrap shrink-0 ${compact?"mb-2":"mb-4 gap-3"}`}>
-        <div className={`flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
-          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Under $10k</div>
-          {firstBelow10k ? (<>
-            <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums text-amber-600 dark:text-amber-400`}>{wbFmtDate(firstBelow10k.day)}</div>
-            <div className={`${compact?"text-[9px]":"text-[10px]"} text-slate-400 dark:text-zinc-500`}>{h$(rBal(firstBelow10k.balance))} that day</div>
-          </>) : <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums text-emerald-600 dark:text-emerald-400`}>✓ stays above</div>}
-        </div>
-        <div className={`flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] ${compact?"p-1.5":"p-3"}`}>
-          <div className={`${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5`}>Goes Negative</div>
-          {firstNegative ? (<>
-            <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums text-red-600 dark:text-red-400`}>{wbFmtDate(firstNegative.day)}</div>
-            <div className={`${compact?"text-[9px]":"text-[10px]"} text-slate-400 dark:text-zinc-500`}>{h$(Math.abs(rBal(firstNegative.balance)))} short that day</div>
-          </>) : <div className={`${compact?"text-sm":"text-lg"} font-black tabular-nums text-emerald-600 dark:text-emerald-400`}>✓ never</div>}
-        </div>
-      </div>
-
       <div className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${compact?"flex-1 flex flex-col min-h-0":""}`}>
         <div className={compact ? "flex-1 overflow-auto" : "overflow-x-auto"}>
           <DndContext sensors={effReadOnly?[]:boardDragSensors} onDragStart={e=>setActiveEntryId(String(e.active.id))} onDragEnd={handleBoardDragEnd}>
@@ -8933,13 +8957,9 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
               fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={setCardDay} restoreFromNoDate={restoreFromNoDate}/>}
             {!effReadOnly && <WhiteboardBoardArchiveZone compact={compact} readOnly={effReadOnly} h$={h$} closedEntries={closedEntries} onUndoClosed={onUndoClosed}/>}
             <table className={`w-full border-collapse min-w-[560px] ${compact?"text-[10px]":""}`}>
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-slate-50 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
-                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-left ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Date</th>
-                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-left ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Money Moves</th>
-                  <th className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-[8px]":"text-[10px]"} font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500`}>Balance</th>
-                </tr>
-              </thead>
+              {/* 11/21, Kyle: "get rid of these headers completely" — the Date/Money Moves/
+                  Balance column header row is gone; the Current row (always the first row)
+                  already orients a new viewer without it. */}
               <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                 <tr className="bg-slate-50/70 dark:bg-zinc-800/50">
                   <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} ${compact?"text-[10px]":"text-xs"} font-bold text-slate-500 dark:text-zinc-400`}>Current</td>
@@ -8950,6 +8970,14 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                         {!usingMercury && !effReadOnly && (
                           <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400">{mercuryLoading?"(checking Mercury…)":`(manual${mercuryReason?` — ${mercuryReason}`:""})`}</span>
                         )}
+                      </span>
+                      {/* 11/21, Kyle: "get rid of both these boxes and add an integrated 'Days
+                          til negative' thing" — replaces the standalone "Under $10k"/"Goes
+                          Negative" stat tiles (removed outright) with one small fact folded
+                          right into the Current row, same integration pattern as Set Aside
+                          above. */}
+                      <span className={`shrink-0 text-[9px] font-semibold ${firstNegative?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>
+                        {firstNegative ? `⏳ ${daysBetween(TODAY,firstNegative.day)}d to negative` : "✓ never negative"}
                       </span>
                       {/* Set Aside — undated entries only (a dated one already shows as its own
                           pill on the day it leaves). Kyle, 11/21: "the current balance is already
@@ -9057,14 +9085,14 @@ const WhiteboardMonthDay = ({ day, padKey, isToday, dayNum, showMonthLabel, h$, 
       </div>
       <div className="flex-1 overflow-y-auto space-y-0">
         {sellCards.map(c=>(
-          <WhiteboardMonthChip key={c.id} id={c.id} label={shortAddress(c.address)} amount={c.amount} direction="in" h$={h$} readOnly={readOnly}
+          <WhiteboardMonthChip key={c.id} id={c.id} label={displayAddr(c.address)} amount={c.amount} direction="in" h$={h$} readOnly={readOnly}
             onClick={()=>navigate&&navigate({type:'property',id:c.propId})}/>
         ))}
         {buyCards.map(c=>(
-          <WhiteboardMonthChip key={c.id} id={c.id} label={shortAddress(c.address)} amount={c.amount} direction="out" h$={h$} readOnly={readOnly}/>
+          <WhiteboardMonthChip key={c.id} id={c.id} label={displayAddr(c.address)} amount={c.amount} direction="out" h$={h$} readOnly={readOnly}/>
         ))}
         {manualCards.map(c=>(
-          <WhiteboardMonthChip key={c.id} id={c.id} label={c.kind==="property"?shortAddress(c.address):(c.address||"Card")} amount={c.amount} direction={c.direction} h$={h$} readOnly={readOnly}
+          <WhiteboardMonthChip key={c.id} id={c.id} label={c.kind==="property"?displayAddr(c.address):(c.address||"Card")} amount={c.amount} direction={c.direction} h$={h$} readOnly={readOnly}
             onClick={()=>{ if(c.kind==="property"&&navigate) navigate({type:'property',id:c.propId}); else if(onEditCard) onEditCard(c); }}/>
         ))}
         {autoCards.length>0 && <div className="text-[8px] text-slate-400 dark:text-zinc-500 truncate">💸 {autoCards.length} loan pmt{autoCards.length>1?"s":""}</div>}
@@ -9307,7 +9335,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // slice of closedItems, reshaped for WhiteboardBoardEntry so the Archive zone can show them
   // directly instead of (duplicating) the separate WhiteboardClosedPanel for Board view.
   const closedSellBuyEntries = closedItems.filter(c=>c.kind==="sell"||c.kind==="buy")
-    .map(c=>({ id:c.id, label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:c.kind==="sell"?"in":"out" }));
+    .map(c=>({ id:c.id, label:displayAddr(c.address), fullLabel:c.address, amount:c.amount||0, direction:c.kind==="sell"?"in":"out" }));
   // settleDay: the day a sell card's cash actually counts toward the balance/Total In — always
   // the next business day after wherever `day` (the house's own, DISPLAYED date) currently
   // sits, re-derived here AFTER any manual move, so a dragged/picked date keeps the exact same
@@ -9451,18 +9479,18 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // show them as real pills (draggable back onto a day row to restore them), not just a label
   // with nothing in it.
   const onHoldEntries = [
-    ...sellWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"sell", label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"in", day:c.day, sourceDate:c.sourceDate })),
-    ...buyWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"buy", label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"out", day:c.day, sourceDate:c.sourceDate })),
+    ...sellWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"sell", label:displayAddr(c.address), fullLabel:c.address, amount:c.amount||0, direction:"in", day:c.day, sourceDate:c.sourceDate })),
+    ...buyWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"buy", label:displayAddr(c.address), fullLabel:c.address, amount:c.amount||0, direction:"out", day:c.day, sourceDate:c.sourceDate })),
   ];
   const noDateAll = [
-    ...bills.map(c=>({ id:c.id, kind:"bill", label:shortAddress(c.address)||c.address||"Bill", amount:c.amount||0, direction:c.direction })),
-    ...unscheduled.map(c=>({ id:c.id, kind:"unscheduled", label:c.kind==="property"?shortAddress(c.address):(c.address||"Card"), amount:c.amount||0, direction:c.direction })),
+    ...bills.map(c=>({ id:c.id, kind:"bill", label:displayAddr(c.address)||c.address||"Bill", amount:c.amount||0, direction:c.direction })),
+    ...unscheduled.map(c=>({ id:c.id, kind:"unscheduled", label:c.kind==="property"?displayAddr(c.address):(c.address||"Card"), amount:c.amount||0, direction:c.direction })),
     ...needsInfoAll.map(n=>({ id:n.cardId, kind:n.kind==="sell"?"needsInfoSell":"needsInfoBuy", label:n.address, reason:n.reason, raw:n })),
     // "Move to No-Date" rows — a sell/buy card that already has a real date/amount, pulled off
     // the dated timeline on purpose (not because the data is missing anything). Shows the real
     // projected date/amount for context and a Restore action instead of Fill In.
-    ...sellWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"onHoldSell", label:shortAddress(c.address), amount:c.amount||0, direction:"in", restoreDay:c.day })),
-    ...buyWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"onHoldBuy", label:shortAddress(c.address), amount:c.amount||0, direction:"out", restoreDay:c.day })),
+    ...sellWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"onHoldSell", label:displayAddr(c.address), amount:c.amount||0, direction:"in", restoreDay:c.day })),
+    ...buyWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"onHoldBuy", label:displayAddr(c.address), amount:c.amount||0, direction:"out", restoreDay:c.day })),
   ];
   const noDateSorted = sortByPriorityOrder(noDateAll, noDateOrder);
   // 11/21: priority is now drag-only, left-to-right, inside Board view's own No-Date box
@@ -9692,7 +9720,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // even though a sell card's cash only joins that day's `balance` once its separate
   // `settleDay` arrives (closed/moved overrides already applied upstream) — and dated Set
   // Aside cards.
-  // `label` is always the short, non-truncating display text (shortAddress() for anything
+  // `label` is always the short, non-truncating display text (displayAddr() for anything
   // address-based); `fullLabel` carries the complete original text for a `title` tooltip.
   // Loan-payment entries are tagged `kind:"loanPayment"` with their own lenderName/address so
   // WhiteboardBoardRow can group/collapse them (groupLoanPaymentEntries, whiteboard-
@@ -9703,16 +9731,16 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     entriesByDay[day] = [
       ...cards.filter(c=>c.day && wbEffectiveDate(c)===day).map(c=>{
         const addr = c.kind==="property" ? c.address : null;
-        return { id:c.id, label: addr?shortAddress(addr):(c.address||(c.kind==="bill"?"Bill":"Card")), fullLabel:c.address||null, amount:c.amount||0, direction:c.direction, propId:c.kind==="property"?c.propId:null };
+        return { id:c.id, label: addr?displayAddr(addr):(c.address||(c.kind==="bill"?"Bill":"Card")), fullLabel:c.address||null, amount:c.amount||0, direction:c.direction, propId:c.kind==="property"?c.propId:null };
       }),
       ...autoCardsFor(day).map(c=>({
         id:c.id, kind:"loanPayment", lenderName:c.lenderName||"Loan payment", address:c.address||null,
-        label: c.lenderName || shortAddress(c.address) || "Loan payment",
+        label: c.lenderName || displayAddr(c.address) || "Loan payment",
         fullLabel: c.lenderName ? (c.address?`${c.lenderName} — ${c.address}`:c.lenderName) : (c.address||"Loan payment"),
         amount:c.amount||0, direction:"out", propId:c.propId,
       })),
-      ...sellCardsFor(day).map(c=>({ id:c.id, kind:"sell", label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"in", day:c.day, propId:c.propId, manualEntry:!!c.manualEntry, manualAmount:!!c.manualAmount, originalAmount:c.originalAmount, manualDate:!!c.manualDate, originalDate:c.originalDate, sourceDate:c.sourceDate, pastDue:!!c.pastDue })),
-      ...buyCardsFor(day).map(c=>({ id:c.id, kind:"buy", label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"out", day:c.day, manualEntry:!!c.manualEntry, manualAmount:!!c.manualAmount, originalAmount:c.originalAmount, manualDate:!!c.manualDate, originalDate:c.originalDate, sourceDate:c.sourceDate, pastDue:!!c.pastDue })),
+      ...sellCardsFor(day).map(c=>({ id:c.id, kind:"sell", label:displayAddr(c.address), fullLabel:c.address, amount:c.amount||0, direction:"in", day:c.day, propId:c.propId, manualEntry:!!c.manualEntry, manualAmount:!!c.manualAmount, originalAmount:c.originalAmount, manualDate:!!c.manualDate, originalDate:c.originalDate, sourceDate:c.sourceDate, pastDue:!!c.pastDue })),
+      ...buyCardsFor(day).map(c=>({ id:c.id, kind:"buy", label:displayAddr(c.address), fullLabel:c.address, amount:c.amount||0, direction:"out", day:c.day, manualEntry:!!c.manualEntry, manualAmount:!!c.manualAmount, originalAmount:c.originalAmount, manualDate:!!c.manualDate, originalDate:c.originalDate, sourceDate:c.sourceDate, pastDue:!!c.pastDue })),
       ...setAsideCardsFor(day).map(c=>({ id:c.id, kind:"setAside", label:c.label, amount:c.amount||0, direction:"out" })),
     ];
   });
@@ -9876,7 +9904,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
           mercuryLoading={mercury.loading} mercuryReason={mercury.reason}
           undatedSetAsides={setAsides.filter(s=>!s.date)} onEditSetAside={readOnly?undefined:setEditingSetAside} onAddSetAside={readOnly?undefined:()=>setAddingSetAside(true)} onDeleteSetAside={readOnly?undefined:deleteSetAside}
           ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} readOnly={readOnly} roundMode={roundMode} forceTv={publicMode}
-          firstBelow10k={firstBelowThreshold(ledgerRows, 10000)} firstNegative={firstBelowThreshold(ledgerRows, 0)}
+          firstNegative={firstBelowThreshold(ledgerRows, 0)}
           onPickDate={readOnly?undefined:handleBoardPickDate} onSetAmount={readOnly?undefined:setAmountOverride}
           onResetAmount={readOnly?undefined:resetAmountOverride} onResetDate={readOnly?undefined:resetMovedDate}
           onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}

@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { computeForecastSummary, buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary, shortAddress, groupLoanPaymentEntries } from "../src/whiteboard-forecast.mjs";
+import { computeForecastSummary, buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary, shortAddress, stripStreetType, groupLoanPaymentEntries } from "../src/whiteboard-forecast.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -140,6 +140,27 @@ test("shortAddress keeps just the street line", () => {
   assert.equal(shortAddress(null), null);
   assert.equal(shortAddress(undefined), undefined);
   assert.equal(shortAddress("  840 Francis , Dayton, OH"), "840 Francis");
+});
+
+// ─── 11/21: stripStreetType — a separate display-only layer on top of shortAddress ─────────
+test("stripStreetType drops a trailing street-type word", () => {
+  assert.equal(stripStreetType("8730 Colvin Dr"), "8730 Colvin");
+  assert.equal(stripStreetType("148 Garston Ct"), "148 Garston");
+  assert.equal(stripStreetType("5038 Tamarack Blvd"), "5038 Tamarack");
+  assert.equal(stripStreetType("1323 Red Bank Drive"), "1323 Red Bank");
+});
+test("stripStreetType keeps a trailing directional, stripping the type word before it instead", () => {
+  assert.equal(stripStreetType("4733 Hillcrest St N"), "4733 Hillcrest N");
+  assert.equal(stripStreetType("521 E Stanton Ave"), "521 E Stanton");
+});
+test("stripStreetType leaves a mid-string word alone (not just the last token)", () => {
+  assert.equal(stripStreetType("2854 Us Highway 62 SW"), "2854 Us Highway 62 SW");
+});
+test("stripStreetType is a no-op when there's no recognized type word, or too few words", () => {
+  assert.equal(stripStreetType("3434 Reaver"), "3434 Reaver");
+  assert.equal(stripStreetType("Main"), "Main");
+  assert.equal(stripStreetType(""), "");
+  assert.equal(stripStreetType(null), null);
 });
 
 test("groupLoanPaymentEntries: 3 or fewer loan payments are NOT grouped", () => {
