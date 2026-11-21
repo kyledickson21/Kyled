@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "3";
+const APP_VERSION = "4";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -64,12 +64,31 @@ const nextDay = d => { const [y,m,day]=d.split('-').map(Number); const dt=new Da
 // math can be unit-tested with plain Node and reused by the Whiteboard cash-flow forecast
 // without a second, potentially-drifting copy of it.
 
-const effectiveMonths = prop => {
+// Kyle, 11/21: "for the property page... for anything that's under contract, can you change
+// that estimated time to the time it would be with the closing according to the whiteboard
+// page if it's placed on a date there? If it's not placed on a date then just use the
+// estimate." `closingMonthsOverride` (new optional 2nd arg — every pre-existing call site
+// omits it and is unchanged, same pattern as calcIntEarned's optional `data` arg) is the
+// months-from-today a property's real, Whiteboard-detected closing date works out to; only
+// `PropertiesPage` computes and passes one, and only for a property that's actually under
+// contract with a real resolved date (see `isInventoryResimpli`/`closingMonthsFor` there) — a
+// property with no detected date at all falls through to the existing rehab-based estimate
+// below, exactly as before. A manually-set `projectMonths` still wins over both — it's Kyle's
+// own explicit override, not a default to replace.
+const effectiveMonths = (prop, closingMonthsOverride) => {
   if (prop?.projectMonths!=null&&prop.projectMonths!=="") return Math.max(0.5,parseFloat(prop.projectMonths)||2);
+  if (closingMonthsOverride!=null) return Math.max(0.5, closingMonthsOverride);
   const rehab = prop?.rehabBudget||0;
   if (!rehab) return 2;
   return Math.ceil((rehab/1000+60)/30);
 };
+
+// Reference-only REsimpli metadata test — a property is "selling" in REsimpli's Inventory
+// pipeline when either its recordType says so, or (a live sync gap — see CLAUDE.md's REsimpli
+// Live Sync section) its stored url contains "/inventory/". Module-level so both WhiteboardPage
+// and PropertiesPage's under-contract closing-date estimate (below) agree on the same test
+// instead of keeping two copies that could drift.
+const isInventoryResimpli = p => p.resimpli?.recordType==="inventory" || (p.resimpli?.url||"").includes("/inventory/");
 
 const monthlyLoanPayment = loan => {
   if (!loan||loan.endDate) return 0;
@@ -141,9 +160,9 @@ const sumDrawFees = loan => (loan?.drawFacility?.draws||[]).reduce((s,d)=>s+(d.f
 // carry expected over the hold period. Holding costs (taxes, insurance, utilities) are a
 // real expense but aren't sized against loan proceeds — they're covered out of pocket/cash
 // flow — so those alone are left out.
-const propNeeded = (prop, activeLoans) => {
+const propNeeded = (prop, activeLoans, closingMonthsOverride) => {
   if (!prop?.purchasePrice&&!prop?.rehabBudget) return prop?.fundingNeeded||0;
-  const months = effectiveMonths(prop);
+  const months = effectiveMonths(prop, closingMonthsOverride);
   const monthlyInt = (activeLoans||[]).reduce((s,l)=>s+monthlyLoanPayment(l),0);
   return (prop.purchasePrice||0)+(prop.rehabBudget||0)+monthlyInt*months;
 };
@@ -8713,7 +8732,7 @@ const WhiteboardBoardNoDateZone = ({ compact, readOnly, h$, noDateSorted,
   return (
     <div ref={setNodeRef}
       className={`border-b-2 border-dashed transition-colors ${compact?"py-1 px-1.5":"py-1.5 px-2"} ${isOver?"bg-amber-100 dark:bg-amber-900/30 border-amber-400":"bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"}`}>
-      <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[10px]"} text-amber-700 dark:text-amber-300`}>↓ No Date — drag left/right to re-rank, most important on the left</div>
+      <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[10px]"} text-amber-700 dark:text-amber-300`}>No Date</div>
       {noDateSorted && noDateSorted.length>0 && (
         <SortableContext items={noDateSorted.map(n=>n.id)} strategy={horizontalListSortingStrategy}>
           <div className="flex items-start gap-1.5 flex-wrap mt-1">
@@ -9144,8 +9163,9 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // can carry recordType:null for an inventory property even once the sync's own
   // classification gap is fixed (an old sync run, or a hand-edited record) — a stored
   // resimpli.url containing "/inventory/" is also treated as inventory, since REsimpli's own
-  // inventory record links always carry that in the path.
-  const isInventoryResimpli = p => p.resimpli?.recordType==="inventory" || (p.resimpli?.url||"").includes("/inventory/");
+  // inventory record links always carry that in the path. (`isInventoryResimpli` itself is
+  // now module-level, next to `effectiveMonths` — PropertiesPage's under-contract closing
+  // estimate reuses the exact same test.)
   // `manualSellDates` (11/21, Kyle: "allow me to add a property closing that isn't pulled
   // from resimpli yet... it can fill in the amounts for me the same way it does the others")
   // — {[propId]: "YYYY-MM-DD"}, Kyle's own pencilled-in closing date for a property REsimpli

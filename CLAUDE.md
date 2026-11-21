@@ -1654,6 +1654,11 @@ the no date, and same gray color when it's in the 'hit account' box."
   Then, same screenshot round: "why'd you add the 'Buy' or 'Bill' text. I said no fluff" — the
   `Sell:`/`Buy:`/`Bill:`/`Card:` kind-label prefix is gone too; a pill is just the address/label
   text, the amount (when not a Needs-Info reason), and its one action control.
+- **Same-day, second follow-up**: Kyle quoted the zone's own header text back — "'— drag
+  left/right to re-rank, most important on the left' Get rid of this fluff too. I dont want
+  this explanation the system should be intuitive enough that it needs no instructions." The
+  No-Date zone's header is now just "No Date" (the Archive zone's own "📦 Drag here once it's
+  hit the real account" label was left alone — not named in this request).
 
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view
