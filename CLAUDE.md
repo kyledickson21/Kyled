@@ -1747,6 +1747,32 @@ the no date, and same gray color when it's in the 'hit account' box."
   "integrated days-to-negative line" mentioned above was itself replaced the same day — see
   "Safe to send out" below.)
 
+### The ledger table fits a phone screen with no horizontal scroll (11/21)
+Kyle: "make it so that on the phone I don't need to scroll left or right to see the balance.
+Should all fit on the screen." The earlier mobile pass (above) only reduced the table's forced
+MINIMUM width (`min-w-[480px]`) — still wider than most phones, so horizontal scroll was still
+required to reach the Balance column. The real fix: an HTML table with `table-layout: auto`
+(the default) grows to fit its content, ignoring the container, whenever anything overflows —
+`min-w-[Npx]` was fighting that tendency, not preventing it.
+- **`table-fixed` below `sm`, `table-auto` at `sm:` and up** — `table-layout: fixed` makes the
+  table's total width strictly the container's own (per `w-full`), with column widths coming
+  from a `<colgroup>` instead of content; content that doesn't fit is clipped/wrapped rather
+  than growing the table. A `<colgroup>` (`<col className="w-[62px] sm:w-auto"/>` for Date,
+  `w-auto` for Money Moves, `w-[104px] sm:w-auto"` for Balance) pins the two fixed-content
+  columns to a width that comfortably fits their content at the mobile font size, so Money
+  Moves — the one column with potentially unbounded pill content — gets whatever's left and
+  relies on its existing `overflow-hidden` to clip extras, same as it always has for a
+  very-full day. Reverts to the original flexible `table-auto` + `min-w-[560px]` layout at
+  `sm:` (≥640px) — completely unchanged there, since desktop never had a scroll problem.
+- **Padding and font size tightened further on mobile specifically for the Date/Balance
+  cells** (`px-1.5 py-2 sm:px-3`, `text-[13px] sm:text-sm` for the Current row's balance,
+  `w-14 sm:w-20` for its editable input) — the fixed-width columns above have little enough
+  room without the full desktop padding eating into it; `overflow-hidden` added to both cells
+  as a safety net in case content still runs slightly wider than the pinned column.
+- Still unverified against a real phone — flag anything that still looks off (a number that
+  gets clipped rather than just tight, for instance, would mean the column needs to be a
+  little wider still).
+
 ### Confirm before moving a sell/buy pill to a new date (11/21)
 Kyle: "when dragging a house to a different date, if I place it somewhere else than where it
 already was can you have it also make me confirm so I don't accidentally move it without

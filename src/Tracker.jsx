@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "8";
+const APP_VERSION = "9";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -8335,7 +8335,11 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
   const sellBuyEntries = other.filter(e=>e.kind==="sell"||e.kind==="buy");
   const plainOther = other.filter(e=>e.kind!=="sell"&&e.kind!=="buy");
   const { setNodeRef: setRowDropRef, isOver } = useDroppable({ id: row.day });
-  const td = compact ? "px-1.5 py-0.5" : "px-3 py-1";
+  // Phone (regular, non-TV mode): tighter horizontal padding than desktop's — the fixed-width
+  // Date/Balance columns (see the colgroup above `table-fixed` uses below `sm`) have little
+  // enough room already without the full `px-3` eating into it. TV mode's own `compact`
+  // padding is untouched (that's never a phone viewport).
+  const td = compact ? "px-1.5 py-0.5" : "px-1.5 py-1 sm:px-3";
   // 11/21: the full-row red/green tint and weekend shading (tried right after this) both got
   // reverted the same day — Kyle: "actually get rid of the dark weekend and full box color
   // changes. It was easier to read before." Back to: red background on a shortfall day only,
@@ -8349,7 +8353,10 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
   // on content. The Amount column is gone entirely — every entry now carries its own amount
   // right on its own pill (see WhiteboardBoardEntry), so a dedicated column just repeated the
   // same number a second time once that was true for every entry kind.
-  const td9 = `${td} align-top whitespace-nowrap text-[11px] sm:text-[9px]`;
+  // `overflow-hidden` here is a safety net for the new mobile `table-fixed` + fixed-width
+  // Date/Balance columns (see the colgroup above) — `whitespace-nowrap` alone would let
+  // content wider than the pinned column spill into its neighbor instead of staying put.
+  const td9 = `${td} align-top whitespace-nowrap overflow-hidden text-[11px] sm:text-[9px]`;
   return (
     <tr ref={setRowDropRef} className={`${rowBg} ${isOver?"ring-2 ring-inset ring-teal-400":""}`}>
       <td className={`${td9} font-semibold text-slate-500 dark:text-zinc-400`}>
@@ -8360,7 +8367,7 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
           own left padding used to match the Date column's right padding, doubling the visual
           gap between them; dropped to a sliver in compact/TV mode specifically (regular Board
           view keeps its normal spacing — Kyle named "tv view"). */}
-      <td className={`${compact?"pl-0.5 pr-1.5 py-0.5":"px-3 py-1"} align-top text-[11px] sm:text-[9px] text-slate-700 dark:text-zinc-200 overflow-hidden`}>
+      <td className={`${compact?"pl-0.5 pr-1.5 py-0.5":"px-1 py-1 sm:px-3"} align-top text-[11px] sm:text-[9px] text-slate-700 dark:text-zinc-200 overflow-hidden`}>
         {row.entries.length>0 && (
         <div className="flex items-center gap-2 overflow-hidden">
           {plainOther.map(e=>(
@@ -8675,14 +8682,29 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
               fillingIn={fillingIn} setFillingIn={setFillingIn} fillAmount={fillAmount} setFillAmount={setFillAmount}
               fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={setCardDay} restoreFromNoDate={restoreFromNoDate} onEditCard={onEditCard}/>}
             {!effReadOnly && <WhiteboardBoardArchiveZone compact={compact} readOnly={effReadOnly} h$={h$} closedEntries={closedEntries} onUndoClosed={onUndoClosed}/>}
-            <table className={`w-full border-collapse min-w-[480px] sm:min-w-[560px] ${compact?"text-[10px]":""}`}>
+            <table className={`w-full border-collapse table-fixed sm:table-auto sm:min-w-[560px] ${compact?"text-[10px]":""}`}>
+              {/* 11/21, Kyle: "make it so that on the phone I don't need to scroll left or
+                  right to see the balance. Should all fit on the screen" — below `sm`, a
+                  `<colgroup>` pins the Date/Balance columns to a fixed width (`table-fixed`
+                  forces the table's total width to the container's own, per `w-full`, instead
+                  of growing to fit content) so Money Moves — the one column with potentially
+                  unbounded pill content — gets whatever's left and its own `overflow-hidden`
+                  clips any excess, rather than the table pushing past the viewport. Reverts to
+                  the original `table-auto` + `min-w-[560px]` desktop layout at `sm:` (≥640px)
+                  — unchanged there, since there's no scroll problem to solve on a wider
+                  screen. */}
+              <colgroup>
+                <col className="w-[62px] sm:w-auto"/>
+                <col className="w-auto"/>
+                <col className="w-[104px] sm:w-auto"/>
+              </colgroup>
               {/* 11/21, Kyle: "get rid of these headers completely" — the Date/Money Moves/
                   Balance column header row is gone; the Current row (always the first row)
                   already orients a new viewer without it. */}
               <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                 <tr className="bg-slate-50/70 dark:bg-zinc-800/50">
-                  <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} ${compact?"text-[10px]":"text-xs"} font-bold text-slate-500 dark:text-zinc-400`}>Current</td>
-                  <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} ${compact?"text-[10px]":"text-xs"} text-slate-400 dark:text-zinc-500`}>
+                  <td className={`${compact?"px-1.5 py-1":"px-1.5 py-2 sm:px-3"} overflow-hidden whitespace-nowrap ${compact?"text-[10px]":"text-xs"} font-bold text-slate-500 dark:text-zinc-400`}>Current</td>
+                  <td className={`${compact?"px-1.5 py-1":"px-1.5 py-2 sm:px-3"} ${compact?"text-[10px]":"text-xs"} text-slate-400 dark:text-zinc-500`}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span>
                         {startingLabel}
@@ -8727,12 +8749,12 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                       )}
                     </div>
                   </td>
-                  <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-xs":"text-sm"} font-black tabular-nums ${rBal(startingBalance)<0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>
+                  <td className={`${compact?"px-1.5 py-1":"px-1.5 py-2 sm:px-3"} text-right overflow-hidden ${compact?"text-xs":"text-[13px] sm:text-sm"} font-black tabular-nums ${rBal(startingBalance)<0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>
                     {!usingMercury && !effReadOnly ? (
                       <span className="inline-flex items-center gap-0.5 justify-end">
                         <span>$</span>
                         <input type="text" inputMode="decimal" value={sbInput} onChange={e=>onSbInputChange(e.target.value)} onBlur={onCommitStartingBalance}
-                          className={`w-20 text-right bg-transparent border-b border-dashed border-slate-300 dark:border-zinc-600 focus:outline-none focus:border-teal-500 ${rBal(startingBalance)<0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}/>
+                          className={`w-14 sm:w-20 text-right bg-transparent border-b border-dashed border-slate-300 dark:border-zinc-600 focus:outline-none focus:border-teal-500 ${rBal(startingBalance)<0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}/>
                       </span>
                     ) : h$(rBal(startingBalance))}
                   </td>
