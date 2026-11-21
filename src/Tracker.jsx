@@ -8450,15 +8450,48 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
 // itself (showing "Nov 19" again here when the row it's IN already says "Nov 19" was exactly
 // the "extra stuff" he meant). This component is back to just the address + badges + drag +
 // 📋/✕ — no date, no amount, no ↺ of its own.
-const WhiteboardBoardEntry = ({ e, readOnly, onMarkClosed, onSendToNoDate }) => {
+// `editAmount` is the one exception (11/21 bug fix): the ROW's own Amount cell only becomes
+// click-to-edit when it's unambiguous (exactly one sell/buy entry that day, see
+// `editableEntry` in WhiteboardBoardRow) — with 2+ money moves sharing a day, that cell falls
+// back to a plain non-editable sum, which meant NEITHER the row NOR the entry offered any way
+// to edit either amount at all ("if there's 2 money moves on the same day, it doesn't let you
+// edit the amount"). `WhiteboardBoardRow` now passes `editAmount:true` to every sell/buy entry
+// exactly when the row itself can't offer its own single editor, so each entry gets its own
+// small inline amount editor (same click-to-edit/↺-undo pattern as the row's) in that case —
+// still nothing shown here at all in the common single-entry case, where the row already covers it.
+const WhiteboardBoardEntry = ({ e, readOnly, onMarkClosed, onSendToNoDate, editAmount, onSetAmount, onResetAmount, h$ }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: e.id, disabled: readOnly });
   const dragStyle = transform ? { transform:`translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
+  const [editingAmount, setEditingAmount] = useState(false);
+  const [amountDraft, setAmountDraft] = useState("");
+  const saveAmount = () => {
+    const v = parseFloat(amountDraft);
+    if (!isNaN(v) && v>=0 && v!==e.amount) onSetAmount(e.id, Math.round(v*100)/100);
+    setEditingAmount(false);
+  };
+  const resetAmount = ev => { ev.stopPropagation(); if (window.confirm(`Reset the amount back to ${h$(e.originalAmount)}?`)) onResetAmount(e.id); };
   return (
     <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
       className={`flex items-center gap-1 text-[10px] mb-0.5 ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
       <span className="truncate flex-1 min-w-0" title={e.fullLabel||e.label}>
         {e.pastDue && !e.manualDate && <span title="Hasn't hit the account yet">⏰</span>} {e.label}
       </span>
+      {editAmount && !readOnly && onSetAmount && (
+        editingAmount ? (
+          <input type="number" step="0.01" autoFocus value={amountDraft} onClick={ev=>ev.stopPropagation()}
+            onChange={ev=>setAmountDraft(ev.target.value)}
+            onKeyDown={ev=>{ if(ev.key==="Enter") saveAmount(); if(ev.key==="Escape") setEditingAmount(false); }}
+            onBlur={saveAmount}
+            className="w-16 shrink-0 text-[10px] border border-slate-200 dark:border-zinc-700 rounded px-1 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+        ) : (
+          <span className="shrink-0 inline-flex items-center gap-0.5 tabular-nums text-slate-600 dark:text-zinc-300">
+            {e.manualAmount && onResetAmount && <button onClick={resetAmount} title="Edited — click to undo" className="text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">↺</button>}
+            <button onClick={ev=>{ev.stopPropagation();setAmountDraft(String(e.amount||""));setEditingAmount(true);}} className="hover:underline">
+              {e.direction==="in"?"+":"−"}{h$(e.amount)}
+            </button>
+          </span>
+        )
+      )}
       {!readOnly && onSendToNoDate && <button onClick={ev=>{ev.stopPropagation();onSendToNoDate();}} title="Move to No-Date" className="shrink-0 text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400">📋</button>}
       {!readOnly && <button onClick={ev=>{ev.stopPropagation();onMarkClosed();}} title="Take off the timeline" className="shrink-0 text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>}
     </div>
@@ -8540,9 +8573,10 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onPickDate,
           </div>
         ))}
         {sellBuyEntries.map(e=>(
-          <WhiteboardBoardEntry key={e.id} e={e} readOnly={readOnly}
+          <WhiteboardBoardEntry key={e.id} e={e} readOnly={readOnly} h$={h$}
             onMarkClosed={()=>onMarkClosed(e)}
-            onSendToNoDate={readOnly?undefined:()=>onSendToNoDate(e.id)}/>
+            onSendToNoDate={readOnly?undefined:()=>onSendToNoDate(e.id)}
+            editAmount={!editableEntry} onSetAmount={onSetAmount} onResetAmount={onResetAmount}/>
         ))}
         {loanPayments.length>0 && (grouped ? (
           <div className="mt-0.5">
