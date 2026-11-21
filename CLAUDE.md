@@ -1401,144 +1401,98 @@ values (no migration needed for existing `localStorage` choices), labeled "Row"/
   covered by the same manual-testing expectation as the rest of the drag system (dnd-kit
   interactions aren't unit-tested anywhere in this suite).
 
-### Board view table: one combined Amount column, color moved to the balance only (11/19)
-Kyle: combine the separate "In (+)"/"Out (−)" columns into one, and stop coloring that
-combined number — color ONLY the "New Balance" column, green if positive, red if negative.
-Pure display change in `WhiteboardBoardRow`/`WhiteboardBoardView` — `row.netIn`/`row.netOut`
-are still computed and tracked exactly as before (nothing about the underlying ledger math
-changed, so `tests/whiteboard-ledger.test.mjs`'s `buildLedgerRows`/`ledgerSummary` assertions
-are untouched), only how they're RENDERED changed.
-- Table is now DATE | ADDRESS | AMOUNT | NEW BALANCE. The merged Amount cell stacks `+$X`
-  (if `netIn>0`) and `−$Y` (if `netOut>0`) as plain neutral-colored lines (`text-slate-600`/
-  `dark:text-zinc-300`) in one `<td>` — no more emerald/red on the in/out figures themselves.
-  Same change for the table header (one "Amount" `<th>`, neutral).
-- **New Balance is now green when positive, red when negative** (previously red-when-negative
-  but plain slate otherwise) — on the per-row balance cell, AND the "Current" starting-balance
-  row's own balance cell, which gets the identical sign check (`rBal(startingBalance)<0`) so
-  it's visually consistent with every row below it. The red "Need $X" sub-line under a
-  shortfall row is unchanged. This was originally scoped to the ledger TABLE only, leaving the
-  summary tiles above it untouched — those tiles were separately unified with TV Mode's right
-  after (see below), so the distinction no longer matters in practice.
-- **The summary tiles were unified with TV Mode the same day** — Kyle: "make the regular mode
-  have the same headers as what TV mode has now." See "Board view interactivity"'s TV Mode
-  bullet above (now says both views share Under $10k/Goes Negative/Total In/Total Out).
-
-### Board view table: every day shows, weekend shading instead of week subtotals (11/19)
-Kyle: "have this view show like each day so that we can drag it easily... collapse them so
-they're smaller... don't really need the week total view, maybe just make the weekend days a
-little darker shade."
-- **Every day in the window gets a row now** — `WhiteboardBoardView` no longer filters
-  `week.rows` down to only populated days before rendering (`ledgerWeeks.flatMap(week=>
-  week.rows)` instead of `visibleRows = week.rows.filter(r=>r.entries.length>0)`). The real
-  reason this mattered: a day with nothing on it used to have NO row at all, so there was
-  nowhere to DROP a dragged card to land it there — showing every day means every day is
-  always a valid `useDroppable` target.
-- **An empty day renders collapsed** — `WhiteboardBoardRow` branches early (after calling
-  `useDroppable` unconditionally, so hook order never depends on which branch runs) into a
-  thin, muted row (`text-[9px]`, tighter padding, no address/amount detail, just the date and
-  that day's running balance) when `row.entries.length===0`, instead of the full detailed row
-  a populated day gets.
-- **Week-subtotal header rows are gone** — replaced with weekend shading: `wbIsWeekend(row.day)`
-  (an existing top-level helper, already used by the inflow-clearing logic) applies a subtle
-  darker background (`bg-slate-50 dark:bg-zinc-900/40`) to a Saturday/Sunday row, in BOTH the
-  collapsed and full branches, so weekends are still visually obvious at a glance without a
-  separate subtotal row breaking up the flow — the real totals still live in the summary strip
-  above the table. A shortfall day's red background still takes priority over weekend shading.
-  `groupLedgerRowsByWeek`/week-level totals themselves are untouched (still computed, still
-  tested) — this is purely that `WhiteboardBoardView` stopped displaying them, not a removal of
-  the underlying pure function.
-
-### Board entries: click-to-edit, streamlined twice over (11/19)
-Kyle: "don't wanna see the calendar and notes and whatever button — just wanna edit it by
-clicking the thing already on the board directly... more streamlined." `WhiteboardBoardEntry`
-no longer shows an always-visible row of 📅/✏️/📋/✕ icon buttons.
-- **First pass**: a single click anywhere on the entry (dnd-kit's own activation distance
-  already distinguishes a click from a drag, so this never fights drag-to-reschedule) opened
-  one combined amount+date editor. Clicking stopped navigating to the property (Row view/the
-  Properties page still do) — kept in the final design below too.
-- **Kyle's immediate follow-up, same day — the actual shipped design**: "click on the amount
-  to edit it, click on the date to edit it, not just the address... thinner rows... get rid of
-  the extra text saying it was moved/edited, maybe just some symbol" — then, before that was
-  even built, one more refinement: "just a little undo arrow right next to the actual thing
-  that was edited... it makes us confirm first." One compact single-line entry:
-  `[⏰ if overdue] address  [↺ if moved] date  [↺ if amount-edited] amount  📋  ✕`.
-  - The **date** and **amount** are each their own small clickable value — clicking either
-    swaps just that one value for its own inline input (`<input type="date">` / `<input
-    type="number">`), independent of the other. No combined editor, no Save button — a date
-    picks are applied the moment a value is chosen; an amount commits on blur/Enter (Escape
-    cancels), matching the rest of the app's inline-edit conventions.
-  - A value that's been manually overridden shows a tiny **↺ undo arrow right next to it**
-    (violet for a moved date, indigo for an edited amount) instead of a sentence — clicking it
-    calls `window.confirm("Reset the date/amount back to <original>?")` and only resets
-    (`onResetDate`/`onResetAmount`) if confirmed. The old "manual"/"edited (was $X)"/"📌 moved
-    (source says X)" text blocks are gone entirely; ⏰ (overdue — money hasn't hit the account
-    yet) is the only other symbol left, and only when the date hasn't ALSO been manually moved.
-  - 📋 (Move to No-Date) and ✕ (Mark Closed/remove) stay as small persistent icons at the end
-    of the line — these are distinct, meaningful actions (not a value to click-to-edit), so
-    they keep their own tiny always-visible buttons rather than being folded into anything.
-  - Row padding shrank too (`px-3 py-2` → `px-3 py-1` in normal, non-TV-mode Board view) —
-    combined with entries now being one compact line instead of multi-line note blocks, rows
-    are meaningfully thinner overall, as asked.
-- `navigate`/`compact` are no longer threaded through `WhiteboardBoardEntry` at all (dropped
-  from its own signature and call site along with the rest of this redesign) — neither is read
-  anywhere in the final version; `navigate` is also gone from `WhiteboardBoardRow`/
-  `WhiteboardBoardView`'s signatures and call sites, same as the first pass already noted.
-- **Bug fix (11/21)**: `editableEntry` (the row-level click-to-edit gate above) is only set
-  when exactly one sell/buy entry sits on a day with nothing else — with 2+ money moves
-  sharing a day, the row's Amount cell fell back to a plain non-editable sum, and since
-  `WhiteboardBoardEntry` itself showed no amount at all, there was NO way to edit either one
-  ("if there's 2 money moves on the same day, it doesn't let you edit the amount"). Fixed by
-  giving `WhiteboardBoardEntry` its own optional inline amount editor (`editAmount` prop, same
-  click-to-edit/↺-undo pattern as the row's), passed as `editAmount={!editableEntry}` from
-  `WhiteboardBoardRow` for every sell/buy entry — so it only ever shows up in the ambiguous
-  case; the common single-entry day is completely unchanged (still just the row's own cell,
-  no duplicate amount on the entry). `h$`/`onSetAmount`/`onResetAmount` were re-added to
-  `WhiteboardBoardEntry`'s signature for this (dropped in the 11/19 "extra stuff" cleanup
-  above, since nothing needed them at the time).
-
-### Chart view — a combined bar+line visualization (11/21)
-Kyle: "add graphs to the whiteboard page" — a balance-over-time line plus a daily in/out bar
-chart, reachable both as a 4th option in the Row/Board/Month toggle (`["calendar","Row"],
-["board","Board"],["month","Month"],["chart","Chart"]` — `boardView` can now be `"chart"` too,
-no migration needed for existing choices) and as a `📊 Chart` show/hide strip above whichever
-of Row/Board/Month is currently active (`showChartStrip`, `usePersistedState
-("nx-whiteboardShowChart", false)` — a display preference, localStorage-only, same pattern as
-`boardView`/`roundMode`; hidden in `publicMode`, and ignored when `boardView` IS already
-`"chart"`, since the full chart is the main content there).
-- **`WhiteboardChart`** (Tracker.jsx, declared just above `WhiteboardPage`) **computes nothing
-  of its own** — same HARD RULE as Board ("never calls `update()` directly") — it takes
-  `ledgerRows` (the exact same array Board already builds via `buildLedgerRows`) and the same
-  `roundMode` rounding helpers Board uses, so the chart can never show a number Board itself
-  doesn't already agree with; there's no second running-balance implementation to drift from
-  the real one. One shared dollar y-axis for both encodings (never a second axis — the
-  dataviz skill's "one axis" rule): In/Out are a diverging bar chart anchored at the $0 line
-  (green up, red down), the balance a line drawn on top of it.
-- **Colors are a validated categorical trio** — `#059669` (In), `#ef4444` (Out), `#0d9488`
-  (Balance) — checked with the dataviz skill's `validate_palette.js` against BOTH this app's
-  light (`#fcfcfb`) and dark (`#14161f`, the real dark page surface) chart backgrounds: CVD
-  separation ΔE 9.6 for the red/green pair — above the floor, no secondary-encoding exception
-  needed — plus lightness band, chroma floor, and contrast all pass in both modes with this
-  exact trio, which is why it's the same fixed hex in light and dark rather than swapping
-  shades per theme (one less thing to re-validate on a theme toggle). Chrome (the $0 gridline,
-  the hover crosshair, axis date labels) uses `stroke="currentColor"`/`fill-*` Tailwind
-  `text-*`/`dark:text-*` classes instead, so only those three data colors are ever hardcoded.
-- **Interaction**: the whole SVG tracks `onMouseMove`/`onTouchMove` (not per-bar discrete
-  targets) and converts the pointer's client X into a day index via the SVG's own
-  `getBoundingClientRect()` + viewBox scale factor, live on every move — so it stays correct
-  across any resize with no resize listener needed. A dashed crosshair follows the pointer; a
-  detail strip below the chart (date, +In, −Out, Balance, defaulting to today) is the
-  "tooltip" — a fixed-position strip rather than a floating div, deliberately, to avoid
-  tooltip-positioning/clipping edge cases and to work the same on touch (tap-and-drag) as on
-  hover.
-- **Legend**: three chips (Balance line swatch, In square, Out square) above the chart —
-  required since this is 3 series (a legend is never skipped at 2+, per the dataviz skill).
-  No value is ever labeled directly on every bar/point — only in the one hovered detail strip
-  — per the same skill's "selective direct labels" rule.
-- **No table view was added** — Board view (one click away in the same toggle) already shows
-  this exact same data as a table, so nothing here duplicates it, per the dataviz skill's
-  accessibility-pass guidance ("a table view exists").
-- **Tests**: none new — like Month view and the public TV dashboard, this is a new rendering
-  of already-tested data (`ledgerRows`/`roundDown5k`/`roundUp5k`), not new calculation logic.
+### Board view redesign — drag-only, card-style entries (11/21)
+A same-day string of direct feedback replaced most of 11/19's Board design above (the combined
+Amount column, the per-entry 📅/✏️/📋/✕ icon row, the click-to-edit date, the week-subtotal/
+weekend-shading choices) wholesale. A short-lived chart feature (a 4th "Chart" view + a
+"📊 Chart" show/hide strip, a combined bar+line SVG reusing `ledgerRows`) was also added and
+then removed the same day ("looks like shit get rid of it") — if you see a stray reference to
+`WhiteboardChart`/`showChartStrip` anywhere, it's dead and should be deleted, not restored.
+- **Everything happens by dragging** — Kyle: "make everything happen by dragging only... get
+  rid of the clipboard and the x icon." `WhiteboardBoardEntry` has no buttons of its own at
+  all now. **`WhiteboardBoardNoDateZone`** (a persistent `useDroppable({id:"board-nodate"})`
+  strip, always visible above the table, inside the same `DndContext`) replaces the old 📋
+  button — `handleBoardDragEnd` checks `over.id==="board-nodate"` first and calls
+  `onSendToNoDate` instead of `onPickDate`. There's no drag equivalent for Mark Closed, so
+  that action moved back to being Row view's job (its card still has its own "Closed" button,
+  untouched) rather than staying on this now-minimal entry. The row's own date cell lost its
+  click-to-edit `<input type="date">` entirely — dragging (onto another row, or onto the
+  No-Date zone) is the only way to change a date now.
+- **Pills, not plain text** — Kyle: "make each money move property thing more like a card...
+  feels like a drag and drop intuitive puzzle thing." `WhiteboardBoardEntry` is a small
+  bordered chip (`rounded-md border`, green for money in/sell, red for money out/buy — the
+  app's existing direction colors) instead of bare text; `plainOther`/loan-payment entries in
+  `WhiteboardBoardRow` got the same neutral bordered-chip treatment for visual consistency.
+- **Address and amount live on the same pill, always** — Kyle: "put the house and the amount
+  right by each other on the same pill." Amount is no longer gated behind row-level
+  ambiguity (the old `editableEntry`/`editAmount` dance) — every sell/buy entry shows, and can
+  edit, its own amount unconditionally. This is also what fixed the 11/21 "2+ money moves on
+  a day can't edit the amount" bug at its root: there's no more ambiguous case to fall into.
+  A manually-moved date's ↺ undo moved onto the pill too (`onResetDate` passed straight to
+  `WhiteboardBoardEntry`), generalizing the same way to 2+ entries a day. The row's own Amount
+  **column is gone** — once every entry already shows its own amount, a dedicated column just
+  repeated the same number a second time.
+- **Same thickness regardless of content** — Kyle: "make the dates with money moves the same
+  size as what the dates with nothing are now... SO they should end up being the same
+  thickness," and separately "don't want ANY fluff." `WhiteboardBoardRow` no longer branches
+  into a separate "empty" vs. "populated" shape — one `text-[9px]`, `whitespace-nowrap`
+  layout for every row; multiple entries on a day sit side by side in a `flex ...
+  overflow-hidden` row (clipped rather than wrapped) instead of stacking onto extra lines, and
+  loan payments collapse into one static "N loan pmts −$X" chip (no more expand/collapse or
+  per-lender listing — that level of detail is a Row/LoanDetailPage job, not this ledger's).
+  The table is 3 columns now: Date | Money Moves | Balance.
+- **The whole row tints red/green by that day's balance** — Kyle: "the full date box turns
+  red or green if current balance is positive or negative," not just the balance text. Layered
+  with weekend shading on top (Kyle, same day, after this landed: "still show the weekend rows
+  a tiny bit darker") — 4 fixed combinations (short×weekend) rather than literally computing a
+  darkened shade, since Tailwind has no runtime "darken this color" utility.
+- **Repeated identical balances collapse to "—"** — Kyle: "every date where the current
+  balance doesn't change... just put the dashes." `WhiteboardBoardRow` takes a `prevBalance`
+  prop (the prior row's balance, or the Current starting balance for the very first row) and
+  shows "—" instead of repeating the exact same (rounded) number.
+- **Total In/Total Out tiles removed** from the summary strip — Under $10k / Goes Negative are
+  what's left (still shared with TV Mode, unchanged from 11/19's unification).
+- **The outer "Starting Cash" card no longer shows for Board view** — Kyle: "no need to show
+  shit twice." It's folded into Board's own ledger "Current" row instead (`usingMercury`/
+  `sbInput`/`onSbInputChange`/`onCommitStartingBalance`/`mercuryLoading`/`mercuryReason` new
+  props on `WhiteboardBoardView`) — Row/Month still show the outer card, since they have no
+  row of their own to fold it into.
+- **Undo arrows shrunk and de-colored** — Kyle: "get rid of the big purple redo arrows. Make
+  them way tinier and inconspicuous and same color so they don't stand out." Every ↺ in Board
+  view (date reset, amount reset, on the row and on the pill) is now `text-[7px]` muted
+  slate/zinc instead of violet/indigo, matching the surrounding text instead of competing
+  with it.
+- **No-Date panel restyled** — Kyle: "integrate it much cleaner and cohesively... get rid of
+  that big yellow weird thing, I want it to just be part of the system that makes sense." The
+  panel is now the same plain white/dark card + shadow every other Whiteboard panel uses
+  (Starting Cash, Closed panel), not a solid amber block — color is now just a small accent
+  (the priority number, the +/− amount), the same restraint the rest of the page already uses.
+- **The forecast no longer flashes a "loading" placeholder on every visit** — Kyle: "it takes
+  a sec to load and has a bunch of stuff not placed on the right date before it loads... make
+  it just hold the previous way it was." `wbForecastCache` (a plain module-level object, above
+  `WhiteboardPage`) caches the last successful `mercury`/`sellDatesResult`/`buysResult` across
+  mounts — switching tabs away and back no longer resets to `{loading:true}` and briefly
+  mis-placing sell/buy cards into Needs Info before the real fetch resolves; a background
+  refetch that fails just keeps showing the last good value rather than flipping to an error
+  state. Resets to a genuinely fresh load only on a hard page reload, which is correct.
+- **Bug fix — dragging a pill "went blank"**: the dragged pill itself only ever faded to 30%
+  opacity in place (dnd-kit's usual pattern); with no `<DragOverlay>` in Board's own
+  `DndContext`, nothing else followed the pointer, and once the pill's `transform` carried it
+  past the Address cell's own `overflow-hidden` edge (added for the same-thickness rule above)
+  it was clipped invisible — "the animation doesn't actually show you dragging the cards, it
+  like goes blank." Fixed the standard dnd-kit way: `WhiteboardBoardView` now tracks
+  `activeEntryId` (set in `onDragStart`, cleared in `handleBoardDragEnd`) and renders a
+  `<DragOverlay>` with a read-only `WhiteboardBoardEntry` clone of whichever entry is active —
+  a portal-rendered copy that isn't constrained by any ancestor's overflow/stacking context,
+  same pattern Row/Calendar's own separate `DndContext` already uses for its cards.
+- **Tests**: `tests/whiteboard-ledger.test.mjs`'s "WhiteboardBoardRow actually uses
+  groupLoanPaymentEntries" check dropped its `shortAddress` assertion — loan payments no
+  longer list each one's own address (collapsed into the one summary chip above), so
+  `shortAddress` isn't called directly in this component's body anymore (labels arriving in
+  `row.entries` are already shortAddress()'d upstream). Nothing else in the pure-logic test
+  suite needed to change — this whole redesign is wiring/presentation on top of the
+  already-tested `ledgerRows`/`roundDown5k`/`roundUp5k`, same as Month view and the public TV
+  dashboard before it.
 
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view

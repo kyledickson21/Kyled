@@ -8497,20 +8497,29 @@ const WhiteboardBoardEntry = ({ e, readOnly, onSetAmount, onResetAmount, onReset
   );
 };
 
-const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany }) => {
+const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany }) => {
   const short = row.balance < 0;
   const { loanPayments, other, loanTotal } = groupLoanPaymentEntries(row.entries);
   // Round only the row's own AGGREGATE figures (balance/the grouped loan-payment subtotal) —
   // never an individual entry's real amount, which always stays exact.
   const rOut = v => roundMode ? roundUp5k(v) : v;
   const rBal = v => roundMode ? roundDown5k(v) : v;
+  // 11/21, Kyle: "every date where the current balance doesn't change... just put the dashes
+  // that represent same amount" instead of repeating the identical number down the column.
+  const sameAsPrev = prevBalance!=null && rBal(prevBalance)===rBal(row.balance);
   const sellBuyEntries = other.filter(e=>e.kind==="sell"||e.kind==="buy");
   const plainOther = other.filter(e=>e.kind!=="sell"&&e.kind!=="buy");
   const { setNodeRef: setRowDropRef, isOver } = useDroppable({ id: row.day });
   const td = compact ? "px-1.5 py-0.5" : "px-3 py-1";
   // 11/21, Kyle: "the full date box turns red or green if current balance is positive or
   // negative" — the whole row, not just the balance figure's own text color.
-  const rowBg = short ? "bg-red-50 dark:bg-red-900/15" : "bg-emerald-50/40 dark:bg-emerald-900/10";
+  // 11/21: "still show the weekend rows a tiny bit darker" — layered on top of the red/green
+  // balance tint (a slightly darker shade of whichever color already applies), not a
+  // separate competing background.
+  const isWeekend = wbIsWeekend(row.day);
+  const rowBg = short
+    ? (isWeekend ? "bg-red-100 dark:bg-red-900/25" : "bg-red-50 dark:bg-red-900/15")
+    : (isWeekend ? "bg-emerald-100/60 dark:bg-emerald-900/20" : "bg-emerald-50/40 dark:bg-emerald-900/10");
   // 11/21: "make the dates with money moves the same thickness as the ones with nothing" — a
   // populated row is built from the EXACT SAME single-line, text-[9px] shape as an empty day
   // (same whitespace-nowrap date cell, same plain balance cell) — a day with several things
@@ -8549,7 +8558,7 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, onSetAmount
         </div>
         )}
       </td>
-      <td className={`${td9} text-right tabular-nums font-bold ${short?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{h$(rBal(row.balance))}</td>
+      <td className={`${td9} text-right tabular-nums font-bold ${sameAsPrev?"text-slate-300 dark:text-zinc-600 font-normal":short?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>{sameAsPrev?"—":h$(rBal(row.balance))}</td>
     </tr>
   );
 };
@@ -8608,6 +8617,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
   // reschedule, or onto the "No Date" strip to pull it off the timeline entirely (same
   // sendToNoDate the old 📋 button called) — no per-entry buttons needed for either.
   const handleBoardDragEnd = ({active, over}) => {
+    setActiveEntryId(null);
     if (!over || effReadOnly) return;
     const id = String(active.id);
     if (over.id === "board-nodate") { onSendToNoDate?.(id); return; }
@@ -8618,6 +8628,17 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
       }
     }
   };
+  // 11/21 bug fix: the pill itself only fades to 30% opacity while dragging (no visual clone
+  // follows the pointer) — fine on its own, but the Address cell's `overflow-hidden` (added so
+  // every row stays the same thickness regardless of entry count) clips a transformed element
+  // the moment it moves past the cell's own edge, so the dragged pill visually "goes blank"
+  // mid-drag. A `<DragOverlay>` (dnd-kit's own answer to this — a portal-rendered clone that
+  // isn't constrained by any ancestor's overflow/stacking context) fixes it the standard way;
+  // Row/Calendar's separate DndContext already uses the same pattern for its own cards.
+  const [activeEntryId, setActiveEntryId] = useState(null);
+  const activeEntry = activeEntryId
+    ? ledgerWeeks.flatMap(w=>w.rows).flatMap(r=>r.entries).find(en=>en.id===activeEntryId && (en.kind==="sell"||en.kind==="buy"))
+    : null;
   return (
     <div ref={containerRef} className={tvMode ? "bg-[#F2F2F7] dark:bg-[#14161F] p-3 h-screen w-screen flex flex-col overflow-hidden" : ""}>
       {tvMode && (
@@ -8654,7 +8675,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
 
       <div className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${compact?"flex-1 flex flex-col min-h-0":""}`}>
         <div className={compact ? "flex-1 overflow-auto" : "overflow-x-auto"}>
-          <DndContext sensors={effReadOnly?[]:boardDragSensors} onDragEnd={handleBoardDragEnd}>
+          <DndContext sensors={effReadOnly?[]:boardDragSensors} onDragStart={e=>setActiveEntryId(String(e.active.id))} onDragEnd={handleBoardDragEnd}>
             {!effReadOnly && <WhiteboardBoardNoDateZone compact={compact}/>}
             <table className={`w-full border-collapse min-w-[560px] ${compact?"text-[10px]":""}`}>
               <thead className="sticky top-0 z-10">
@@ -8685,13 +8706,19 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                 </tr>
                 {/* Every day in the window gets its own row (Kyle, 11/19: "show each day so
                     we can drag it easily" — there's always a row to drag a card onto), and
-                    the whole row tints red/green by that day's own balance sign (11/21). */}
-                {ledgerWeeks.flatMap(week=>week.rows).map(row=>
-                  <WhiteboardBoardRow key={row.day} row={row} h$={h$} readOnly={effReadOnly} compact={compact} roundMode={roundMode}
+                    the whole row tints red/green by that day's own balance sign (11/21). A
+                    row's own balance shows "—" instead of repeating yesterday's number when
+                    nothing changed it (11/21) — `prevBalance` is the prior row's (or, for the
+                    very first row, the Current starting balance's) real balance. */}
+                {ledgerWeeks.flatMap(week=>week.rows).map((row,i,arr)=>
+                  <WhiteboardBoardRow key={row.day} row={row} prevBalance={i===0?startingBalance:arr[i-1].balance} h$={h$} readOnly={effReadOnly} compact={compact} roundMode={roundMode}
                     onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate}
                     onMarkClosed={onMarkClosed} onExcludeMany={onExcludeMany}/>)}
               </tbody>
             </table>
+            <DragOverlay>
+              {activeEntry && <WhiteboardBoardEntry e={activeEntry} readOnly h$={h$}/>}
+            </DragOverlay>
           </DndContext>
         </div>
       </div>
@@ -8770,6 +8797,17 @@ const WhiteboardMonthDay = ({ day, padKey, isToday, dayNum, showMonthLabel, h$, 
 
 const MONTH_WEEKDAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
+// Survives WhiteboardPage unmounting/remounting (switching tabs away and back resets its local
+// useState, which otherwise means every single visit re-shows a momentary "loading" placeholder
+// — sell/buy cards briefly computed with no dates, landing in Needs Info — before snapping to
+// their real dates once the fetch resolves. Kyle, 11/21: "make it just hold the previous way it
+// was so it doesn't look like it's glitched out until the updated one loads in." A plain
+// module-level cache (not persisted past a hard page reload, which is fine — that's a genuinely
+// fresh load) used as each useState's initial value instead of {loading:true}, updated only on
+// a SUCCESSFUL fetch — a background refetch that fails just keeps showing the last good value
+// rather than flipping to an error state the user never asked to see.
+let wbForecastCache = { mercury: null, sellDates: null, buys: null };
+
 function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const readOnly = useReadOnly();
   const prv = usePrivacy();
@@ -8831,9 +8869,9 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // degrades to a manual/"not connected" state on failure — never a crash (see the Whiteboard
   // cash-flow forecast HARD RULES). Nothing here writes to nexus_data except the "paying
   // back" checkbox (whiteboard.payingBack), toggled from WhiteboardSellCard.
-  const [mercury,setMercury] = useState({loading:true});
-  const [sellDatesResult,setSellDatesResult] = useState({loading:true, rows:[]});
-  const [buysResult,setBuysResult] = useState({loading:true, rows:[], needsInfo:[]});
+  const [mercury,setMercury] = useState(wbForecastCache.mercury || {loading:true});
+  const [sellDatesResult,setSellDatesResult] = useState(wbForecastCache.sellDates || {loading:true, rows:[]});
+  const [buysResult,setBuysResult] = useState(wbForecastCache.buys || {loading:true, rows:[], needsInfo:[]});
 
   // Which tracker properties are selling: resimpli stage Under Contract on the sell side
   // (Inventory pipeline specifically — not the sort/grouping-folded rental mapping). Live data
@@ -8849,17 +8887,19 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchMercuryBalance(tvKey).then(r=>{ if(!cancelled) setMercury(r); }).catch(e=>{ if(!cancelled) setMercury({ok:false, reason:e.message}); });
-    fetchUpcomingBuys(tvKey).then(r=>{ if(!cancelled) setBuysResult(r); }).catch(e=>{ if(!cancelled) setBuysResult({ok:false, reason:e.message, rows:[], needsInfo:[]}); });
+    fetchMercuryBalance(tvKey).then(r=>{ if(!cancelled) { setMercury(r); wbForecastCache.mercury = r; } })
+      .catch(e=>{ if(!cancelled && !wbForecastCache.mercury) setMercury({ok:false, reason:e.message}); });
+    fetchUpcomingBuys(tvKey).then(r=>{ if(!cancelled) { setBuysResult(r); wbForecastCache.buys = r; } })
+      .catch(e=>{ if(!cancelled && !wbForecastCache.buys) setBuysResult({ok:false, reason:e.message, rows:[], needsInfo:[]}); });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    if (sellingProps.length===0) { setSellDatesResult({ok:true, rows:[]}); return; }
+    if (sellingProps.length===0) { const v={ok:true, rows:[]}; setSellDatesResult(v); wbForecastCache.sellDates = v; return; }
     fetchSellDates(sellingProps.map(p=>({id:p.id, address:p.address, leadId:p.resimpli?.leadId||null})), tvKey)
-      .then(r=>{ if(!cancelled) setSellDatesResult(r); })
-      .catch(e=>{ if(!cancelled) setSellDatesResult({ok:false, reason:e.message, rows:[]}); });
+      .then(r=>{ if(!cancelled) { setSellDatesResult(r); wbForecastCache.sellDates = r; } })
+      .catch(e=>{ if(!cancelled && !wbForecastCache.sellDates) setSellDatesResult({ok:false, reason:e.message, rows:[]}); });
     return () => { cancelled = true; };
   }, [sellingPropsKey]);
 
@@ -9445,27 +9485,32 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         </div>
       )}
 
+      {/* No-Date panel: same plain white/dark card + shadow every other Whiteboard panel
+          uses (Kyle, 11/21: "integrate it much cleaner and cohesively... get rid of that big
+          yellow weird thing, I want it to just be part of the system that makes sense") —
+          color is now just a small accent (the priority number, the +/− amount), not the
+          whole panel's background. */}
       {noDateSorted.length>0 && (
-        <div className="mb-4 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 p-3">
-          <div className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1.5">📋 No Date — {noDateSorted.length}, ranked by priority (drag ⠿ or use ▲▼ — #1 is most important)</div>
+        <div className="mb-4 bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3">
+          <div className="text-xs font-bold text-slate-500 dark:text-zinc-400 mb-1.5">No Date — {noDateSorted.length}, ranked by priority (drag ⠿ or use ▲▼ — #1 is most important)</div>
           <DndContext sensors={readOnly?[]:dragSensors} onDragEnd={handleNoDateDragEnd}>
           <SortableContext items={noDateSorted.map(n=>n.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-1 max-h-56 overflow-y-auto">
             {noDateSorted.map((n,i)=>(
               <SortableItem key={n.id} id={n.id} disabled={readOnly}>
                 {handleProps => (
-                <div className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/10">
+                <div className="text-[11px] text-slate-600 dark:text-zinc-300">
                 <div className="flex gap-1.5 items-center justify-between">
                   <div className="flex items-center gap-1 shrink-0">
                     {!readOnly && <span {...handleProps} title="Drag to reorder" className="cursor-grab active:cursor-grabbing text-slate-400 dark:text-zinc-500 touch-none px-0.5">⠿</span>}
-                    <span className="w-4 text-center font-black text-amber-500 dark:text-amber-400 tabular-nums" title="Priority rank">{i+1}</span>
+                    <span className="w-4 text-center font-black text-teal-600 dark:text-teal-400 tabular-nums" title="Priority rank">{i+1}</span>
                     {!readOnly && (<>
                       <button onClick={()=>moveNoDatePriority(n.id,-1)} disabled={i===0} title="Move up in priority" className="w-4 h-4 flex items-center justify-center rounded hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-25">▲</button>
                       <button onClick={()=>moveNoDatePriority(n.id,1)} disabled={i===noDateSorted.length-1} title="Move down in priority" className="w-4 h-4 flex items-center justify-center rounded hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-25">▼</button>
                     </>)}
                   </div>
                   <div className="flex gap-1.5 truncate min-w-0 flex-1">
-                    <span className="font-semibold shrink-0">{n.kind==="needsInfoSell"||n.kind==="onHoldSell"?"Sell:":n.kind==="needsInfoBuy"||n.kind==="onHoldBuy"?"Buy:":n.kind==="bill"?"Bill:":"Card:"}</span>
+                    <span className="font-semibold text-slate-400 dark:text-zinc-500 shrink-0">{n.kind==="needsInfoSell"||n.kind==="onHoldSell"?"Sell:":n.kind==="needsInfoBuy"||n.kind==="onHoldBuy"?"Buy:":n.kind==="bill"?"Bill:":"Card:"}</span>
                     <span className="truncate">{n.label}{n.reason?` — ${n.reason}`:""}{n.restoreDay?` — would be ${wbFmtDate(n.restoreDay)}`:""}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -9479,7 +9524,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
                         className="font-semibold text-teal-700 dark:text-teal-400 hover:underline">{fillingIn===n.id?"Cancel":"Fill in"}</button>
                     ) : (
                       <input type="date" onChange={ev=>{ if(ev.target.value) setCardDay(n.id, ev.target.value); }}
-                        className="text-[10px] border border-amber-300 dark:border-amber-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+                        className="text-[10px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
                     ))}
                   </div>
                 </div>
@@ -9487,7 +9532,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
                   <div className="flex items-center gap-1.5 mt-1 ml-9">
                     <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>
                     <input type="date" value={fillDate} onChange={e=>setFillDate(e.target.value)}
-                      className="text-[10px] border border-amber-300 dark:border-amber-700 rounded-lg px-1.5 py-1 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+                      className="text-[10px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-1 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
                     <button disabled={!fillAmount||!fillDate} onClick={()=>{
                       saveManualFill(n.id, { kind:n.kind==="needsInfoSell"?"sell":"buy", key:n.raw.kind==="sell"?n.raw.id:n.raw.leadId, address:n.raw.address, amount: parseFloat(fillAmount)||0, date: fillDate });
                       setFillingIn(null);
@@ -9501,7 +9546,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
           </div>
           </SortableContext>
           </DndContext>
-          <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 italic">Manual cards/bills with no date yet, plus REsimpli/Sheet properties missing a date or amount — drag ⠿ or use ▲▼ to re-rank by priority (#1 = most important). Pencil in an amount+date on a Sell/Buy row to add it to the forecast like a real card (it drops back here on its own if the real data catches up); pick a date on a Bill/Card row to schedule it.</div>
+          <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1.5 italic">Manual cards/bills with no date yet, plus REsimpli/Sheet properties missing a date or amount — drag ⠿ or use ▲▼ to re-rank by priority (#1 = most important). Pencil in an amount+date on a Sell/Buy row to add it to the forecast like a real card (it drops back here on its own if the real data catches up); pick a date on a Bill/Card row to schedule it.</div>
         </div>
       )}
 
