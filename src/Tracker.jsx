@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "9";
+const APP_VERSION = "10";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -8360,7 +8360,11 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
   return (
     <tr ref={setRowDropRef} className={`${rowBg} ${isOver?"ring-2 ring-inset ring-teal-400":""}`}>
       <td className={`${td9} font-semibold text-slate-500 dark:text-zinc-400`}>
-        {wbFmtDate(row.day)} <span className="opacity-70">{wbWeekday(row.day)}</span>
+        {/* 11/21, Kyle, from a phone screenshot: "stuff is smushed and I can't see everything"
+            — the weekday abbreviation was getting clipped mid-word ("Nov 23 Mc") inside the
+            pinned mobile Date column; dropped below `sm` instead of letting it clip, rather
+            than widen Date at Balance/Money Moves' expense. Unchanged at `sm:` and up. */}
+        {wbFmtDate(row.day)} <span className="hidden sm:inline opacity-70">{wbWeekday(row.day)}</span>
       </td>
       {/* 11/21, Kyle, re: TV Mode: "put the pills closer to the left where the dates are so
           its easier to track what date it's on if Im looking from far away" — this column's
@@ -8723,7 +8727,12 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                           stays at/above $0 — exactly the lowest balance the window ever
                           reaches, floored at 0. */}
                       {safeToSend && (
-                        <span className="shrink-0 flex items-center gap-1.5 text-[11px] sm:text-[9px]">
+                        // 11/21, Kyle, from a phone screenshot: the label + three day-figures
+                        // never wrapped internally (no `flex-wrap` here, just on the outer
+                        // row), so on a narrow phone they overflowed this span's own width and
+                        // visually ran into the Balance column next to it. `flex-wrap` lets
+                        // the figures drop to their own line within this span instead.
+                        <span className="shrink-0 flex items-center gap-1.5 flex-wrap text-[11px] sm:text-[9px]">
                           <span className="text-slate-400 dark:text-zinc-500">Safe to send out:</span>
                           {[["30d",safeToSend.d30],["60d",safeToSend.d60],["90d",safeToSend.d90]].map(([lbl,v])=>(
                             <span key={lbl} className={`font-semibold ${v<=0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>

@@ -1747,6 +1747,28 @@ the no date, and same gray color when it's in the 'hit account' box."
   "integrated days-to-negative line" mentioned above was itself replaced the same day — see
   "Safe to send out" below.)
 
+### Two real phone-layout bugs, caught from an actual screenshot (11/21)
+Kyle sent a screenshot after the phone-fit pass above: the weekday abbreviation was clipped
+mid-word on several rows ("Nov 23 Mc" instead of "Nov 23 Mon"), and the Current row's "Safe to
+send out" line visibly ran into the Balance figure next to it. "Stuff is smushed and I can't
+see everything. Fix it."
+- **Date column**: the weekday span (`wbWeekday(row.day)`) is now `hidden sm:inline` — dropped
+  below `sm` instead of letting the pinned 62px mobile column's `overflow-hidden` clip it
+  mid-word. The date itself ("Nov 23") still shows; only the weekday name is gone on a phone.
+  Unchanged at `sm:` and up (still "Nov 23 Mon").
+- **"Safe to send out"**: the label + three day-figures were laid out in their OWN unbounded,
+  non-wrapping flex row (`flex items-center gap-1.5`, no `flex-wrap` — only the OUTER row
+  around it had `flex-wrap`, which only lets this whole span move to its own line, not wrap
+  its own children). On a narrow phone that inner content was wider than the Money Moves
+  column, so it overflowed into the Balance column next to it rather than cleanly clipping
+  (table-cell `overflow-hidden` is known to be unreliable with nested flex content in some
+  mobile browsers — the real fix is to never need to overflow in the first place). Added
+  `flex-wrap` to that span too, so the day-figures drop to their own line within it when
+  there's no room, instead of overflowing.
+- Still screenshot-verified only for this one specific layout (45d range, a handful of
+  no-date pills, one loan-payment day) — a different combination of content could still
+  surface something else; send another screenshot if anything still looks off.
+
 ### The ledger table fits a phone screen with no horizontal scroll (11/21)
 Kyle: "make it so that on the phone I don't need to scroll left or right to see the balance.
 Should all fit on the screen." The earlier mobile pass (above) only reduced the table's forced
