@@ -7994,10 +7994,14 @@ const WhiteboardCard = ({ card, h$, liens, availText, onEdit, onRemove, navigate
 // day's own activity) stays as a small secondary line underneath when it's non-zero.
 const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, net, balance, settledIn, h$, children, empty }) => {
   const {setNodeRef,isOver} = useDroppable({id});
-  const short = balance<0;
+  const short = balance!=null && balance<0;
+  // 11/21, Kyle: "the full date box turns red or green if current balance is positive or
+  // negative" — the whole column, not just the small balance figure inside it. Unscheduled (no
+  // balance to speak of) keeps the plain neutral background.
+  const dayBg = balance==null ? "bg-slate-100/70 dark:bg-zinc-900/40" : short ? "bg-red-100/70 dark:bg-red-900/20" : "bg-emerald-50/60 dark:bg-emerald-900/10";
   return (
     <div ref={setNodeRef}
-      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-teal-50 dark:bg-teal-900/20 ring-2 ring-teal-300 dark:ring-teal-700":short?"bg-red-50/70 dark:bg-red-900/10":isToday?"bg-amber-50/70 dark:bg-amber-900/10":"bg-slate-100/70 dark:bg-zinc-900/40"} ${weekStart?"ml-2":""}`}>
+      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-teal-50 dark:bg-teal-900/20 ring-2 ring-teal-300 dark:ring-teal-700":dayBg} ${weekStart?"ml-2":""}`}>
       <div className="px-1 pb-2 mb-2 border-b border-slate-200 dark:border-zinc-700">
         <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
         {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
@@ -8188,10 +8192,16 @@ const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
 // recomputed fresh from live property/loan data every render.
 // `onMarkClosed`/`onPickDate`/`onResetDate` are all omitted (undefined) under readOnly — the
 // card still renders the manual-date/breakdown info either way, it just can't be acted on.
-const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onPickDate, onResetDate, onSendToNoDate }) => {
+// 11/21 (Kyle: "do that same thing for the calendar view... drag the property pill to a new
+// date" — same pill philosophy as Board's WhiteboardBoardEntry): the header is now one pill
+// line, address and amount together, no 📅/📋 icon buttons — dragging onto another day column
+// reschedules it, dragging onto Unscheduled already unschedules it (handleDragEnd), so neither
+// button added anything a drag didn't already do. "Closed" stays (there's no drag equivalent,
+// and this card is now its only home — Board view dropped it) along with the expandable
+// breakdown/paying-back checkboxes, which only make sense on a card with room for them.
+const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onResetDate }) => {
   const readOnly = useReadOnly();
   const [open, setOpen] = useState(false);
-  const [pickingDate, setPickingDate] = useState(false);
   // Draggable onto another day (dnd-kit) — each card calls useDraggable itself, same pattern
   // as WhiteboardBillCard, since this hook can't be called from a parent's .map() loop.
   const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id, disabled:readOnly});
@@ -8210,29 +8220,19 @@ const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onPickDa
   }));
   return (
     <div ref={setNodeRef} style={dragStyle} {...dragHandleProps}
-      className={`rounded-xl border border-emerald-300 dark:border-emerald-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
-      <div className="flex items-start justify-between gap-1.5 mb-0.5">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[10px]">🏠</span>
-          <button onClick={e => { e.stopPropagation(); navigate && navigate({ type: 'property', id: card.propId }); }}
-            className="font-semibold text-[12px] text-teal-600 dark:text-teal-400 hover:underline truncate text-left">{card.address}</button>
-        </div>
-        {!readOnly && (
-          <div className="flex items-center gap-1 shrink-0">
-            {onPickDate && <button onClick={e=>{e.stopPropagation();setPickingDate(p=>!p);}} title="Pick a date (works on touch, no drag needed)" className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">📅</button>}
-            {onSendToNoDate && <button onClick={e=>{e.stopPropagation();onSendToNoDate();}} title="Move to the No-Date list — pulls it off the timeline without closing it" className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400 text-[11px]">📋</button>}
-            {onMarkClosed && <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this sale closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>}
-          </div>
-        )}
+      className={`rounded-xl border border-emerald-300 dark:border-emerald-700 p-2.5 mb-2 bg-emerald-50/70 dark:bg-emerald-900/20 shadow-sm touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
+      <div className="flex items-center justify-between gap-1.5">
+        <button onClick={e => { e.stopPropagation(); navigate && navigate({ type: 'property', id: card.propId }); }}
+          className="font-semibold text-[12px] text-teal-700 dark:text-teal-400 hover:underline truncate text-left min-w-0">🏠 {card.address}</button>
+        <span className="font-black tabular-nums text-emerald-600 dark:text-emerald-400 shrink-0">+{h$(card.amount)}</span>
       </div>
-      {pickingDate && !readOnly && (
-        <input type="date" defaultValue={card.day} onClick={e=>e.stopPropagation()}
-          onChange={e=>{ if(e.target.value){ onPickDate(e.target.value); setPickingDate(false); } }}
-          className="text-[11px] border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 mb-1.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 w-full focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+      {!readOnly && onMarkClosed && (
+        <div className="flex justify-end mt-0.5">
+          <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this sale closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-zinc-800/70 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>
+        </div>
       )}
-      <div className="text-lg font-black tabular-nums mt-0.5 text-emerald-600 dark:text-emerald-400">+{h$(card.amount)}</div>
       <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
-        Sale {b.saleDate} ({b.dateSource === "sheet" ? "sheet" : "REsimpli fallback"}) · auto
+        Sale {b.saleDate} ({b.dateSource === "sheet" ? "sheet" : b.dateSource === "manual" ? "manually added" : "REsimpli fallback"}) · auto
       </div>
       {card.pastDue && !card.manualDate && (
         <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">⏰ closed {b.saleDate} — showing today since it hasn't hit the account yet</div>
@@ -8278,34 +8278,23 @@ const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onPickDa
 // Auto-generated, read-only buy card (a REsimpli lead under contract to buy). Shows both the
 // analytics and contract-question dates when they differ, so a mismatch between the two
 // sources is visible rather than silently resolved.
-const WhiteboardBuyCard = ({ card, h$, onMarkClosed, onPickDate, onResetDate, onSendToNoDate }) => {
+const WhiteboardBuyCard = ({ card, h$, onMarkClosed, onResetDate }) => {
   const readOnly = useReadOnly();
-  const [pickingDate, setPickingDate] = useState(false);
   const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id, disabled:readOnly});
   const dragStyle = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
   const dragHandleProps = readOnly ? {} : {...attributes, ...listeners};
   return (
     <div ref={setNodeRef} style={dragStyle} {...dragHandleProps}
-      className={`rounded-xl border border-red-300 dark:border-red-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
-      <div className="flex items-start justify-between gap-1.5 mb-0.5">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[10px]">🔑</span>
-          <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{card.address}</div>
-        </div>
-        {!readOnly && (
-          <div className="flex items-center gap-1 shrink-0">
-            {onPickDate && <button onClick={e=>{e.stopPropagation();setPickingDate(p=>!p);}} title="Pick a date (works on touch, no drag needed)" className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">📅</button>}
-            {onSendToNoDate && <button onClick={e=>{e.stopPropagation();onSendToNoDate();}} title="Move to the No-Date list — pulls it off the timeline without closing it" className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-amber-500 dark:hover:text-amber-400 text-[11px]">📋</button>}
-            {onMarkClosed && <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this purchase closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>}
-          </div>
-        )}
+      className={`rounded-xl border border-red-300 dark:border-red-700 p-2.5 mb-2 bg-red-50/70 dark:bg-red-900/20 shadow-sm touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
+      <div className="flex items-center justify-between gap-1.5">
+        <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate min-w-0">🔑 {card.address}</div>
+        <span className="font-black tabular-nums text-red-600 dark:text-red-400 shrink-0">−{h$(card.amount)}</span>
       </div>
-      {pickingDate && !readOnly && (
-        <input type="date" defaultValue={card.day} onClick={e=>e.stopPropagation()}
-          onChange={e=>{ if(e.target.value){ onPickDate(e.target.value); setPickingDate(false); } }}
-          className="text-[11px] border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 mb-1.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 w-full focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+      {!readOnly && onMarkClosed && (
+        <div className="flex justify-end mt-0.5">
+          <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this purchase closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-zinc-800/70 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>
+        </div>
       )}
-      <div className="text-lg font-black tabular-nums mt-0.5 text-red-600 dark:text-red-400">−{h$(card.amount)}</div>
       {card.dateFromAnalytics && card.dateFromContract && card.dateFromAnalytics !== card.dateFromContract && (
         <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Analytics {card.dateFromAnalytics} vs. contract {card.dateFromContract} — using {card.date}</div>
       )}
@@ -9584,14 +9573,10 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
                 isToday={i===0} weekStart={i>0&&i%7===0} net={rBal(netFor(day))} balance={rBal(balances[day])} settledIn={settledInFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0&&sellCardsFor(day).length===0&&buyCardsFor(day).length===0&&setAsideCardsFor(day).length===0}>
                 {sellCardsFor(day).map(c=><WhiteboardSellCard key={c.id} card={c} h$={h$} update={update} navigate={navigate}
                   onMarkClosed={readOnly?undefined:()=>markClosed(c.id,"sell",c.propId,c.address,c.amount)}
-                  onPickDate={readOnly?undefined:(newDate)=>setMovedDate(c.id,newDate,c.sourceDate??c.day)}
-                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}
-                  onSendToNoDate={readOnly?undefined:()=>sendToNoDate(c.id)}/>)}
+                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}/>)}
                 {buyCardsFor(day).map(c=><WhiteboardBuyCard key={c.id} card={c} h$={h$}
                   onMarkClosed={readOnly?undefined:()=>markClosed(c.id,"buy",c.id.replace(/^buy-/,""),c.address,c.amount)}
-                  onPickDate={readOnly?undefined:(newDate)=>setMovedDate(c.id,newDate,c.sourceDate??c.day)}
-                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}
-                  onSendToNoDate={readOnly?undefined:()=>sendToNoDate(c.id)}/>)}
+                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}/>)}
                 {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
                 {setAsideCardsFor(day).map(c=><WhiteboardSetAsideCard key={c.id} card={c} h$={h$}/>)}
                 {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard} navigate={navigate}/>)}
