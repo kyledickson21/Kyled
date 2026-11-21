@@ -8625,13 +8625,22 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
 // A persistent drop target for "take this off the dated timeline" (11/21, replacing the old
 // per-entry 📋 button) — drag any sell/buy entry here instead of a day row to send it to the
 // unified No-Date panel (above the whole Whiteboard page), same sendToNoDate the button used
-// to call. Sits inside WhiteboardBoardView's own DndContext, right above the table.
-const WhiteboardBoardNoDateZone = ({ compact }) => {
+// to call. Sits inside WhiteboardBoardView's own DndContext, right above the table. Also shows
+// whatever's already there as real pills (11/21: "just hold all of the no date things there
+// in that same integrated pill form") — dragging one of those back onto a day row restores it
+// with that date in one step (`onRestoreToDate`, handled in WhiteboardBoardView's own
+// handleBoardDragEnd), so the zone works as a real two-way holding area, not just a label.
+const WhiteboardBoardNoDateZone = ({ compact, readOnly, h$, onHoldEntries }) => {
   const { setNodeRef, isOver } = useDroppable({ id: "board-nodate" });
   return (
     <div ref={setNodeRef}
-      className={`text-center border-b-2 border-dashed font-semibold transition-colors ${compact?"py-1 text-[9px]":"py-1.5 text-[10px]"} ${isOver?"bg-amber-100 dark:bg-amber-900/30 border-amber-400 text-amber-700 dark:text-amber-300":"bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800 text-amber-500 dark:text-amber-500"}`}>
-      ↓ Drag here to clear the date
+      className={`border-b-2 border-dashed transition-colors ${compact?"py-1 px-1.5":"py-1.5 px-2"} ${isOver?"bg-amber-100 dark:bg-amber-900/30 border-amber-400":"bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"}`}>
+      <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[10px]"} text-amber-700 dark:text-amber-300`}>↓ Drag here to clear the date</div>
+      {onHoldEntries && onHoldEntries.length>0 && (
+        <div className="flex items-center gap-1.5 flex-wrap justify-center mt-1">
+          {onHoldEntries.map(e=><WhiteboardBoardEntry key={e.id} e={e} readOnly={readOnly} h$={h$}/>)}
+        </div>
+      )}
     </div>
   );
 };
@@ -8659,7 +8668,8 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
   usingMercury, sbInput, onSbInputChange, onCommitStartingBalance, mercuryLoading, mercuryReason,
   undatedSetAsides, onEditSetAside, onAddSetAside, onDeleteSetAside,
   onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate,
-  loanPaymentOverrides, onSetLoanPaymentOverride, onResetLoanPaymentOverride }) {
+  loanPaymentOverrides, onSetLoanPaymentOverride, onResetLoanPaymentOverride,
+  onHoldEntries, onRestoreToDate }) {
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
   const rBal = v => roundMode ? roundDown5k(v) : v;
@@ -8701,6 +8711,14 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
     if (!over || effReadOnly) return;
     const id = String(active.id);
     if (over.id === "board-nodate") { onSendToNoDate?.(id); return; }
+    // An onHold pill (shown inside the No-Date zone) dragged onto a real day row — restore
+    // it with that date in one step, rather than requiring a separate Restore click first.
+    const onHold = (onHoldEntries||[]).find(en => en.id === id);
+    if (onHold) {
+      if (over.id === "board-archive") { onMarkClosed?.(onHold); return; }
+      onRestoreToDate?.(id, String(over.id), onHold.sourceDate ?? onHold.day);
+      return;
+    }
     for (const week of ledgerWeeks) {
       for (const row of week.rows) {
         const found = row.entries.find(en => en.id === id && (en.kind==="sell"||en.kind==="buy"));
@@ -8722,6 +8740,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
   const [activeEntryId, setActiveEntryId] = useState(null);
   const activeEntry = activeEntryId
     ? ledgerWeeks.flatMap(w=>w.rows).flatMap(r=>r.entries).find(en=>en.id===activeEntryId && (en.kind==="sell"||en.kind==="buy"))
+      || (onHoldEntries||[]).find(en=>en.id===activeEntryId)
     : null;
   return (
     <div ref={containerRef} className={tvMode ? "bg-[#F2F2F7] dark:bg-[#14161F] p-3 h-screen w-screen flex flex-col overflow-hidden" : ""}>
@@ -8760,7 +8779,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
       <div className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${compact?"flex-1 flex flex-col min-h-0":""}`}>
         <div className={compact ? "flex-1 overflow-auto" : "overflow-x-auto"}>
           <DndContext sensors={effReadOnly?[]:boardDragSensors} onDragStart={e=>setActiveEntryId(String(e.active.id))} onDragEnd={handleBoardDragEnd}>
-            {!effReadOnly && <WhiteboardBoardNoDateZone compact={compact}/>}
+            {!effReadOnly && <WhiteboardBoardNoDateZone compact={compact} readOnly={effReadOnly} h$={h$} onHoldEntries={onHoldEntries}/>}
             {!effReadOnly && <WhiteboardBoardArchiveZone compact={compact}/>}
             <table className={`w-full border-collapse min-w-[560px] ${compact?"text-[10px]":""}`}>
               <thead className="sticky top-0 z-10">
@@ -9253,6 +9272,15 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // forecast.mjs). Shown once, shared above Calendar/Board exactly like the old Needs-Info-
   // only panel was, so it never needs to be duplicated per view.
   const noDateOrder = data.whiteboardOverrides?.noDateOrder || [];
+  // 11/21, Kyle: "just hold all of the no date things there in that same integrated pill
+  // form" — the same onHold sell/buy cards the unified No-Date panel already lists, reshaped
+  // for WhiteboardBoardEntry so Board's own "drag here to clear the date" zone can actually
+  // show them as real pills (draggable back onto a day row to restore them), not just a label
+  // with nothing in it.
+  const onHoldEntries = [
+    ...sellWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"sell", label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"in", day:c.day, sourceDate:c.sourceDate })),
+    ...buyWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"buy", label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:"out", day:c.day, sourceDate:c.sourceDate })),
+  ];
   const noDateAll = [
     ...bills.map(c=>({ id:c.id, kind:"bill", label:shortAddress(c.address)||c.address||"Bill", amount:c.amount||0, direction:c.direction })),
     ...unscheduled.map(c=>({ id:c.id, kind:"unscheduled", label:c.kind==="property"?shortAddress(c.address):(c.address||"Card"), amount:c.amount||0, direction:c.direction })),
@@ -9375,6 +9403,16 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     const next = { ...(d.whiteboardOverrides?.movedDates||{}) };
     delete next[cardId];
     return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, movedDates: next } };
+  });
+  // Dragging an onHold pill (shown inside WhiteboardBoardNoDateZone) straight onto a day row —
+  // restores it (clears noDateForced) AND gives it that date in one update, so it doesn't
+  // bounce through a dateless state in between.
+  const restoreToDate = (cardId, newDate, sourceDateNow) => update(d => {
+    const nextForced = { ...(d.whiteboardOverrides?.noDateForced||{}) };
+    delete nextForced[cardId];
+    const existing = d.whiteboardOverrides?.movedDates?.[cardId];
+    const originalDate = existing?.originalDate ?? sourceDateNow ?? newDate;
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, noDateForced: nextForced, movedDates: { ...(d.whiteboardOverrides?.movedDates||{}), [cardId]: { date: newDate, originalDate } } } };
   });
   const saveSetAside = entry => update(d => {
     const existing = d.whiteboardOverrides?.setAsides||[];
@@ -9725,7 +9763,8 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
           onResetAmount={readOnly?undefined:resetAmountOverride} onResetDate={readOnly?undefined:resetMovedDate}
           onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}
           onSendToNoDate={readOnly?undefined:sendToNoDate}
-          loanPaymentOverrides={loanPaymentOverrides} onSetLoanPaymentOverride={readOnly?undefined:setLoanPaymentOverride} onResetLoanPaymentOverride={readOnly?undefined:resetLoanPaymentOverride}/>
+          loanPaymentOverrides={loanPaymentOverrides} onSetLoanPaymentOverride={readOnly?undefined:setLoanPaymentOverride} onResetLoanPaymentOverride={readOnly?undefined:resetLoanPaymentOverride}
+          onHoldEntries={onHoldEntries} onRestoreToDate={readOnly?undefined:restoreToDate}/>
       )}
 
       {effectiveBoardView==="calendar" && (cards.length===0&&activeAutoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
