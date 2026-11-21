@@ -1513,6 +1513,84 @@ then removed the same day ("looks like shit get rid of it") — if you see a str
   already-tested `ledgerRows`/`roundDown5k`/`roundUp5k`, same as Month view and the public TV
   dashboard before it.
 
+### Further Board/Row refinements, same day (11/21)
+A long string of direct follow-up feedback, all same-day as the redesign above.
+- **Board row coloring reverted**: the full-row red/green tint and weekend shading (both from
+  the redesign above) were explicitly undone — "actually get rid of the dark weekend and full
+  box color changes. It was easier to read before." `WhiteboardBoardRow`'s `rowBg` is back to
+  `short ? "bg-red-50 dark:bg-red-900/15" : ""` — a shortfall day only, plain otherwise. Row
+  view's `WhiteboardColumn` background (full-box red/green) was NOT reverted — that request
+  was scoped to "the board view" specifically.
+- **Shared pill shape/colors** (`WB_PILL_SHAPE`, `wbPillColor(direction)`, `wbPillAccent
+  (direction)`, top-level helpers near `wbFmtDate`) — Kyle: "make the calendar view look
+  exactly like the board view... keep this consistent to any future changes." Both
+  `WhiteboardBoardEntry` (Board) and `WhiteboardSellCard`/`WhiteboardBuyCard` (Row) build their
+  pill's border/background/accent-text classes from these three helpers instead of each
+  hardcoding its own copy, so a future style tweak to one can't silently drift from the other.
+- **Add a property closing REsimpli hasn't flagged yet** — Kyle: "allow me to add a property
+  closing that isn't pulled from resimpli yet... it can fill in the amounts for me the same way
+  it does the others." `data.whiteboardOverrides.manualSellDates` (`{[propId]: "YYYY-MM-DD"}`)
+  — its mere presence is both "add this property to the sell list" and the date to use.
+  `sellingProps` now also includes any property with a `manualSellDates` entry; the per-property
+  `dateInfo` lookup falls back to `{date: manualSellDates[prop.id], source:"manual"}` when
+  REsimpli/the Sheet have nothing, so the card is built by the EXACT same `sellCashAmount`
+  formula as a real REsimpli-detected sale — live-recomputed, never a frozen typed-in number.
+  `WhiteboardAddClosingModal` (+ "+ Add Closing" in the toolbar) is just a property `<Sel>` and
+  a date — no amount field at all, by design. Auto-clears once the property is sold or deleted
+  (not once REsimpli itself catches up — the real REsimpli/Sheet date just takes precedence at
+  that point, via the `sellDateById[...] || manualSellDates[...]` fallback order, so there's
+  nothing to clear). A manually-added card's "Remove" action lives on the Row-view
+  `WhiteboardSellCard` (shown only when `b.dateSource==="manual"`) — Board view has no per-entry
+  buttons left to put it on.
+- **📦 Archive drop zone** — Kyle: "add an archive thing to drag into for the 'mark as
+  reflected' in balance... the stuff just stays there viewable in the archive until it's
+  reflected in resimpli where the system would've taken it out automatically like it does
+  already." This is a drag entry point onto the EXISTING Mark Closed mechanism, not new state —
+  `WhiteboardBoardArchiveZone` (a second `useDroppable` strip next to the No-Date one) calls the
+  same `onMarkClosed` Board already had; `WhiteboardClosedPanel` already shows it in "✅ Closed,
+  waiting to confirm" with Undo, and the existing auto-clear effect already removes it the
+  moment REsimpli/the Sheet confirms it — exactly the asked-for behavior, with zero new
+  override state.
+- **No-Date zone shows real pills** — Kyle: "just hold all of the no date things there in that
+  same integrated pill form." `onHoldEntries` (sell/buy cards currently `noDateForced`) are
+  rendered as real `WhiteboardBoardEntry` pills inside `WhiteboardBoardNoDateZone` itself, not
+  just a label. Dragging one back onto a day row calls the new `restoreToDate(cardId, newDate,
+  sourceDateNow)` writer — clears `noDateForced` AND sets the date in one `update()`, so it
+  never bounces through a dateless state in between; dragging it onto the Archive zone instead
+  marks it closed directly. `handleBoardDragEnd`'s `DragOverlay` lookup also checks
+  `onHoldEntries`, so dragging one of these shows the same visible floating clone as a real
+  ledger entry.
+- **Set Aside folded into the Current row** — Kyle: "the current balance is already the top row
+  in the board, so just keep it right there and let me edit it super integrated with pills to
+  make adjustments." The standalone "Set Aside" panel is now hidden for Board view specifically
+  (`effectiveBoardView!=="board"` — Row/Month still show it, having no row of their own to fold
+  it into); Board's "Current" row shows each UNDATED set-aside entry as its own small violet
+  pill (click to edit via the existing `WhiteboardSetAsideModal`, ✕ to delete) plus a "+ Set
+  Aside" link. A DATED set-aside entry needed no change — it already showed as its own pill on
+  the day it leaves, via `setAsideCardsFor`.
+- **Loan-payment total is editable/resettable** — Kyle: "I should be able to adjust the full
+  amount on the loan payments same as the properties and can also reset it the same way if I
+  wanna go back to what the tracker shows." New `data.whiteboardOverrides.loanPaymentOverrides`
+  (`{[day]: amount}`) — keyed by DAY, not by card id, since a day's loan payments are shown/
+  edited as one grouped total, not individually. `autoTotalFor(day)` (the one place every
+  balance-affecting read of a day's loan-payment total goes through — `netFor`, Row view's
+  `totalOut`) returns the override when present, else the real computed sum, so this actually
+  moves the balance, not just the display. The grouped "N loan pmts" chip's total is now
+  click-to-edit with a ↺ reset (same pattern as a sell/buy pill's amount) — this also answers
+  Kyle's "why's there an X on the loan payments pill?": the old blunt "Remove all" ✕ button is
+  gone, replaced by this.
+- **Drag-dot (⠿) indicators** added to the left of every draggable pill (Board's
+  `WhiteboardBoardEntry`, Row's `WhiteboardSellCard`/`WhiteboardBuyCard`) — purely visual,
+  hidden under `readOnly`.
+- **Removed the description paragraph** under the "Whiteboard" page title.
+- **Loading-flicker fix, corrected**: the first pass (module-level `wbForecastCache` variable)
+  only survived a tab switch, not a hard page reload — Kyle: "it's still when I start the
+  whiteboard, there's a bunch of stuff not showing for a few seconds... can it just show what
+  it showed previously... instead of everything looking like it's gone?" Replaced with
+  `localStorage` (`WB_CACHE_KEY = "nx-whiteboardForecastCache"`, `loadWbCache`/`saveWbCache`)
+  — read synchronously as each `useState`'s initial value, so there's no flash of "loading"
+  even on a fresh page load, only ever updated on a successful fetch.
+
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view
 on a TV, and asked for a URL that needs no login at all — AbleSign just loads a URL, it can't
