@@ -8836,6 +8836,94 @@ const WhiteboardMonthDay = ({ day, padKey, isToday, dayNum, showMonthLabel, h$, 
 
 const MONTH_WEEKDAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
+// ─── Chart — a combined bar+line visualization of the exact same `ledgerRows` Board already
+// shows numerically (11/21, Kyle: "add graphs to the whiteboard page" — a balance-over-time
+// line plus a daily in/out bar chart, both). Computes nothing of its own — same HARD RULE as
+// Board ("never calls update() directly") — it only reads `ledgerRows` (through the same
+// rIn/rOut/rBal rounding helpers Board uses), so the chart can never show a number Board
+// itself doesn't already agree with; there's no second running-balance implementation here to
+// drift from the real one. One shared dollar axis for both the bars and the line (never a
+// second y-axis — see the dataviz skill's "one axis" rule) — In/Out are a diverging bar
+// anchored at the $0 line, the balance a line on top of it.
+// Colors are a validated categorical trio — #059669 (in), #ef4444 (out), #0d9488 (balance) —
+// checked with the dataviz skill's validate_palette.js against BOTH the light (#fcfcfb) and
+// dark (#14161f, this app's own dark page surface) chart backgrounds: CVD separation ΔE 9.6
+// for the red/green pair (above the floor, no secondary-encoding exception needed), lightness
+// band, chroma floor, and contrast all pass in both modes with this exact trio — which is why
+// it's the same fixed hex in light and dark rather than swapping shades per theme. Chrome
+// (gridline, crosshair, axis labels) uses `currentColor` + a `text-*`/`dark:text-*` className
+// instead, so only those three data colors are ever hardcoded.
+// A table view of this same data already exists one click away (Board view) — not duplicated
+// here, per the dataviz skill's accessibility-pass guidance.
+function WhiteboardChart({ ledgerRows, h$, roundMode, compact }) {
+  const [hoverIdx, setHoverIdx] = useState(0);
+  const svgRef = useRef(null);
+  const rIn = v => roundMode ? roundDown5k(v) : v;
+  const rOut = v => roundMode ? roundUp5k(v) : v;
+  const rBal = v => roundMode ? roundDown5k(v) : v;
+  const rows = ledgerRows.map(r => ({ day: r.day, netIn: rIn(r.netIn), netOut: rOut(r.netOut), balance: rBal(r.balance) }));
+  if (!rows.length) return null;
+  const hoverSafe = Math.min(hoverIdx, rows.length - 1);
+  const H = compact ? 140 : 220;
+  const padTop = 14, padBottom = compact ? 18 : 24, padLeft = 8, padRight = 8;
+  const barW = Math.max(10, Math.min(60, 900 / rows.length));
+  const W = Math.max(600, padLeft + padRight + rows.length * barW);
+  const spacing = (W - padLeft - padRight) / rows.length;
+  const vals = rows.flatMap(r => [r.netIn, -r.netOut, r.balance]).concat([0]);
+  let minVal = Math.min(...vals), maxVal = Math.max(...vals);
+  if (minVal === maxVal) { minVal -= 1000; maxVal += 1000; }
+  const range = maxVal - minVal;
+  const yOf = v => padTop + (maxVal - v) / range * (H - padTop - padBottom);
+  const xOf = i => padLeft + i * spacing + spacing / 2;
+  const zeroY = yOf(0);
+  const labelEvery = Math.max(1, Math.ceil(rows.length / 8));
+  const linePoints = rows.map((r, i) => `${xOf(i)},${yOf(r.balance)}`).join(" ");
+  const hovered = rows[hoverSafe];
+  const pickFromClientX = clientX => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    const scale = W / rect.width;
+    const localX = (clientX - rect.left) * scale;
+    setHoverIdx(Math.max(0, Math.min(rows.length - 1, Math.floor((localX - padLeft) / spacing))));
+  };
+  return (
+    <div className="bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+      <div className="flex items-center gap-4 mb-2 text-[11px] font-semibold">
+        <span className="flex items-center gap-1.5 text-slate-500 dark:text-zinc-400"><span className="w-3 h-0.5 rounded-full inline-block" style={{background:"#0d9488"}}/>Balance</span>
+        <span className="flex items-center gap-1.5 text-slate-500 dark:text-zinc-400"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{background:"#059669"}}/>In</span>
+        <span className="flex items-center gap-1.5 text-slate-500 dark:text-zinc-400"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{background:"#ef4444"}}/>Out</span>
+      </div>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full touch-none" style={{height:H}}
+        onMouseMove={e=>pickFromClientX(e.clientX)}
+        onTouchStart={e=>pickFromClientX(e.touches[0].clientX)}
+        onTouchMove={e=>pickFromClientX(e.touches[0].clientX)}>
+        <line x1={padLeft} y1={zeroY} x2={W-padRight} y2={zeroY} stroke="currentColor" className="text-slate-200 dark:text-zinc-700" strokeWidth="1"/>
+        {rows.map((r,i) => (
+          <g key={r.day}>
+            {r.netIn>0 && <rect x={xOf(i)-barW*0.32} y={yOf(r.netIn)} width={barW*0.64} height={Math.max(0,zeroY-yOf(r.netIn))} rx="2" fill="#059669" opacity={i===hoverSafe?1:0.75}/>}
+            {r.netOut>0 && <rect x={xOf(i)-barW*0.32} y={zeroY} width={barW*0.64} height={Math.max(0,yOf(-r.netOut)-zeroY)} rx="2" fill="#ef4444" opacity={i===hoverSafe?1:0.75}/>}
+          </g>
+        ))}
+        <polyline points={linePoints} fill="none" stroke="#0d9488" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+        <line x1={xOf(hoverSafe)} y1={padTop} x2={xOf(hoverSafe)} y2={H-padBottom} stroke="currentColor" className="text-slate-300 dark:text-zinc-600" strokeWidth="1" strokeDasharray="3,3"/>
+        {rows.map((r,i) => (i % labelEvery === 0 || i===rows.length-1) && (
+          <text key={r.day} x={xOf(i)} y={H-6} textAnchor="middle" className="fill-slate-400 dark:fill-zinc-500" style={{fontSize:9}}>{wbFmtDate(r.day)}</text>
+        ))}
+      </svg>
+      <div className="mt-2 pt-2 border-t border-slate-100 dark:border-zinc-700 flex items-center justify-between text-xs flex-wrap gap-1">
+        <div className="font-semibold text-slate-600 dark:text-zinc-300">{wbFmtDate(hovered.day)} <span className="text-slate-300 dark:text-zinc-600 font-normal">{wbWeekday(hovered.day)}</span></div>
+        <div className="flex items-center gap-3 tabular-nums">
+          {hovered.netIn>0 && <span className="text-emerald-600 dark:text-emerald-400 font-semibold">+{h$(hovered.netIn)}</span>}
+          {hovered.netOut>0 && <span className="text-red-600 dark:text-red-400 font-semibold">−{h$(hovered.netOut)}</span>}
+          <span className={`font-black ${hovered.balance<0?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{hovered.balance<0?"−":""}{h$(Math.abs(hovered.balance))}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const readOnly = useReadOnly();
   const prv = usePrivacy();
@@ -8870,6 +8958,11 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // logic. Applied only to aggregate/headline totals (balances, Total In/Out, day net, week
   // subtotals) — never to an individual card's own real amount, which always stays exact.
   const [roundMode,setRoundMode] = usePersistedState("nx-whiteboardRound", false);
+  // Show the Chart above whichever view (Row/Board/Month) is active, independent of the
+  // "Chart" option in the view toggle itself — a display preference, not real data, same
+  // localStorage-only pattern as boardView/roundMode. Ignored when boardView IS "chart", since
+  // the full chart is already the main content in that case.
+  const [showChartStrip,setShowChartStrip] = usePersistedState("nx-whiteboardShowChart", false);
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
   const rBal = v => roundMode ? roundDown5k(v) : v;
@@ -9391,10 +9484,14 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         {!publicMode && (
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
-            {[["calendar","Row"],["board","Board"],["month","Month"]].map(([v,label])=>(
+            {[["calendar","Row"],["board","Board"],["month","Month"],["chart","Chart"]].map(([v,label])=>(
               <button key={v} onClick={()=>setBoardView(v)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${boardView===v?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{label}</button>
             ))}
           </div>
+          {effectiveBoardView!=="chart" && (
+            <button onClick={()=>setShowChartStrip(s=>!s)} title="Show/hide a balance + in/out chart above this view"
+              className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all ${showChartStrip?"bg-teal-600 text-white shadow-sm":"bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500"}`}>📊 Chart</button>
+          )}
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
             {[30,45,90].map(n=>(
               <button key={n} onClick={()=>setWindowDays(n)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${windowDays===n?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{n}d</button>
@@ -9564,6 +9661,14 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
           </DndContext>
           <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 italic">Manual cards/bills with no date yet, plus REsimpli/Sheet properties missing a date or amount — drag ⠿ or use ▲▼ to re-rank by priority (#1 = most important). Pencil in an amount+date on a Sell/Buy row to add it to the forecast like a real card (it drops back here on its own if the real data catches up); pick a date on a Bill/Card row to schedule it.</div>
         </div>
+      )}
+
+      {!publicMode && showChartStrip && effectiveBoardView!=="chart" && (
+        <div className="mb-4"><WhiteboardChart ledgerRows={ledgerRows} h$={h$} roundMode={roundMode}/></div>
+      )}
+
+      {effectiveBoardView==="chart" && (
+        <WhiteboardChart ledgerRows={ledgerRows} h$={h$} roundMode={roundMode}/>
       )}
 
       <WhiteboardClosedPanel items={closedItems} h$={h$} onUndo={readOnly?undefined:undoClosed}/>

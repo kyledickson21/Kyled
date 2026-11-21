@@ -1483,6 +1483,62 @@ no longer shows an always-visible row of 📅/✏️/📋/✕ icon buttons.
   from its own signature and call site along with the rest of this redesign) — neither is read
   anywhere in the final version; `navigate` is also gone from `WhiteboardBoardRow`/
   `WhiteboardBoardView`'s signatures and call sites, same as the first pass already noted.
+- **Bug fix (11/21)**: `editableEntry` (the row-level click-to-edit gate above) is only set
+  when exactly one sell/buy entry sits on a day with nothing else — with 2+ money moves
+  sharing a day, the row's Amount cell fell back to a plain non-editable sum, and since
+  `WhiteboardBoardEntry` itself showed no amount at all, there was NO way to edit either one
+  ("if there's 2 money moves on the same day, it doesn't let you edit the amount"). Fixed by
+  giving `WhiteboardBoardEntry` its own optional inline amount editor (`editAmount` prop, same
+  click-to-edit/↺-undo pattern as the row's), passed as `editAmount={!editableEntry}` from
+  `WhiteboardBoardRow` for every sell/buy entry — so it only ever shows up in the ambiguous
+  case; the common single-entry day is completely unchanged (still just the row's own cell,
+  no duplicate amount on the entry). `h$`/`onSetAmount`/`onResetAmount` were re-added to
+  `WhiteboardBoardEntry`'s signature for this (dropped in the 11/19 "extra stuff" cleanup
+  above, since nothing needed them at the time).
+
+### Chart view — a combined bar+line visualization (11/21)
+Kyle: "add graphs to the whiteboard page" — a balance-over-time line plus a daily in/out bar
+chart, reachable both as a 4th option in the Row/Board/Month toggle (`["calendar","Row"],
+["board","Board"],["month","Month"],["chart","Chart"]` — `boardView` can now be `"chart"` too,
+no migration needed for existing choices) and as a `📊 Chart` show/hide strip above whichever
+of Row/Board/Month is currently active (`showChartStrip`, `usePersistedState
+("nx-whiteboardShowChart", false)` — a display preference, localStorage-only, same pattern as
+`boardView`/`roundMode`; hidden in `publicMode`, and ignored when `boardView` IS already
+`"chart"`, since the full chart is the main content there).
+- **`WhiteboardChart`** (Tracker.jsx, declared just above `WhiteboardPage`) **computes nothing
+  of its own** — same HARD RULE as Board ("never calls `update()` directly") — it takes
+  `ledgerRows` (the exact same array Board already builds via `buildLedgerRows`) and the same
+  `roundMode` rounding helpers Board uses, so the chart can never show a number Board itself
+  doesn't already agree with; there's no second running-balance implementation to drift from
+  the real one. One shared dollar y-axis for both encodings (never a second axis — the
+  dataviz skill's "one axis" rule): In/Out are a diverging bar chart anchored at the $0 line
+  (green up, red down), the balance a line drawn on top of it.
+- **Colors are a validated categorical trio** — `#059669` (In), `#ef4444` (Out), `#0d9488`
+  (Balance) — checked with the dataviz skill's `validate_palette.js` against BOTH this app's
+  light (`#fcfcfb`) and dark (`#14161f`, the real dark page surface) chart backgrounds: CVD
+  separation ΔE 9.6 for the red/green pair — above the floor, no secondary-encoding exception
+  needed — plus lightness band, chroma floor, and contrast all pass in both modes with this
+  exact trio, which is why it's the same fixed hex in light and dark rather than swapping
+  shades per theme (one less thing to re-validate on a theme toggle). Chrome (the $0 gridline,
+  the hover crosshair, axis date labels) uses `stroke="currentColor"`/`fill-*` Tailwind
+  `text-*`/`dark:text-*` classes instead, so only those three data colors are ever hardcoded.
+- **Interaction**: the whole SVG tracks `onMouseMove`/`onTouchMove` (not per-bar discrete
+  targets) and converts the pointer's client X into a day index via the SVG's own
+  `getBoundingClientRect()` + viewBox scale factor, live on every move — so it stays correct
+  across any resize with no resize listener needed. A dashed crosshair follows the pointer; a
+  detail strip below the chart (date, +In, −Out, Balance, defaulting to today) is the
+  "tooltip" — a fixed-position strip rather than a floating div, deliberately, to avoid
+  tooltip-positioning/clipping edge cases and to work the same on touch (tap-and-drag) as on
+  hover.
+- **Legend**: three chips (Balance line swatch, In square, Out square) above the chart —
+  required since this is 3 series (a legend is never skipped at 2+, per the dataviz skill).
+  No value is ever labeled directly on every bar/point — only in the one hovered detail strip
+  — per the same skill's "selective direct labels" rule.
+- **No table view was added** — Board view (one click away in the same toggle) already shows
+  this exact same data as a table, so nothing here duplicates it, per the dataviz skill's
+  accessibility-pass guidance ("a table view exists").
+- **Tests**: none new — like Month view and the public TV dashboard, this is a new rendering
+  of already-tested data (`ledgerRows`/`roundDown5k`/`roundUp5k`), not new calculation logic.
 
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view
