@@ -9085,7 +9085,15 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const sellCardsInfo = [];
   const needsInfoSell = [];
   sellingProps.forEach(prop => {
-    const dateInfo = sellDateById[prop.id] || (manualSellDates[prop.id] ? { date: manualSellDates[prop.id], source: "manual" } : null);
+    // Bug fix (11/21, Kyle: "the add property thing is not working") — api/sell-dates.mjs
+    // always returns a row for every requested property, even one it found nothing for
+    // (`{date: null, reason: "..."}`, not simply absent from the response) — exactly the
+    // normal/expected case for a manually-added property that isn't really in REsimpli/the
+    // Sheet at all. A bare `sellDateById[prop.id] || ...` treated that truthy-but-dateless
+    // object as a real hit and never reached the manual fallback. Now only a row that
+    // actually HAS a date counts as a hit from the server.
+    const serverHit = sellDateById[prop.id];
+    const dateInfo = (serverHit && serverHit.date ? serverHit : null) || (manualSellDates[prop.id] ? { date: manualSellDates[prop.id], source: "manual" } : null);
     if (!dateInfo || !dateInfo.date) {
       needsInfoSell.push({ id: prop.id, address: prop.address, reason: dateInfo?.reason || "Sell date lookup hasn't returned yet" });
       return;
