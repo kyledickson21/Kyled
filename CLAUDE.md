@@ -1643,6 +1643,17 @@ the no date, and same gray color when it's in the 'hit account' box."
 - **Tests**: none new — same reasoning as Month view and the public TV dashboard before it,
   this is wiring/presentation on top of already-tested `sortByPriorityOrder`/`noDateSorted`
   (dnd-kit drag interactions aren't unit-tested anywhere in this suite).
+- **Same-day follow-up — uniform pill shape, no kind labels**: Kyle, from a screenshot: "why
+  does this bill look different than the properties. It should look the exact same." The
+  native `<input type="date">` used to sit inline in a bill/unscheduled-card pill's resting
+  state (with its own border/padding), making it visibly bulkier than a Sell/Buy/Needs-Info
+  pill that just showed a ↩/"Fill in" button. Every non-onHold kind now shows a single small
+  action button at rest — "📅" for a bill/unscheduled card, "Fill in" for Needs-Info — and the
+  actual date picker (plain, for a bill/card) or the amount+date mini-form (Needs-Info) reveals
+  BELOW the pill on click, reusing the same `fillingIn` toggle state across all three cases.
+  Then, same screenshot round: "why'd you add the 'Buy' or 'Bill' text. I said no fluff" — the
+  `Sell:`/`Buy:`/`Bill:`/`Card:` kind-label prefix is gone too; a pill is just the address/label
+  text, the amount (when not a Needs-Info reason), and its one action control.
 
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view

@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "2";
+const APP_VERSION = "3";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -8658,29 +8658,35 @@ const WhiteboardNoDatePillContent = ({ n, readOnly, h$, fillingIn, setFillingIn,
   return (<>
     <div className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} ${WB_PILL_NODATE} ${WB_PILL_NODATE_TEXT} max-w-[220px] ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
       {!readOnly && <span className="opacity-50 shrink-0">⠿</span>}
-      <span className="font-semibold shrink-0 opacity-70">{n.kind==="needsInfoSell"||n.kind==="onHoldSell"?"Sell:":n.kind==="needsInfoBuy"||n.kind==="onHoldBuy"?"Buy:":n.kind==="bill"?"Bill:":"Card:"}</span>
       <span className="truncate min-w-0" title={n.label}>{n.label}{n.reason?` — ${n.reason}`:""}</span>
       {!n.reason && <span className="tabular-nums font-semibold shrink-0">{n.direction==="in"?"+":"−"}{h$(n.amount||0)}</span>}
       {!readOnly && isOnHold && (
         <button onClick={ev=>{ev.stopPropagation();restoreFromNoDate(n.id);}} title={`Restore to ${wbFmtDate(n.restoreDay)}`} className="shrink-0 font-semibold hover:underline">↩</button>
       )}
-      {!readOnly && !isOnHold && (n.reason ? (
+      {/* Kyle, 11/21, re: a Bill pill looking bulkier than a Buy/Sell pill: "why does this
+          bill look different than the properties. It should look the exact same" — the native
+          <input type="date"> used to sit inline in every resting pill, with its own border,
+          making a bill/unscheduled-card pill visibly bigger than a Sell/Buy/Needs-Info one.
+          Every kind now shows just ONE small action button at rest (↩ / Fill in / 📅), same as
+          the others, with the actual date picker revealed BELOW the pill on click instead —
+          the same `fillingIn` toggle Needs-Info's "Fill in" already used. */}
+      {!readOnly && !isOnHold && (
         <button onClick={ev=>{ev.stopPropagation(); if(fillingIn===n.id){setFillingIn(null);} else {setFillingIn(n.id);setFillAmount("");setFillDate("");}}}
-          className="shrink-0 font-semibold hover:underline">{fillingIn===n.id?"Cancel":"Fill in"}</button>
-      ) : (
-        <input type="date" onClick={ev=>ev.stopPropagation()} onChange={ev=>{ if(ev.target.value) setCardDay(n.id, ev.target.value); }}
-          className="shrink-0 w-[92px] text-[9px] border border-amber-300 dark:border-amber-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-      ))}
+          className="shrink-0 font-semibold hover:underline">{fillingIn===n.id?"Cancel":n.reason?"Fill in":"📅"}</button>
+      )}
     </div>
-    {fillingIn===n.id && !readOnly && n.reason && (
+    {fillingIn===n.id && !readOnly && !isOnHold && (
       <div className="flex items-center gap-1 mt-0.5 px-1.5">
-        <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>
-        <input type="date" value={fillDate} onClick={ev=>ev.stopPropagation()} onChange={e=>setFillDate(e.target.value)}
+        {n.reason && <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>}
+        <input type="date" value={n.reason?fillDate:undefined} onClick={ev=>ev.stopPropagation()}
+          onChange={ev=>{ if(n.reason){ setFillDate(ev.target.value); } else if(ev.target.value){ setCardDay(n.id, ev.target.value); setFillingIn(null); } }}
           className="text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-        <button disabled={!fillAmount||!fillDate} onClick={ev=>{ev.stopPropagation();
-          saveManualFill(n.id, { kind:n.kind==="needsInfoSell"?"sell":"buy", key:n.raw.kind==="sell"?n.raw.id:n.raw.leadId, address:n.raw.address, amount: parseFloat(fillAmount)||0, date: fillDate });
-          setFillingIn(null);
-        }} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-600 text-white disabled:opacity-40">Save</button>
+        {n.reason && (
+          <button disabled={!fillAmount||!fillDate} onClick={ev=>{ev.stopPropagation();
+            saveManualFill(n.id, { kind:n.kind==="needsInfoSell"?"sell":"buy", key:n.raw.kind==="sell"?n.raw.id:n.raw.leadId, address:n.raw.address, amount: parseFloat(fillAmount)||0, date: fillDate });
+            setFillingIn(null);
+          }} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-600 text-white disabled:opacity-40">Save</button>
+        )}
       </div>
     )}
   </>);
