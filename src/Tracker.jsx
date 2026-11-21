@@ -8645,21 +8645,45 @@ const WhiteboardBoardNoDateZone = ({ compact, readOnly, h$, onHoldEntries }) => 
   );
 };
 
+// A simple draggable pill for an already-archived (closed) sell/buy card — not a live ledger
+// entry, so no amount/date editing, just drag-out-to-restore and an explicit ↺ Undo.
+const WhiteboardArchivedPill = ({ e, readOnly, h$, onUndo }) => {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: e.id, disabled: readOnly });
+  const dragStyle = transform ? { transform:`translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
+  return (
+    <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
+      className={`shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} max-w-[220px] ${wbPillColor(e.direction)} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
+      {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
+      <span className="truncate min-w-0" title={e.fullLabel||e.label}>{e.label}</span>
+      <span className={`shrink-0 tabular-nums font-semibold ${wbPillAccent(e.direction)}`}>{e.direction==="in"?"+":"−"}{h$(e.amount)}</span>
+      {!readOnly && onUndo && <button onClick={ev=>{ev.stopPropagation();onUndo(e.id);}} title="Undo — put this back on the timeline" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
+    </div>
+  );
+};
+
 // A second persistent drop target (11/21, Kyle: "add an archive thing to drag into for the
 // 'mark as reflected' in balance... the stuff just stays there viewable in the archive until
 // it's reflected in resimpli where the system would've taken it out automatically like it does
 // already") — drag a sell/buy entry here once Kyle's personally confirmed the money actually
-// hit/left the real account, even though REsimpli hasn't caught up yet. This is just a drag
-// entry point onto the EXISTING Mark Closed mechanism (`onMarkClosed`/`closedOverrides`) —
-// `WhiteboardClosedPanel` already shows it in "✅ Closed, waiting to confirm" with an Undo
-// button, and the existing auto-clear effect already removes it the moment the real data
-// (REsimpli/the Sheet) confirms it, exactly the behavior asked for, with no new state needed.
-const WhiteboardBoardArchiveZone = ({ compact }) => {
+// hit/left the real account, even though REsimpli hasn't caught up yet. This is a drag entry
+// point onto the EXISTING Mark Closed mechanism (`onMarkClosed`/`closedOverrides`) — the
+// existing auto-clear effect already removes it the moment the real data (REsimpli/the Sheet)
+// confirms it, exactly the behavior asked for, with no new override state needed. Shows what's
+// already archived as real pills right inside this box (11/21: "I want the stuff... to be
+// stored as a pill view in those boxes, not somewhere else or above or whatever") — replacing
+// the separate WhiteboardClosedPanel for Board view's sell/buy items (Row/Month still use that
+// panel). Dragging a pill back out onto a day row restores it with that date in one step.
+const WhiteboardBoardArchiveZone = ({ compact, readOnly, h$, closedEntries, onUndoClosed }) => {
   const { setNodeRef, isOver } = useDroppable({ id: "board-archive" });
   return (
     <div ref={setNodeRef}
-      className={`text-center border-b-2 border-dashed font-semibold transition-colors ${compact?"py-1 text-[9px]":"py-1.5 text-[10px]"} ${isOver?"bg-teal-100 dark:bg-teal-900/30 border-teal-400 text-teal-700 dark:text-teal-300":"bg-slate-50 dark:bg-zinc-800/60 border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500"}`}>
-      📦 Drag here once it's hit the real account
+      className={`border-b-2 border-dashed transition-colors ${compact?"py-1 px-1.5":"py-1.5 px-2"} ${isOver?"bg-teal-100 dark:bg-teal-900/30 border-teal-400":"bg-slate-50 dark:bg-zinc-800/60 border-slate-200 dark:border-zinc-700"}`}>
+      <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[10px]"} text-slate-400 dark:text-zinc-500`}>📦 Drag here once it's hit the real account</div>
+      {closedEntries && closedEntries.length>0 && (
+        <div className="flex items-center gap-1.5 flex-wrap justify-center mt-1">
+          {closedEntries.map(e=><WhiteboardArchivedPill key={e.id} e={e} readOnly={readOnly} h$={h$} onUndo={onUndoClosed}/>)}
+        </div>
+      )}
     </div>
   );
 };
@@ -8669,7 +8693,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
   undatedSetAsides, onEditSetAside, onAddSetAside, onDeleteSetAside,
   onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate,
   loanPaymentOverrides, onSetLoanPaymentOverride, onResetLoanPaymentOverride,
-  onHoldEntries, onRestoreToDate }) {
+  onHoldEntries, onRestoreToDate, closedEntries, onRestoreClosedToDate, onUndoClosed }) {
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
   const rBal = v => roundMode ? roundDown5k(v) : v;
@@ -8719,6 +8743,14 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
       onRestoreToDate?.(id, String(over.id), onHold.sourceDate ?? onHold.day);
       return;
     }
+    // A pill dragged back OUT of the Archive zone itself (11/21, Kyle: "I wanna be able to
+    // drag the pills from those boxes back to a date if need be") — onto a real day row,
+    // un-close it with that date in one step.
+    const archived = (closedEntries||[]).find(en => en.id === id);
+    if (archived) {
+      if (over.id !== "board-archive" && over.id !== "board-nodate") onRestoreClosedToDate?.(id, String(over.id));
+      return;
+    }
     for (const week of ledgerWeeks) {
       for (const row of week.rows) {
         const found = row.entries.find(en => en.id === id && (en.kind==="sell"||en.kind==="buy"));
@@ -8741,6 +8773,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
   const activeEntry = activeEntryId
     ? ledgerWeeks.flatMap(w=>w.rows).flatMap(r=>r.entries).find(en=>en.id===activeEntryId && (en.kind==="sell"||en.kind==="buy"))
       || (onHoldEntries||[]).find(en=>en.id===activeEntryId)
+      || (closedEntries||[]).find(en=>en.id===activeEntryId)
     : null;
   return (
     <div ref={containerRef} className={tvMode ? "bg-[#F2F2F7] dark:bg-[#14161F] p-3 h-screen w-screen flex flex-col overflow-hidden" : ""}>
@@ -8780,7 +8813,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
         <div className={compact ? "flex-1 overflow-auto" : "overflow-x-auto"}>
           <DndContext sensors={effReadOnly?[]:boardDragSensors} onDragStart={e=>setActiveEntryId(String(e.active.id))} onDragEnd={handleBoardDragEnd}>
             {!effReadOnly && <WhiteboardBoardNoDateZone compact={compact} readOnly={effReadOnly} h$={h$} onHoldEntries={onHoldEntries}/>}
-            {!effReadOnly && <WhiteboardBoardArchiveZone compact={compact}/>}
+            {!effReadOnly && <WhiteboardBoardArchiveZone compact={compact} readOnly={effReadOnly} h$={h$} closedEntries={closedEntries} onUndoClosed={onUndoClosed}/>}
             <table className={`w-full border-collapse min-w-[560px] ${compact?"text-[10px]":""}`}>
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-50 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
@@ -8862,18 +8895,25 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
 // Now actually unscheduling it, via sendToNoDate, instead of being a no-op) was added to
 // handleDragEnd itself, so it benefits the Row view too, not just this one.
 //
-// A compact draggable "chip" for one card inside a Month box — deliberately much smaller than
-// the full WhiteboardSellCard/WhiteboardBuyCard/WhiteboardCard used by the Row view (a month
-// box is a fraction of a day-column's width), so editing actions (✏️/📅/Mark Closed/Fill In)
-// live only in Board/Row view; this is a fast way to MOVE dates by drag, not a second editor.
-const WhiteboardMonthChip = ({ id, label, amount, direction, h$, onClick, readOnly, colorClass }) => {
+// A compact draggable "chip" for one card inside a Month box — deliberately smaller than the
+// full WhiteboardSellCard/WhiteboardBuyCard/WhiteboardCard used by Row view (a month box is a
+// fraction of a day-column's width), so editing actions (✏️/📅/Mark Closed/Fill In) live only
+// in Board/Row view; this is a fast way to MOVE dates by drag, not a second editor. Built from
+// the same shared WB_PILL_SHAPE/wbPillColor/wbPillAccent as Board's/Row's pills (11/21, Kyle:
+// "the month view does not look the exact same as board view") instead of its own one-off
+// `colorClass` — for a non-sell/buy manual card (no real "direction" meaning in/out the same
+// way), `inOrOut` still picks the right color, just without implying it's a REsimpli-driven
+// money move.
+const WhiteboardMonthChip = ({ id, label, amount, direction, h$, onClick, readOnly }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id, disabled: readOnly });
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 20 } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...(readOnly?{}:{...attributes,...listeners})} onClick={onClick}
       title={label}
-      className={`text-[9px] leading-tight rounded px-1 py-0.5 mb-0.5 truncate ${colorClass} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":onClick?"cursor-pointer":""}`}>
-      <span className="font-bold">{direction==="in"?"+":"−"}{h$(amount||0)}</span> {label}
+      className={`flex items-center gap-0.5 text-[9px] leading-tight ${WB_PILL_SHAPE} px-1 py-0.5 mb-0.5 ${wbPillColor(direction)} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":onClick?"cursor-pointer":""}`}>
+      {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
+      <span className={`font-bold shrink-0 ${wbPillAccent(direction)}`}>{direction==="in"?"+":"−"}{h$(amount||0)}</span>
+      <span className="truncate">{label}</span>
     </div>
   );
 };
@@ -8897,17 +8937,14 @@ const WhiteboardMonthDay = ({ day, padKey, isToday, dayNum, showMonthLabel, h$, 
       <div className="flex-1 overflow-y-auto space-y-0">
         {sellCards.map(c=>(
           <WhiteboardMonthChip key={c.id} id={c.id} label={shortAddress(c.address)} amount={c.amount} direction="in" h$={h$} readOnly={readOnly}
-            onClick={()=>navigate&&navigate({type:'property',id:c.propId})}
-            colorClass="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"/>
+            onClick={()=>navigate&&navigate({type:'property',id:c.propId})}/>
         ))}
         {buyCards.map(c=>(
-          <WhiteboardMonthChip key={c.id} id={c.id} label={shortAddress(c.address)} amount={c.amount} direction="out" h$={h$} readOnly={readOnly}
-            colorClass="bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"/>
+          <WhiteboardMonthChip key={c.id} id={c.id} label={shortAddress(c.address)} amount={c.amount} direction="out" h$={h$} readOnly={readOnly}/>
         ))}
         {manualCards.map(c=>(
           <WhiteboardMonthChip key={c.id} id={c.id} label={c.kind==="property"?shortAddress(c.address):(c.address||"Card")} amount={c.amount} direction={c.direction} h$={h$} readOnly={readOnly}
-            onClick={()=>{ if(c.kind==="property"&&navigate) navigate({type:'property',id:c.propId}); else if(onEditCard) onEditCard(c); }}
-            colorClass={c.direction==="in"?"bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300":"bg-slate-200 dark:bg-zinc-700 text-slate-600 dark:text-zinc-300"}/>
+            onClick={()=>{ if(c.kind==="property"&&navigate) navigate({type:'property',id:c.propId}); else if(onEditCard) onEditCard(c); }}/>
         ))}
         {autoCards.length>0 && <div className="text-[8px] text-slate-400 dark:text-zinc-500 truncate">💸 {autoCards.length} loan pmt{autoCards.length>1?"s":""}</div>}
         {setAsideCards.length>0 && <div className="text-[8px] text-violet-400 dark:text-violet-500 truncate">🔒 set aside</div>}
@@ -9135,6 +9172,12 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     ...autoCards.filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"loanPayment", address:c.lenderName?(c.address?`${c.lenderName} (${c.address})`:c.lenderName):(c.address||"Loan payment"), amount:c.amount })),
     ...datedSetAsideCards(setAsides).filter(c=>closedOverrides[c.id]).map(c=>({ id:c.id, kind:"setAside", address:c.label, amount:c.amount })),
   ];
+  // 11/21, Kyle: "I want the stuff with no date and the once hits account stuff to be stored
+  // as a pill view in those boxes, not somewhere else or above or whatever" — the sell/buy
+  // slice of closedItems, reshaped for WhiteboardBoardEntry so the Archive zone can show them
+  // directly instead of (duplicating) the separate WhiteboardClosedPanel for Board view.
+  const closedSellBuyEntries = closedItems.filter(c=>c.kind==="sell"||c.kind==="buy")
+    .map(c=>({ id:c.id, label:shortAddress(c.address), fullLabel:c.address, amount:c.amount||0, direction:c.kind==="sell"?"in":"out" }));
   // settleDay: the day a sell card's cash actually counts toward the balance/Total In — always
   // the next business day after wherever `day` (the house's own, DISPLAYED date) currently
   // sits, re-derived here AFTER any manual move, so a dragged/picked date keeps the exact same
@@ -9414,6 +9457,16 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     const originalDate = existing?.originalDate ?? sourceDateNow ?? newDate;
     return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, noDateForced: nextForced, movedDates: { ...(d.whiteboardOverrides?.movedDates||{}), [cardId]: { date: newDate, originalDate } } } };
   });
+  // Same idea for a pill dragged back OUT of the Archive zone (11/21, Kyle: "I wanna be able
+  // to drag the pills from those boxes back to a date if need be") — un-close it AND give it
+  // that date in one update, rather than requiring Undo first and then a separate drag.
+  const restoreClosedToDate = (cardId, newDate) => update(d => {
+    const nextClosed = { ...(d.whiteboardOverrides?.closed||{}) };
+    delete nextClosed[cardId];
+    const existing = d.whiteboardOverrides?.movedDates?.[cardId];
+    const originalDate = existing?.originalDate ?? newDate;
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, closed: nextClosed, movedDates: { ...(d.whiteboardOverrides?.movedDates||{}), [cardId]: { date: newDate, originalDate } } } };
+  });
   const saveSetAside = entry => update(d => {
     const existing = d.whiteboardOverrides?.setAsides||[];
     const already = existing.some(x=>x.id===entry.id);
@@ -9470,7 +9523,14 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // amount, address/fullLabel/label, sourceDate/day), not a raw card, so these adapt that
   // shape onto the same setMovedDate/markClosed calls the Calendar cards already use directly.
   const handleBoardPickDate = (entry, newDate) => setMovedDate(entry.id, newDate, entry.sourceDate ?? entry.day);
-  const handleBoardMarkClosed = entry => markClosed(entry.id, entry.kind, entry.id, entry.fullLabel||entry.address||entry.label, entry.amount);
+  // Bug fix (11/21, Kyle: "the drag once it's hit account doesn't work") — this passed the
+  // FULL card id (e.g. "sell-abc123") as `key` instead of the bare property/lead id every
+  // other markClosed call site uses (`c.propId` for sell, `c.id.replace(/^buy-/,"")` for buy).
+  // `key` is what the auto-clear effect compares against real property/lead ids
+  // (`sellingProps.some(p=>p.id===o.key)` etc.) — with the wrong key that check always failed,
+  // so anything closed through this path looked "stale" and got auto-cleared again on the very
+  // next render, making the whole drag-to-archive action appear to silently do nothing.
+  const handleBoardMarkClosed = entry => markClosed(entry.id, entry.kind, entry.id.replace(/^(sell|buy)-/,""), entry.fullLabel||entry.address||entry.label, entry.amount);
 
   const handleDragEnd = ({active,over}) => {
     setActiveId(null);
@@ -9750,7 +9810,11 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         </div>
       )}
 
-      <WhiteboardClosedPanel items={closedItems} h$={h$} onUndo={readOnly?undefined:undoClosed}/>
+      {/* Board view shows its sell/buy closed items as pills inside the Archive zone instead
+          (11/21, Kyle: "not somewhere else or above or whatever") — this panel still carries
+          loanPayment/setAside removals for Board (no drag home for those), and everything for
+          Row/Month. */}
+      <WhiteboardClosedPanel items={effectiveBoardView==="board" ? closedItems.filter(c=>c.kind!=="sell"&&c.kind!=="buy") : closedItems} h$={h$} onUndo={readOnly?undefined:undoClosed}/>
 
       {effectiveBoardView==="board" && (
         <WhiteboardBoardView startingBalance={startingBalance} startingLabel={usingMercury?`Mercury ${mercury.source||""}`.trim():"Manual balance"}
@@ -9764,7 +9828,8 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
           onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}
           onSendToNoDate={readOnly?undefined:sendToNoDate}
           loanPaymentOverrides={loanPaymentOverrides} onSetLoanPaymentOverride={readOnly?undefined:setLoanPaymentOverride} onResetLoanPaymentOverride={readOnly?undefined:resetLoanPaymentOverride}
-          onHoldEntries={onHoldEntries} onRestoreToDate={readOnly?undefined:restoreToDate}/>
+          onHoldEntries={onHoldEntries} onRestoreToDate={readOnly?undefined:restoreToDate}
+          closedEntries={closedSellBuyEntries} onRestoreClosedToDate={readOnly?undefined:restoreClosedToDate} onUndoClosed={readOnly?undefined:undoClosed}/>
       )}
 
       {effectiveBoardView==="calendar" && (cards.length===0&&activeAutoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
