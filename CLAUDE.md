@@ -1747,6 +1747,26 @@ the no date, and same gray color when it's in the 'hit account' box."
   "integrated days-to-negative line" mentioned above was itself replaced the same day — see
   "Safe to send out" below.)
 
+### Confirm before moving a sell/buy pill to a new date (11/21)
+Kyle: "when dragging a house to a different date, if I place it somewhere else than where it
+already was can you have it also make me confirm so I don't accidentally move it without
+noticing?" `handleBoardDragEnd`'s day-row branch (the one that calls `onPickDate` for an
+already-dated sell/buy entry) now runs a `window.confirm("Move <address> from <old date> to
+<new date>?")` first, same pattern as every other confirm-gated action in this file — only
+when the drop target is actually a DIFFERENT day than the entry's current one; dropping it
+back on the day it started (a jittery drag) is already a no-op and needs no prompt. Scoped
+narrowly to this one branch — dragging a bill/unscheduled card onto a day (no existing date to
+accidentally lose), and restoring an onHold/archived entry to a date (a deliberate act from a
+holding area, not an accidental nudge of something already placed), are both unaffected.
+
+### "Safe to send out" keeps a $10k floor, not just $0 (11/21)
+Kyle: "make the 'safe to send out' have a 10k minimum limit instead of 0." `SAFE_TO_SEND_FLOOR
+= 10000` (`WhiteboardPage`, next to `safeToSendFor`) — the figure is now each window's own
+lowest projected balance minus this floor (still clamped at 0), so it answers "how much could
+I send and still keep at least $10k in the account," not "...and still stay non-negative."
+Same formula/computation otherwise (a window already projected to dip under $10k shows $0,
+never a negative "safe" amount).
+
 ### Mobile responsiveness pass (11/21)
 Kyle: "when opening it in my phone it's all messed up and not clean at all." The Board layout
 had no phone-specific handling at all — a `justify-between` header crammed the title and a

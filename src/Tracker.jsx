@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "7";
+const APP_VERSION = "8";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -8626,6 +8626,12 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
         const found = row.entries.find(en => en.id === id && (en.kind==="sell"||en.kind==="buy"));
         if (found) {
           if (over.id === "board-archive") { onMarkClosed?.(found); return; }
+          // 11/21, Kyle: "if I place it somewhere else than where it already was can you have
+          // it also make me confirm so I don't accidentally move it without noticing?" — only
+          // when the drop target is actually a DIFFERENT day than the pill's current one;
+          // dropping it back on the day it started (a jittery drag) is a no-op either way, so
+          // there's nothing to confirm.
+          if (String(over.id) !== found.day && !window.confirm(`Move ${found.fullLabel||found.label} from ${wbFmtDate(found.day)} to ${wbFmtDate(String(over.id))}?`)) return;
           onPickDate?.(found, String(over.id));
           return;
         }
@@ -9108,14 +9114,17 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // second, independently-sized day range — rather than a second running-balance
   // implementation that could drift from the real one. Sending X today shifts every later
   // day's balance down by the same X, so the most that can go out while every day in a
-  // window still stays at/above $0 is exactly that window's own lowest balance (floored at 0
-  // — a window already projected to go negative has nothing safe to send, not a negative
-  // "safe" amount).
+  // window still stays at/above the floor below is exactly that window's own lowest balance
+  // minus the floor (clamped at 0 — a window already projected to dip under the floor has
+  // nothing safe to send, not a negative "safe" amount). `SAFE_TO_SEND_FLOOR` (11/21, Kyle:
+  // "make the 'safe to send out' have a 10k minimum limit instead of 0") is a deliberate
+  // cushion Kyle always wants left in the account, not just "don't go negative."
+  const SAFE_TO_SEND_FLOOR = 10000;
   const dayCols90 = Array.from({length:90},(_,i)=>wbAddDays(TODAY,i));
   const netByDay90 = {};
   dayCols90.forEach(day => { netByDay90[day] = netFor(day); });
   const { balances: balances90 } = computeForecastSummary(dayCols90, netByDay90, startingBalance);
-  const safeToSendFor = days => Math.max(0, Math.min(...dayCols90.slice(0,days).map(d=>balances90[d])));
+  const safeToSendFor = days => Math.max(0, Math.min(...dayCols90.slice(0,days).map(d=>balances90[d])) - SAFE_TO_SEND_FLOOR);
   const safeToSend = { d30: safeToSendFor(30), d60: safeToSendFor(60), d90: safeToSendFor(90) };
   // A Needs Info row whose id already has a manualFill entry has a real (synthesized) card in
   // the forecast now (see allSellCardsInfo/allBuyCardsInfo above) — drop it from this list so
