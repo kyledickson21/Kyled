@@ -1325,6 +1325,13 @@ order spanning all three sources.
 - **Tests**: `sortByPriorityOrder` (no-op with no order, ranked-first ordering, unranked items
   keep relative order appended after).
 
+**Superseded 11/21 — the standalone panel above is gone; see "No-Date box folded into Board
+view" near the end of this file for the current (drag-only, Board-view-only, amber-pill)
+design.** `moveNoDatePriority`/`handleNoDateDragEnd` (the ▲▼/number-badge implementation
+described above) were deleted outright, not kept as dead code. `noDateOrder`/
+`sortByPriorityOrder`/`noDateAll`/`noDateSorted` themselves are unchanged and still the
+source of truth for ranking — only where/how the list is shown and reordered changed.
+
 ### "Move to No-Date" — pulling an already-dated sell/buy card off the timeline (11/17)
 Kyle: "how can I move properties to the no date list if they're already on a date?" There was
 no way — Mark Closed removes a deal from the forecast entirely (for when it's actually done),
@@ -1595,6 +1602,47 @@ A long string of direct follow-up feedback, all same-day as the redesign above.
   `localStorage` (`WB_CACHE_KEY = "nx-whiteboardForecastCache"`, `loadWbCache`/`saveWbCache`)
   — read synchronously as each `useState`'s initial value, so there's no flash of "loading"
   even on a fresh page load, only ever updated on a successful fetch.
+
+### No-Date box folded into Board view — drag-only, amber/gray pills (11/21)
+Kyle, looking at a screenshot of the standalone panel documented above: "get rid of this shit
+completely and show it all in the box only" — confirmed scope "remove it everywhere" (not
+Board-only), then two more refinements on top: "no need for a priority either... let me drag
+stuff left to right within the box," and "turn the pills the same yellow color when it's in
+the no date, and same gray color when it's in the 'hit account' box."
+- **The standalone panel (bills/unscheduled/Needs-Info/on-hold, shown once above
+  Calendar/Board/Month) is deleted outright**, along with its dead `moveNoDatePriority`/
+  `handleNoDateDragEnd` helpers — see the superseded note on the 11/17 section above. Row and
+  Month have no replacement for it at all now; only Board view's own small
+  `WhiteboardBoardNoDateZone` strip shows this list, as real pills.
+- **No priority number, no ▲▼ — drag left-to-right instead**, leftmost = most important.
+  `WhiteboardNoDatePillContent`/`WhiteboardNoDatePill` (declared just above
+  `WhiteboardBoardNoDateZone`) render every no-date item — bill, unscheduled card, REsimpli
+  Needs-Info sell/buy, or an already-on-hold sell/buy — as the SAME pill shape, wrapped in the
+  existing generic `SortableItem` and laid out in a `flex flex-wrap` row inside a
+  `SortableContext`/`horizontalListSortingStrategy` (newly imported from `@dnd-kit/sortable`).
+  Reordering reuses the SAME outer `DndContext`/`handleBoardDragEnd` the zone's own drop
+  target and the Archive zone already share, rather than a second, nested `DndContext` that
+  would fight the first — `handleBoardDragEnd` checks FIRST whether both the dragged id and
+  the drop target id are in `noDateSorted`, and if so calls `arrayMove` + the existing
+  `setNoDateOrder` writer (unchanged — it already took a plain ordered id array) instead of
+  falling through to the day-row/no-date-zone/archive-zone branches below it.
+- **Context-tinted color, not direction-tinted** — `WB_PILL_NODATE`/`WB_PILL_NODATE_TEXT`
+  (amber) and `WB_PILL_ARCHIVE`/`WB_PILL_ARCHIVE_TEXT` (slate/gray), two new constants next to
+  the existing `wbPillColor`/`wbPillAccent`. A pill shown inside the No-Date box is always
+  amber and one inside the Archive zone (`WhiteboardArchivedPill`) is always gray — regardless
+  of whether the underlying deal is money in or money out — overriding the normal
+  green/red-by-direction coloring those same entries show everywhere else (a day row, Row
+  view's own card). The amount figure itself is untouched either way, just its color.
+- **`WhiteboardNoDatePillContent` is split out from `WhiteboardNoDatePill`** specifically so
+  the exact same visual (including the amber tint) can be reused, read-only and with no second
+  `useSortable` registration, as the `<DragOverlay>` clone while a no-date pill is being
+  dragged — `activeNoDateEntry` (in `WhiteboardBoardView`) is the fallback lookup when the
+  dragged id isn't a ledger/onHold/closed entry, fixing what would otherwise be the same
+  "goes blank mid-drag" bug the 11/21 redesign already fixed for ledger entries, just for this
+  newly-draggable set.
+- **Tests**: none new — same reasoning as Month view and the public TV dashboard before it,
+  this is wiring/presentation on top of already-tested `sortByPriorityOrder`/`noDateSorted`
+  (dnd-kit drag interactions aren't unit-tested anywhere in this suite).
 
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view

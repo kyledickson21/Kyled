@@ -18,7 +18,7 @@ import {
   sortByPriorityOrder, firstBelowThreshold,
 } from './whiteboard-forecast.mjs'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
-import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 const load = loadData
@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "1";
+const APP_VERSION = "2";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -7902,6 +7902,14 @@ const wbPillColor = direction => direction==="in"
   ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/20"
   : "border-red-200 dark:border-red-800 bg-red-50/70 dark:bg-red-900/20";
 const wbPillAccent = direction => direction==="in" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+// Context-tinted pill colors (11/21, Kyle: "turn the pills the same yellow color when it's in
+// the no date, and same gray color when it's in the 'hit account' box") — a pill inside one of
+// Board's two special boxes takes ITS box's color regardless of sell/buy direction, overriding
+// wbPillColor/wbPillAccent above (which still apply everywhere else — the main day rows).
+const WB_PILL_NODATE = "border-amber-200 dark:border-amber-800 bg-amber-100/70 dark:bg-amber-900/30";
+const WB_PILL_NODATE_TEXT = "text-amber-700 dark:text-amber-300";
+const WB_PILL_ARCHIVE = "border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800/60";
+const WB_PILL_ARCHIVE_TEXT = "text-slate-600 dark:text-zinc-300";
 
 const wbFmtDate = dateStr => {
   const [y,m,d] = dateStr.split('-').map(Number);
@@ -8636,16 +8644,80 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
 // in that same integrated pill form") — dragging one of those back onto a day row restores it
 // with that date in one step (`onRestoreToDate`, handled in WhiteboardBoardView's own
 // handleBoardDragEnd), so the zone works as a real two-way holding area, not just a label.
-const WhiteboardBoardNoDateZone = ({ compact, readOnly, h$, onHoldEntries }) => {
+// One pill inside the No-Date box — every kind (bill, unscheduled card, REsimpli Needs-Info,
+// already-on-hold sell/buy) renders as the SAME amber-tinted pill shape (11/21: "turn the
+// pills the same yellow color when it's in the no date"), draggable for left-to-right
+// reordering ("more important on the left") via `SortableItem` — the SAME id doubles as the
+// drag-out-to-a-day-row id for an onHold entry, disambiguated in handleBoardDragEnd by what
+// it's dropped on, so there's no second drag registration to conflict with the first.
+// The pill's visual content, separated from its drag registration so the SAME markup can be
+// reused, read-only and un-registered, inside a <DragOverlay> clone (registering a second
+// useSortable on the dragged id inside the overlay would fight dnd-kit's own clone).
+const WhiteboardNoDatePillContent = ({ n, readOnly, h$, fillingIn, setFillingIn, fillAmount, setFillAmount, fillDate, setFillDate, saveManualFill, setCardDay, restoreFromNoDate }) => {
+  const isOnHold = n.kind==="onHoldSell"||n.kind==="onHoldBuy";
+  return (<>
+    <div className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} ${WB_PILL_NODATE} ${WB_PILL_NODATE_TEXT} max-w-[220px] ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
+      {!readOnly && <span className="opacity-50 shrink-0">⠿</span>}
+      <span className="font-semibold shrink-0 opacity-70">{n.kind==="needsInfoSell"||n.kind==="onHoldSell"?"Sell:":n.kind==="needsInfoBuy"||n.kind==="onHoldBuy"?"Buy:":n.kind==="bill"?"Bill:":"Card:"}</span>
+      <span className="truncate min-w-0" title={n.label}>{n.label}{n.reason?` — ${n.reason}`:""}</span>
+      {!n.reason && <span className="tabular-nums font-semibold shrink-0">{n.direction==="in"?"+":"−"}{h$(n.amount||0)}</span>}
+      {!readOnly && isOnHold && (
+        <button onClick={ev=>{ev.stopPropagation();restoreFromNoDate(n.id);}} title={`Restore to ${wbFmtDate(n.restoreDay)}`} className="shrink-0 font-semibold hover:underline">↩</button>
+      )}
+      {!readOnly && !isOnHold && (n.reason ? (
+        <button onClick={ev=>{ev.stopPropagation(); if(fillingIn===n.id){setFillingIn(null);} else {setFillingIn(n.id);setFillAmount("");setFillDate("");}}}
+          className="shrink-0 font-semibold hover:underline">{fillingIn===n.id?"Cancel":"Fill in"}</button>
+      ) : (
+        <input type="date" onClick={ev=>ev.stopPropagation()} onChange={ev=>{ if(ev.target.value) setCardDay(n.id, ev.target.value); }}
+          className="shrink-0 w-[92px] text-[9px] border border-amber-300 dark:border-amber-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+      ))}
+    </div>
+    {fillingIn===n.id && !readOnly && n.reason && (
+      <div className="flex items-center gap-1 mt-0.5 px-1.5">
+        <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>
+        <input type="date" value={fillDate} onClick={ev=>ev.stopPropagation()} onChange={e=>setFillDate(e.target.value)}
+          className="text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+        <button disabled={!fillAmount||!fillDate} onClick={ev=>{ev.stopPropagation();
+          saveManualFill(n.id, { kind:n.kind==="needsInfoSell"?"sell":"buy", key:n.raw.kind==="sell"?n.raw.id:n.raw.leadId, address:n.raw.address, amount: parseFloat(fillAmount)||0, date: fillDate });
+          setFillingIn(null);
+        }} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-600 text-white disabled:opacity-40">Save</button>
+      </div>
+    )}
+  </>);
+};
+
+const WhiteboardNoDatePill = (props) => (
+  <SortableItem id={props.n.id} disabled={props.readOnly}>
+    <WhiteboardNoDatePillContent {...props}/>
+  </SortableItem>
+);
+
+// 11/21, Kyle: "get rid of this shit completely and show it all in the box only" — the
+// separate, page-wide "No Date" priority panel (bills, unscheduled manual cards, REsimpli
+// Needs-Info rows, and already-on-hold sell/buy, hand-ranked) is gone entirely; everything it
+// used to show now lives inside THIS box instead, as a horizontal row of pills Kyle can drag
+// left-to-right to re-rank ("more important on the left") — no priority number, no ▲▼, just
+// drag (Kyle: "no need for a priority either since it'll all be in the box... let me drag
+// stuff left to right"). Reordering shares the SAME outer DndContext/handleBoardDragEnd this
+// box already sits in (it checks whether `over` is another no-date pill vs. a real day row vs.
+// the Archive zone and branches accordingly) rather than a second, conflicting DndContext.
+const WhiteboardBoardNoDateZone = ({ compact, readOnly, h$, noDateSorted,
+  fillingIn, setFillingIn, fillAmount, setFillAmount, fillDate, setFillDate, saveManualFill, setCardDay, restoreFromNoDate }) => {
   const { setNodeRef, isOver } = useDroppable({ id: "board-nodate" });
   return (
     <div ref={setNodeRef}
       className={`border-b-2 border-dashed transition-colors ${compact?"py-1 px-1.5":"py-1.5 px-2"} ${isOver?"bg-amber-100 dark:bg-amber-900/30 border-amber-400":"bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"}`}>
-      <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[10px]"} text-amber-700 dark:text-amber-300`}>↓ Drag here to clear the date</div>
-      {onHoldEntries && onHoldEntries.length>0 && (
-        <div className="flex items-center gap-1.5 flex-wrap justify-center mt-1">
-          {onHoldEntries.map(e=><WhiteboardBoardEntry key={e.id} e={e} readOnly={readOnly} h$={h$}/>)}
-        </div>
+      <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[10px]"} text-amber-700 dark:text-amber-300`}>↓ No Date — drag left/right to re-rank, most important on the left</div>
+      {noDateSorted && noDateSorted.length>0 && (
+        <SortableContext items={noDateSorted.map(n=>n.id)} strategy={horizontalListSortingStrategy}>
+          <div className="flex items-start gap-1.5 flex-wrap mt-1">
+            {noDateSorted.map(n=>(
+              <WhiteboardNoDatePill key={n.id} n={n} readOnly={readOnly} h$={h$}
+                fillingIn={fillingIn} setFillingIn={setFillingIn} fillAmount={fillAmount} setFillAmount={setFillAmount}
+                fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={setCardDay} restoreFromNoDate={restoreFromNoDate}/>
+            ))}
+          </div>
+        </SortableContext>
       )}
     </div>
   );
@@ -8658,10 +8730,10 @@ const WhiteboardArchivedPill = ({ e, readOnly, h$, onUndo }) => {
   const dragStyle = transform ? { transform:`translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
   return (
     <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
-      className={`shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} max-w-[220px] ${wbPillColor(e.direction)} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
+      className={`shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} max-w-[220px] ${WB_PILL_ARCHIVE} ${WB_PILL_ARCHIVE_TEXT} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
       {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
       <span className="truncate min-w-0" title={e.fullLabel||e.label}>{e.label}</span>
-      <span className={`shrink-0 tabular-nums font-semibold ${wbPillAccent(e.direction)}`}>{e.direction==="in"?"+":"−"}{h$(e.amount)}</span>
+      <span className="shrink-0 tabular-nums font-semibold">{e.direction==="in"?"+":"−"}{h$(e.amount)}</span>
       {!readOnly && onUndo && <button onClick={ev=>{ev.stopPropagation();onUndo(e.id);}} title="Undo — put this back on the timeline" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
     </div>
   );
@@ -8699,7 +8771,8 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
   undatedSetAsides, onEditSetAside, onAddSetAside, onDeleteSetAside,
   onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate,
   loanPaymentOverrides, onSetLoanPaymentOverride, onResetLoanPaymentOverride,
-  onHoldEntries, onRestoreToDate, closedEntries, onRestoreClosedToDate, onUndoClosed }) {
+  onHoldEntries, onRestoreToDate, closedEntries, onRestoreClosedToDate, onUndoClosed,
+  noDateSorted, onReorderNoDate, fillingIn, setFillingIn, fillAmount, setFillAmount, fillDate, setFillDate, saveManualFill, setCardDay, restoreFromNoDate }) {
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
   const rBal = v => roundMode ? roundDown5k(v) : v;
@@ -8740,6 +8813,14 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
     setActiveEntryId(null);
     if (!over || effReadOnly) return;
     const id = String(active.id);
+    // 11/21: dragging one no-date pill onto another re-ranks them left-to-right (checked
+    // FIRST — both ids already live in noDateSorted, so this must win over every other
+    // branch below, including the board-nodate zone's own id check).
+    const noDateIds = (noDateSorted||[]).map(n=>n.id);
+    if (noDateIds.includes(id) && noDateIds.includes(String(over.id)) && id!==String(over.id)) {
+      onReorderNoDate?.(arrayMove(noDateIds, noDateIds.indexOf(id), noDateIds.indexOf(String(over.id))));
+      return;
+    }
     if (over.id === "board-nodate") { onSendToNoDate?.(id); return; }
     // An onHold pill (shown inside the No-Date zone) dragged onto a real day row — restore
     // it with that date in one step, rather than requiring a separate Restore click first.
@@ -8781,6 +8862,10 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
       || (onHoldEntries||[]).find(en=>en.id===activeEntryId)
       || (closedEntries||[]).find(en=>en.id===activeEntryId)
     : null;
+  // A dragged bill/unscheduled/needs-info pill isn't in any of the three lists above (only
+  // ever shown inside the No-Date box) — found here instead, so its DragOverlay clone isn't
+  // left blank the same way the original "goes blank" bug looked.
+  const activeNoDateEntry = (!activeEntry && activeEntryId) ? (noDateSorted||[]).find(n=>n.id===activeEntryId) : null;
   return (
     <div ref={containerRef} className={tvMode ? "bg-[#F2F2F7] dark:bg-[#14161F] p-3 h-screen w-screen flex flex-col overflow-hidden" : ""}>
       {tvMode && (
@@ -8818,7 +8903,9 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
       <div className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${compact?"flex-1 flex flex-col min-h-0":""}`}>
         <div className={compact ? "flex-1 overflow-auto" : "overflow-x-auto"}>
           <DndContext sensors={effReadOnly?[]:boardDragSensors} onDragStart={e=>setActiveEntryId(String(e.active.id))} onDragEnd={handleBoardDragEnd}>
-            {!effReadOnly && <WhiteboardBoardNoDateZone compact={compact} readOnly={effReadOnly} h$={h$} onHoldEntries={onHoldEntries}/>}
+            {!effReadOnly && <WhiteboardBoardNoDateZone compact={compact} readOnly={effReadOnly} h$={h$} noDateSorted={noDateSorted}
+              fillingIn={fillingIn} setFillingIn={setFillingIn} fillAmount={fillAmount} setFillAmount={setFillAmount}
+              fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={setCardDay} restoreFromNoDate={restoreFromNoDate}/>}
             {!effReadOnly && <WhiteboardBoardArchiveZone compact={compact} readOnly={effReadOnly} h$={h$} closedEntries={closedEntries} onUndoClosed={onUndoClosed}/>}
             <table className={`w-full border-collapse min-w-[560px] ${compact?"text-[10px]":""}`}>
               <thead className="sticky top-0 z-10">
@@ -8881,6 +8968,9 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
             </table>
             <DragOverlay>
               {activeEntry && <WhiteboardBoardEntry e={activeEntry} readOnly h$={h$}/>}
+              {activeNoDateEntry && <WhiteboardNoDatePillContent n={activeNoDateEntry} readOnly h$={h$}
+                fillingIn={null} setFillingIn={()=>{}} fillAmount="" setFillAmount={()=>{}} fillDate="" setFillDate={()=>{}}
+                saveManualFill={()=>{}} setCardDay={()=>{}} restoreFromNoDate={()=>{}}/>}
             </DragOverlay>
           </DndContext>
         </div>
@@ -9349,27 +9439,10 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     ...buyWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"onHoldBuy", label:shortAddress(c.address), amount:c.amount||0, direction:"out", restoreDay:c.day })),
   ];
   const noDateSorted = sortByPriorityOrder(noDateAll, noDateOrder);
+  // 11/21: priority is now drag-only, left-to-right, inside Board view's own No-Date box
+  // (handleBoardDragEnd there calls this same writer via arrayMove) — no ▲▼, no separate
+  // DndContext/handler here anymore.
   const setNoDateOrder = newIds => update(d=>({...d, whiteboardOverrides:{...d.whiteboardOverrides, noDateOrder:newIds}}));
-  const moveNoDatePriority = (id, dir) => {
-    const ids = noDateSorted.map(x=>x.id);
-    const idx = ids.indexOf(id);
-    const swapIdx = idx+dir;
-    if (idx<0||swapIdx<0||swapIdx>=ids.length) return;
-    const next = [...ids];
-    [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
-    setNoDateOrder(next);
-  };
-  // Drag-to-reorder the No-Date list directly (▲▼ above still work too — same
-  // setNoDateOrder, just a swap instead of an arrayMove). "Number 1 means most important" —
-  // the number badge on each row is just its position in noDateSorted, so it's always in
-  // sync with whatever order drag/▲▼ last produced.
-  const handleNoDateDragEnd = ({active,over}) => {
-    if (!over || active.id===over.id) return;
-    const ids = noDateSorted.map(x=>x.id);
-    const oldIndex = ids.indexOf(active.id), newIndex = ids.indexOf(over.id);
-    if (oldIndex<0||newIndex<0) return;
-    setNoDateOrder(arrayMove(ids, oldIndex, newIndex));
-  };
   // Current liens on a linked property, pulled live every render — so if a loan gets paid
   // off or a new one's added, the card reflects it automatically without re-entering anything.
   const liensFor = propId => {
@@ -9759,70 +9832,11 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         </div>
       )}
 
-      {/* No-Date panel: same plain white/dark card + shadow every other Whiteboard panel
-          uses (Kyle, 11/21: "integrate it much cleaner and cohesively... get rid of that big
-          yellow weird thing, I want it to just be part of the system that makes sense") —
-          color is now just a small accent (the priority number, the +/− amount), not the
-          whole panel's background. */}
-      {noDateSorted.length>0 && (
-        <div className="mb-4 bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] p-3">
-          <div className="text-xs font-bold text-slate-500 dark:text-zinc-400 mb-1.5">No Date — {noDateSorted.length}, ranked by priority (drag ⠿ or use ▲▼ — #1 is most important)</div>
-          <DndContext sensors={readOnly?[]:dragSensors} onDragEnd={handleNoDateDragEnd}>
-          <SortableContext items={noDateSorted.map(n=>n.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-1 max-h-56 overflow-y-auto">
-            {noDateSorted.map((n,i)=>(
-              <SortableItem key={n.id} id={n.id} disabled={readOnly}>
-                {handleProps => (
-                <div className="text-[11px] text-slate-600 dark:text-zinc-300">
-                <div className="flex gap-1.5 items-center justify-between">
-                  <div className="flex items-center gap-1 shrink-0">
-                    {!readOnly && <span {...handleProps} title="Drag to reorder" className="cursor-grab active:cursor-grabbing text-slate-400 dark:text-zinc-500 touch-none px-0.5">⠿</span>}
-                    <span className="w-4 text-center font-black text-teal-600 dark:text-teal-400 tabular-nums" title="Priority rank">{i+1}</span>
-                    {!readOnly && (<>
-                      <button onClick={()=>moveNoDatePriority(n.id,-1)} disabled={i===0} title="Move up in priority" className="w-4 h-4 flex items-center justify-center rounded hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-25">▲</button>
-                      <button onClick={()=>moveNoDatePriority(n.id,1)} disabled={i===noDateSorted.length-1} title="Move down in priority" className="w-4 h-4 flex items-center justify-center rounded hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-25">▼</button>
-                    </>)}
-                  </div>
-                  <div className="flex gap-1.5 truncate min-w-0 flex-1">
-                    <span className="font-semibold text-slate-400 dark:text-zinc-500 shrink-0">{n.kind==="needsInfoSell"||n.kind==="onHoldSell"?"Sell:":n.kind==="needsInfoBuy"||n.kind==="onHoldBuy"?"Buy:":n.kind==="bill"?"Bill:":"Card:"}</span>
-                    <span className="truncate">{n.label}{n.reason?` — ${n.reason}`:""}{n.restoreDay?` — would be ${wbFmtDate(n.restoreDay)}`:""}</span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {!n.reason && (
-                      <span className={`tabular-nums font-semibold ${n.direction==="in"?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>{n.direction==="in"?"+":"−"}{h$(n.amount||0)}</span>
-                    )}
-                    {!readOnly && (n.kind==="onHoldSell"||n.kind==="onHoldBuy" ? (
-                      <button onClick={()=>restoreFromNoDate(n.id)} title={`Restore to ${wbFmtDate(n.restoreDay)}`} className="font-semibold text-teal-700 dark:text-teal-400 hover:underline">↩ Restore</button>
-                    ) : n.reason ? (
-                      <button onClick={()=>{ if(fillingIn===n.id){setFillingIn(null);} else {setFillingIn(n.id);setFillAmount("");setFillDate("");} }}
-                        className="font-semibold text-teal-700 dark:text-teal-400 hover:underline">{fillingIn===n.id?"Cancel":"Fill in"}</button>
-                    ) : (
-                      <input type="date" onChange={ev=>{ if(ev.target.value) setCardDay(n.id, ev.target.value); }}
-                        className="text-[10px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-                    ))}
-                  </div>
-                </div>
-                {fillingIn===n.id && !readOnly && n.reason && (
-                  <div className="flex items-center gap-1.5 mt-1 ml-9">
-                    <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>
-                    <input type="date" value={fillDate} onChange={e=>setFillDate(e.target.value)}
-                      className="text-[10px] border border-slate-200 dark:border-zinc-700 rounded-lg px-1.5 py-1 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-                    <button disabled={!fillAmount||!fillDate} onClick={()=>{
-                      saveManualFill(n.id, { kind:n.kind==="needsInfoSell"?"sell":"buy", key:n.raw.kind==="sell"?n.raw.id:n.raw.leadId, address:n.raw.address, amount: parseFloat(fillAmount)||0, date: fillDate });
-                      setFillingIn(null);
-                    }} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-teal-600 text-white disabled:opacity-40">Save</button>
-                  </div>
-                )}
-                </div>
-                )}
-              </SortableItem>
-            ))}
-          </div>
-          </SortableContext>
-          </DndContext>
-          <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1.5 italic">Manual cards/bills with no date yet, plus REsimpli/Sheet properties missing a date or amount — drag ⠿ or use ▲▼ to re-rank by priority (#1 = most important). Pencil in an amount+date on a Sell/Buy row to add it to the forecast like a real card (it drops back here on its own if the real data catches up); pick a date on a Bill/Card row to schedule it.</div>
-        </div>
-      )}
+      {/* 11/21, Kyle: "get rid of this shit completely and show it all in the box only" —
+          this standalone No-Date panel (shared across Row/Board/Month) is gone; its contents
+          now live only inside Board view's own small No-Date drop zone
+          (WhiteboardBoardNoDateZone, rendered inside WhiteboardBoardView below). Row and Month
+          have no replacement — confirmed scope, "remove it everywhere," not Board-only. */}
 
       {/* Board view shows its sell/buy closed items as pills inside the Archive zone instead
           (11/21, Kyle: "not somewhere else or above or whatever") — this panel still carries
@@ -9843,7 +9857,10 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
           onSendToNoDate={readOnly?undefined:sendToNoDate}
           loanPaymentOverrides={loanPaymentOverrides} onSetLoanPaymentOverride={readOnly?undefined:setLoanPaymentOverride} onResetLoanPaymentOverride={readOnly?undefined:resetLoanPaymentOverride}
           onHoldEntries={onHoldEntries} onRestoreToDate={readOnly?undefined:restoreToDate}
-          closedEntries={closedSellBuyEntries} onRestoreClosedToDate={readOnly?undefined:restoreClosedToDate} onUndoClosed={readOnly?undefined:undoClosed}/>
+          closedEntries={closedSellBuyEntries} onRestoreClosedToDate={readOnly?undefined:restoreClosedToDate} onUndoClosed={readOnly?undefined:undoClosed}
+          noDateSorted={noDateSorted} onReorderNoDate={readOnly?undefined:setNoDateOrder}
+          fillingIn={fillingIn} setFillingIn={setFillingIn} fillAmount={fillAmount} setFillAmount={setFillAmount}
+          fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={readOnly?undefined:setCardDay} restoreFromNoDate={readOnly?undefined:restoreFromNoDate}/>
       )}
 
       {effectiveBoardView==="calendar" && (cards.length===0&&activeAutoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
