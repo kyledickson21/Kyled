@@ -184,12 +184,15 @@ test("groupLoanPaymentEntries never changes the day's own netIn/netOut/balance m
   assert.equal(heavyRow.balance, balances[heavyDay]);
 });
 
-test("WhiteboardBoardRow actually uses groupLoanPaymentEntries/shortAddress (the fix is wired up, not just defined)", () => {
+test("WhiteboardBoardRow actually uses groupLoanPaymentEntries (the fix is wired up, not just defined)", () => {
+  // shortAddress is no longer called directly here (11/21: the row collapsed individual loan
+  // payments into one "N loan pmts −$X" chip instead of listing each one's own address, as
+  // part of making every row the same single-line thickness) — labels arriving in `row.entries`
+  // are already shortAddress()'d upstream, in entriesByDay's own construction.
   const text = readFileSync(path.join(repoRoot, "src/Tracker.jsx"), "utf8");
   const startIdx = text.indexOf("const WhiteboardBoardRow =");
   const endIdx = text.indexOf("\nfunction WhiteboardBoardView(");
   assert.ok(startIdx !== -1 && endIdx !== -1 && endIdx > startIdx, "could not locate WhiteboardBoardRow's body");
   const body = text.slice(startIdx, endIdx);
   assert.match(body, /groupLoanPaymentEntries\(/);
-  assert.match(body, /shortAddress\(/);
 });
