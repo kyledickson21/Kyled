@@ -24,6 +24,12 @@ import { CSS } from "@dnd-kit/utilities";
 const load = loadData
 const save = saveData
 
+// Bumped by hand on every push so Kyle can tell from the Settings menu whether a deploy
+// actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
+// time tell me what the new version is"). Shown in both the desktop sidebar's Settings
+// dropdown and the mobile nav drawer's settings section.
+const APP_VERSION = "1";
+
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
 // closing doc exactly, nothing hidden by rounding. $$c is the one exception: a compact
@@ -12614,7 +12620,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
           </div>
           {settingsOpen&&(
             <div className="absolute bottom-0 left-full ml-2 w-48 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl dark:shadow-zinc-900 border border-slate-100 dark:border-zinc-700 overflow-hidden z-50">
-              <div className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Settings</div>
+              <div className="px-4 pt-3 pb-1 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Settings</span>
+                <span className="text-[9px] font-semibold text-slate-300 dark:text-zinc-600">v{APP_VERSION}</span>
+              </div>
               <button onClick={()=>setPrivacyMode(p=>!p)}
                 className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors text-left">
                 <span>Demo Mode</span>
@@ -12722,6 +12731,10 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
               ))}
             </nav>
             <div className="border-t border-slate-100 dark:border-zinc-800 py-2 px-2 shrink-0">
+              <div className="px-3 pb-1 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Settings</span>
+                <span className="text-[9px] font-semibold text-slate-300 dark:text-zinc-600">v{APP_VERSION}</span>
+              </div>
               <button onClick={()=>setPrivacyMode(p=>!p)}
                 className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
                 <span>Demo Mode</span>

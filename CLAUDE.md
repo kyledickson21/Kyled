@@ -33,6 +33,11 @@ api/
 - **Always push to**: `origin claude/build-deploy-app-BIdEz`
 - Vercel auto-deploys on every push to that branch
 - Run `npm run build` before committing to verify no build errors
+- **`APP_VERSION`** (top of `Tracker.jsx`, a plain string) — Kyle, 11/21: "put a tiny 'version
+  x' thing when clicking on settings so I can tell if an update hit." Shown in both the desktop
+  sidebar's Settings dropdown and the mobile nav drawer's settings section, next to the
+  "Settings" label. **Bump it by one on every push to this branch** (it's the one way Kyle can
+  visually confirm a deploy actually landed), and say the new number when reporting the push.
 
 ## ⚠️ CRITICAL DATA SAFETY RULE
 The Supabase `nexus_data` blob contains real people's real money. **Never destructively overwrite existing fields.** All property/loan updates must use the spread pattern:
