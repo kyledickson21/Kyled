@@ -12171,6 +12171,16 @@ const SideBtn=({icon,label,active,onClick,tooltip,badge})=>(
 export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDark, readOnly=false }) {
   const [data,setData]=useState(null);
   const [tab,setTab]=usePersistedState("nx-activeTab","Dashboard");
+  // Kyle, 11/21 (after a caching-only fix still didn't hold): "there's a bunch of stuff not
+  // showing for a few seconds... can it just show what it showed previously." The real cause
+  // wasn't data staleness, it was that WhiteboardPage fully UNMOUNTED every time the tab
+  // switched away and remounted from scratch switching back — wiping its Mercury/REsimpli/
+  // Sheet fetch state (and every other bit of local UI state) regardless of any caching done
+  // inside it. Once a session has visited Whiteboard, it's kept mounted (hidden via CSS, not
+  // removed from the DOM) for the rest of the session instead of being torn down on every tab
+  // switch — a `useRef` latch rather than state, so flipping it never causes its own re-render.
+  const visitedWhiteboardRef = useRef(false);
+  if (tab === "Whiteboard") visitedWhiteboardRef.current = true;
   const [loading,setLoading]=useState(true);
   const [privacyMode,setPrivacyMode]=useState(false);
   const [fabOpen,setFabOpen]=useState(false);
@@ -12911,7 +12921,11 @@ export default function Tracker({ onSignOut, onHome, userEmail, dark, onToggleDa
             {tab==="Closed"       &&<ClosedDealsPage data={data} update={update}/>}
             {tab==="History"      &&<HistoryPage data={data}/>}
             {tab==="Draws"        &&<DrawsPage data={data}/>}
-            {tab==="Whiteboard"   &&<WhiteboardPage data={data} update={update}/>}
+            {visitedWhiteboardRef.current && (
+              <div style={tab==="Whiteboard"?undefined:{display:"none"}}>
+                <WhiteboardPage data={data} update={update}/>
+              </div>
+            )}
             {tab==="LenderAccts"  && !readOnly &&<ManageLendersPage data={data}/>}
             {tab==="HardMoneyCompare" && !readOnly &&<HardMoneyComparePage data={data}/>}
           </div>
