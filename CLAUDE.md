@@ -1742,9 +1742,114 @@ the no date, and same gray color when it's in the 'hit account' box."
 - **Tests**: `stripStreetType` (trailing type word, trailing-directional case, mid-string word
   left alone, no-type/too-few-words no-op) in `tests/whiteboard-ledger.test.mjs`, alongside the
   existing `shortAddress` tests. Nothing else in this batch needed new pure-function tests —
-  the drag-to-day-row branch, the removed stat tiles/header row, and the integrated days-to-
-  negative line are wiring/presentation on already-tested pure logic (`firstBelowThreshold`,
-  `daysBetween`), same reasoning as every other UI-only change in this file.
+  the drag-to-day-row branch and the removed stat tiles/header row are wiring/presentation on
+  already-tested pure logic, same reasoning as every other UI-only change in this file. (The
+  "integrated days-to-negative line" mentioned above was itself replaced the same day — see
+  "Safe to send out" below.)
+
+### Row and Month views removed — Board is the only Whiteboard layout now (11/21)
+Kyle: "Also completely get rid of month and row views. Forget about em." Everything described
+in the "Row view," "Month view," and the original "Board view — a running-balance ledger
+(Calendar ↔ Board toggle)" sections above about a VIEW CHOICE is now historical — kept for
+context on how the feature evolved, not a description of what's in the code today.
+- **Deleted outright**: the `["calendar","board","month"]` view toggle and its
+  `boardView`/`setBoardView`/`effectiveBoardView` state; the entire Row ("Calendar") render
+  branch and the entire Month render branch; `WhiteboardColumn`, `WhiteboardCard`/
+  `WhiteboardCardVisual`, `WhiteboardSellCard`, `WhiteboardBuyCard`, `WhiteboardPaymentCard`,
+  `WhiteboardSetAsideCard`, `WhiteboardBillCard`, `WhiteboardDueNowBox`, `WhiteboardMonthChip`,
+  `WhiteboardMonthDay`, `MONTH_WEEKDAY_LABELS`, `monthWeeks`, and the Row/Month-shared
+  `handleDragEnd`/`activeCard`/`activeAutoCard`/page-level `dragSensors`/`activeId` (Board's
+  own `WhiteboardBoardView` already has its own separate drag state — untouched). The
+  `moveBill` ▲▼ bill-queue reorder writer is gone too — the unified No-Date box's drag-to-
+  reorder (`noDateOrder`) already re-ranks bills alongside everything else there, making that
+  separate `order` field redundant. The standalone Starting Cash/Set Aside cards and the
+  shortfall/Total In-Out stat tiles above the ledger table were ALWAYS
+  `effectiveBoardView!=="board"`-gated (Board already folded Starting Cash/Set Aside into its
+  own "Current" row) — now permanently dead, removed too, along with the `totalIn`/`totalOut`/
+  `scheduledCards`/`withinWindow` computations that fed them and the `firstShortfall`/
+  `largestShortfall`/`positiveAgain` destructure (the `computeForecastSummary` call itself,
+  and `balances`, are unchanged — only those 3 other fields it also returns went unused).
+- **"Paying back at closing?" restored on Board** — the checkbox that flips whether a checked
+  private loan's principal is subtracted from a sell deal's cash-out estimate (vs. assumed
+  rolling) used to live ONLY inside Row view's `WhiteboardSellCard`'s expandable breakdown.
+  Deleting that component without replacing this would have been a real functional
+  regression — `data.whiteboard.payingBack` is still read by `sellCashAmount()` every render,
+  but there'd have been no way left to ever change it. `WhiteboardBoardEntry` (the Board sell/
+  buy pill) now carries the sell entry's `breakdown` data too (added to the `entriesByDay`
+  mapping) and, for a sell entry with one, double-clicking the pill itself expands the same
+  purchase-price/hard-loan/interest/"paying back?" breakdown inline below it — `onSetAmount`/
+  `onResetAmount` continue to work exactly as before, the expand is a separate, independent
+  double-click target (the pill's own background, not a specific button). The checkbox itself
+  still calls a new narrow callback, `onTogglePayingBack(propId, loanId, checked)` —
+  `WhiteboardBoardEntry`/`Row`/`View` are still forbidden from calling `update()` directly (the
+  existing "never calls update() directly" test still passes), so `togglePayingBack` lives in
+  `WhiteboardPage` itself, same `update()` body the deleted component used to run directly.
+- **Editing/deleting an already-placed manual card/bill restored** — Row/Month's own ✏️/✕ on
+  `WhiteboardCardVisual`/`WhiteboardBillCard` were the only way to fix a typo or remove a
+  manual card/bill/misc entry once created; losing those without a replacement would have been
+  another real regression (the card system itself — "+ Add Card," bills, misc entries — is
+  still very much alive, just newly impossible to edit or delete). `WhiteboardCardModal` (the
+  shared add/edit modal, untouched otherwise) gained an optional `onDelete` prop — a "Delete"
+  link at the bottom, shown only when editing (`init` is set) — wired at its one call site to
+  the existing `removeCard` (which already had its own `window.confirm` gate, untouched).
+  Double-clicking a bill/unscheduled pill in the No-Date box, or a dated manual-card chip on a
+  Board day row, now opens this same modal to edit (or delete) it — both `noDateAll`'s bill/
+  unscheduled mapping and `entriesByDay`'s generic dated-card mapping gained a `raw:c` field so
+  there's a real card object to hand to the modal; Needs-Info/onHold pills have no underlying
+  `whiteboard.cards` entry yet, so double-clicking those does nothing (nothing to edit).
+- **Every remaining pill is drag-only, double-click to act** (11/21, same-day follow-up: "for
+  each pill get rid of the 'drag dots' Instead make the entire thing draggable, even if im
+  over the arrows, and the only way to click stuff on the pill is a double click that still
+  confirms before letting you like it already does") — the ⠿ drag-dot icon is gone from every
+  remaining pill (`WhiteboardBoardEntry`, `WhiteboardNoDatePillContent`,
+  `WhiteboardArchivedPill`); the whole pill was already the drag surface (dnd-kit's listeners
+  sit on the outer draggable div, which a plain click-without-movement on a nested button
+  already passed through to before this — the distance-based activation threshold is what
+  actually distinguishes a drag from a click, not the dot), so nothing structural changed
+  there, just the now-unnecessary visual affordance. Every action button that was a single
+  `onClick` is now `onDoubleClick` — the ↺ reset buttons (amount, date, loan-payment total)
+  keep the exact same `window.confirm(...)` gate they already had, just reached by double-
+  click instead of single-click; `WhiteboardNoDatePillContent`'s "Fill in"/Save and
+  `WhiteboardArchivedPill`'s Undo got the same treatment for consistency. The Set Aside pills
+  in the Current row were left alone (never had a drag dot or this interaction pattern to
+  begin with — out of scope for this request).
+- **"Safe to send out" replaces the brief "Days til negative" experiment** — Kyle first asked
+  for an integrated "Days til negative" line (to replace the just-removed "Under $10k"/"Goes
+  Negative" tiles), then immediately corrected it the same day: "nevermind get rid of the days
+  till negative. Thats a bad spot too. Instead I want you to show me how much money I could
+  send out to make it through the next 30 60 and 90 days." `safeToSend` (`{d30,d60,d90}`,
+  computed in `WhiteboardPage`) is folded into the Current row the same way — three small
+  figures, red at $0. Sending X today shifts every later day's balance down by that same X, so
+  the most that can go out while every day in a window still stays at/above $0 is exactly that
+  window's own LOWEST projected balance (floored at 0 — a window already projected to go
+  negative has nothing safe to send, never a negative "safe" amount). Computed over a FIXED
+  90-day lookahead — a second, independent call to the same `netFor`/`computeForecastSummary`
+  this page already runs for the real balances, just over `dayCols90 =
+  Array.from({length:90},...)` instead of the display-selected `dayCols` — so the 90-day
+  figure is always available even when the 30/45/90d range toggle is set to 30. No new pure
+  function needed; this is the same `computeForecastSummary` the rest of the page already
+  calls and already has test coverage, just invoked a second time with a different day range.
+- **TV Mode: pills pulled closer to the dates** — Kyle: "put the pills closer to the left
+  where the dates are so its easier to track what date it's on if Im looking from far away."
+  The Money Moves column's own left padding used to match the Date column's right padding,
+  doubling the visual gap between them; `WhiteboardBoardRow` now drops that column's left
+  padding to a sliver specifically in compact/TV mode (regular Board view's spacing is
+  untouched — Kyle named "tv view" specifically).
+- **A real rounding gap, found and fixed**: Kyle reported "some amounts arent rounding when
+  clicking the round 5k." Every remaining on-screen aggregate figure (Current balance, each
+  row's own balance, the loan-payment total, the new `safeToSend` figures) was already
+  correctly wrapped in `rBal`/`rOut` — per-pill amounts are deliberately NEVER rounded (an
+  individual card's real amount always displays exact, by design). The one real gap found:
+  `resetLoanTotal`'s own `window.confirm(...)` text showed the raw, unrounded `loanTotal`
+  while the on-screen figure next to it was rounded — now wrapped in `rOut()` too, so the
+  confirm dialog always matches what's actually on screen.
+- **Tests**: the obsolete `"the Calendar/Board view toggle only writes to localStorage"` test
+  (asserted `boardView`'s exact `usePersistedState` line existed) was removed — there's no
+  view toggle left to guard. Nothing else needed new tests — `togglePayingBack`'s `update()`
+  shape, the modal's new `onDelete`, the double-click conversions, the TV padding tweak, and
+  `safeToSend`'s own computation are all wiring/presentation over already-tested pure logic
+  (`computeForecastSummary`, `sellCashAmount`), same reasoning as every other UI-only change in
+  this file.
 
 ### Public TV Dashboard (`?tv=<secret>`, 11/17)
 Kyle uses AbleSign (a digital-signage box/kiosk browser) to display the Whiteboard Board view

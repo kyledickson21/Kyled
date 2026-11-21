@@ -127,10 +127,10 @@ test("WhiteboardBoardView, WhiteboardBoardRow, and WhiteboardBoardEntry never ta
   }
 });
 
-test("the Calendar/Board view toggle only writes to localStorage (usePersistedState), never to nexus_data", () => {
-  const text = readFileSync(path.join(repoRoot, "src/Tracker.jsx"), "utf8");
-  assert.match(text, /const \[boardView,setBoardView\] = usePersistedState\("nx-whiteboardView","calendar"\)/, "boardView must be a usePersistedState (localStorage-backed), not part of data/whiteboardOverrides");
-});
+// 11/21: Row and Month views (and the Calendar/Board/Month toggle that switched between
+// them) were removed outright — Board is now the only Whiteboard layout, so the
+// `boardView`/`usePersistedState("nx-whiteboardView",...)` state this test asserted on no
+// longer exists. Nothing replaces it; there's no longer a view choice to guard.
 
 // ─── 11/17 4:28pm fixes: loan-payment grouping and short addresses ─────────────────────────
 test("shortAddress keeps just the street line", () => {

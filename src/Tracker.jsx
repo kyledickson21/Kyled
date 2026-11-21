@@ -11,7 +11,7 @@ import {
   calcBalance, calcMonthlyPaidPortion, calcIntEarned, hardPaymentSchedule,
 } from './loan-schedule-shared.mjs'
 import {
-  nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary, withinWindow,
+  nextBusinessDay as fcNextBusinessDay, sellCashAmount, computeForecastSummary,
   filterClosed, applyMovedDate, undatedSetAsideTotal, availableCash, datedSetAsideCards,
   buildLedgerRows, groupLedgerRowsByWeek, ledgerSummary, shortAddress, stripStreetType, groupLoanPaymentEntries,
   applyAmountOverride, manualFillCards, clampToToday, roundDown5k, roundUp5k,
@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "5";
+const APP_VERSION = "6";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -7952,10 +7952,12 @@ const wbAddDays = (dateStr,n) => {
   const dt = new Date(y,m-1,d+n);
   return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
 };
-// Shared pill shape/colors for a single money-move entry (sell/buy) — used by Row view's
-// WhiteboardSellCard/WhiteboardBuyCard AND Board view's WhiteboardBoardEntry, so the two
-// views' core visual language can't drift apart (Kyle, 11/21: "make the calendar view look
-// exactly like the board view... keep this consistent to any future changes" — one shared
+// Shared pill shape/colors for a single money-move entry (sell/buy) — used by Board view's
+// WhiteboardBoardEntry (Row view's own WhiteboardSellCard/WhiteboardBuyCard used the same
+// constants before that view was removed entirely, 11/21) — kept as named, reusable
+// constants rather than inlined, for whatever future pill needs the same look (Kyle, 11/21,
+// when this was still shared across two views: "make the calendar view look exactly like
+// the board view... keep this consistent to any future changes" — one shared
 // source of truth for the shape/color instead of two copies to keep in sync by hand).
 const WB_PILL_SHAPE = "rounded-md border shadow-sm";
 const wbPillColor = direction => direction==="in"
@@ -7984,17 +7986,6 @@ const wbIsWeekend = dateStr => {
   const dow = new Date(y,m-1,d).getDay();
   return dow===0 || dow===6;
 };
-// Month view's own small date helpers — day-of-week index (0=Sun) for grid alignment, the
-// bare day-of-month number for each box, and a "Month YYYY" label shown once per month.
-const wbDow = dateStr => {
-  const [y,m,d] = dateStr.split('-').map(Number);
-  return new Date(y,m-1,d).getDay();
-};
-const wbDayNum = dateStr => Number(dateStr.slice(8,10));
-const wbMonthYearLabel = dateStr => {
-  const [y,m,d] = dateStr.split('-').map(Number);
-  return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'long',year:'numeric'});
-};
 // Incoming money doesn't actually hit the account the day it's expected — it takes
 // 1 business day to clear, so a card dated Thursday isn't real cash until Friday.
 const wbNextBusinessDay = dateStr => {
@@ -8004,117 +7995,7 @@ const wbNextBusinessDay = dateStr => {
 };
 const wbEffectiveDate = card => card.direction==="in" && card.day ? wbNextBusinessDay(card.day) : card.day;
 
-const WhiteboardCardVisual = ({ card, h$, liens, availText, onEdit, onRemove, navigate, dragHandleProps }) => {
-  const isProp = card.kind==="property";
-  const isIn = card.direction==="in";
-  const hasAmount = (card.amount||0)>0;
-  const liensShown = (liens||[]).slice(0,4);
-  const liensExtra = (liens||[]).length - liensShown.length;
-  const liensTotal = (liens||[]).reduce((s,l)=>s+l.amt,0);
-  return (
-    <div className={`rounded-xl border p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm select-none ${isIn?"border-emerald-300 dark:border-emerald-700":"border-red-300 dark:border-red-700"}`}
-      {...(dragHandleProps||{})}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          {isProp
-            ? <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'property',id:card.propId});}}
-                className="font-semibold text-[13px] text-teal-600 dark:text-teal-400 hover:underline truncate text-left block w-full">{card.address}</button>
-            : <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-100 truncate">{card.address}</div>
-          }
-
-          {isProp&&liensShown.length>0&&(
-            <div className="mt-1.5 mb-1 space-y-0.5">
-              {liensShown.map((l,i)=>(
-                <div key={i} className="flex justify-between text-[10px] text-slate-400 dark:text-zinc-500 gap-2">
-                  <span className="truncate">{l.lenderName||"Unknown"}</span>
-                  <span className="tabular-nums shrink-0">{h$(l.amt)}</span>
-                </div>
-              ))}
-              {liensExtra>0&&<div className="text-[10px] text-slate-300 dark:text-zinc-600">+{liensExtra} more</div>}
-              <div className="flex justify-between text-[10px] font-semibold text-slate-500 dark:text-zinc-400 border-t border-slate-100 dark:border-zinc-700 pt-0.5">
-                <span>Liens</span><span className="tabular-nums">{h$(liensTotal)}</span>
-              </div>
-            </div>
-          )}
-
-          {hasAmount ? (
-            <div className={`text-lg font-black tabular-nums mt-0.5 ${isIn?"text-emerald-600 dark:text-emerald-400":"text-red-600 dark:text-red-400"}`}>
-              {isIn?"+":"−"}{h$(card.amount)}
-            </div>
-          ) : onEdit ? (
-            <button onClick={e=>{e.stopPropagation();onEdit(card);}}
-              className="text-[11px] font-semibold text-teal-500 dark:text-teal-400 hover:underline mt-0.5">
-              + {isIn?"Add expected amount":"Add amount needed"}
-            </button>
-          ) : (
-            <div className="text-[11px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
-          )}
-          {availText&&(
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Available {availText}</div>
-          )}
-        </div>
-        {(onEdit||onRemove)&&(
-          <div className="flex flex-col gap-1 shrink-0">
-            {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">✏️</button>}
-            {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const WhiteboardCard = ({ card, h$, liens, availText, onEdit, onRemove, navigate }) => {
-  const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id});
-  const style = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
-  return (
-    <div ref={setNodeRef} style={style} className={`cursor-grab active:cursor-grabbing touch-none ${isDragging?"opacity-30":""}`}>
-      <WhiteboardCardVisual card={card} h$={h$} liens={liens} availText={availText} onEdit={onEdit} onRemove={onRemove} navigate={navigate} dragHandleProps={{...attributes,...listeners}}/>
-    </div>
-  );
-};
-
-// balance is the running cash position after everything through this day — the number that
-// answers "will I have enough" — shown big and red the moment it goes negative. net (that
-// day's own activity) stays as a small secondary line underneath when it's non-zero.
-const WhiteboardColumn = ({ id, label, sub, isToday, isUnscheduled, weekStart, net, balance, settledIn, h$, children, empty }) => {
-  const {setNodeRef,isOver} = useDroppable({id});
-  const short = balance!=null && balance<0;
-  // 11/21, Kyle: "the full date box turns red or green if current balance is positive or
-  // negative" — the whole column, not just the small balance figure inside it. Unscheduled (no
-  // balance to speak of) keeps the plain neutral background.
-  const dayBg = balance==null ? "bg-slate-100/70 dark:bg-zinc-900/40" : short ? "bg-red-100/70 dark:bg-red-900/20" : "bg-emerald-50/60 dark:bg-emerald-900/10";
-  return (
-    <div ref={setNodeRef}
-      className={`shrink-0 w-56 rounded-2xl p-2.5 transition-colors ${isOver?"bg-teal-50 dark:bg-teal-900/20 ring-2 ring-teal-300 dark:ring-teal-700":dayBg} ${weekStart?"ml-2":""}`}>
-      <div className="px-1 pb-2 mb-2 border-b border-slate-200 dark:border-zinc-700">
-        <div className={`text-[11px] font-bold uppercase tracking-wide ${isUnscheduled?"text-slate-400 dark:text-zinc-500":isToday?"text-amber-600 dark:text-amber-400":"text-slate-600 dark:text-zinc-300"}`}>{label}</div>
-        {sub&&<div className="text-[10px] text-slate-400 dark:text-zinc-500">{sub}</div>}
-        {balance!=null&&(
-          <div className={`text-sm font-black tabular-nums mt-0.5 ${short?"text-red-600 dark:text-red-400":"text-slate-700 dark:text-zinc-200"}`}>{short?"⚠ −":""}{h$(Math.abs(balance))}</div>
-        )}
-        {!isUnscheduled&&net!==0&&(
-          <div className={`text-[11px] font-semibold tabular-nums mt-0.5 ${net>=0?"text-emerald-600 dark:text-emerald-400":"text-red-500 dark:text-red-400"}`}>{net>=0?"+":"−"}{h$(Math.abs(net))} today</div>
-        )}
-        {/* Money dragged onto an earlier day still counts here instead, once it clears (1
-            business day later) — spell that out, or a balance jump here looks unexplained. */}
-        {settledIn&&settledIn.length>0&&(
-          <div className="mt-1 space-y-0.5">
-            {settledIn.map((c,i)=>(
-              <div key={i} className="text-[10px] text-emerald-600 dark:text-emerald-400">+{h$(c.amount)} clearing from {c.address} ({wbFmtDate(c.day)})</div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="min-h-[70px]">
-        {children}
-        {empty&&<div className="text-[11px] text-slate-300 dark:text-zinc-600 italic text-center py-4">{isUnscheduled?"Drop cards here first":"—"}</div>}
-      </div>
-    </div>
-  );
-};
-
-function WhiteboardCardModal({ properties, init, onSave, onClose }) {
+function WhiteboardCardModal({ properties, init, onSave, onDelete, onClose }) {
   const [mode,setMode] = useState(init?.kind || "property");
   const [propId,setPropId] = useState(init?.propId || "");
   const [address,setAddress] = useState(init?.address || "");
@@ -8209,6 +8090,12 @@ function WhiteboardCardModal({ properties, init, onSave, onClose }) {
           })}>Save</Btn>
           <Btn color="ghost" onClick={onClose}>Cancel</Btn>
         </div>
+        {/* 11/21: restores the delete affordance Row/Month's own ✕ button used to provide,
+            now that editing/removing an already-placed manual card/bill only happens through
+            this modal (Board's No-Date pill is double-click-to-edit, no separate remove). */}
+        {init&&onDelete&&(
+          <button onClick={()=>{onDelete(init.id);onClose();}} className="w-full text-center text-xs font-semibold text-red-500 dark:text-red-400 hover:underline pt-1">Delete</button>
+        )}
       </div>
     </Modal>
   );
@@ -8254,160 +8141,6 @@ const upcomingLoanPayments = (data, dayCols) => {
   return out;
 };
 
-const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
-  <div className="rounded-xl border border-dashed border-slate-300 dark:border-zinc-600 p-3 mb-2 bg-slate-50 dark:bg-zinc-800/60">
-    <div className="flex items-center gap-1.5 mb-0.5">
-      <span className="text-[10px]">🏦</span>
-      <button onClick={e=>{e.stopPropagation();navigate&&navigate({type:'loan',loanId:card.loanId,propId:card.propId});}}
-        className="font-semibold text-[12px] text-slate-600 dark:text-zinc-300 hover:text-teal-600 dark:hover:text-teal-400 hover:underline truncate text-left">
-        {card.lenderName||"Unknown"}
-      </button>
-    </div>
-    {card.address&&<div className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">{card.address}</div>}
-    <div className="text-base font-black tabular-nums mt-0.5 text-red-500 dark:text-red-400">−{h$(card.amount)}</div>
-    <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Loan payment · auto</div>
-  </div>
-);
-
-// Auto-generated, read-only sell card (a property under contract to sell) — shows the net
-// cash-in estimate with an expandable breakdown (purchase, each subtracted loan, interest
-// added back) and, per private loan on that property, a "paying back" checkbox (persisted to
-// whiteboard.payingBack) that flips whether that loan's principal is subtracted from the
-// estimate. Unlike a manual card, this one is never draggable/editable/removable — it's
-// recomputed fresh from live property/loan data every render.
-// `onMarkClosed`/`onPickDate`/`onResetDate` are all omitted (undefined) under readOnly — the
-// card still renders the manual-date/breakdown info either way, it just can't be acted on.
-// 11/21 (Kyle: "do that same thing for the calendar view... drag the property pill to a new
-// date" — same pill philosophy as Board's WhiteboardBoardEntry): the header is now one pill
-// line, address and amount together, no 📅/📋 icon buttons — dragging onto another day column
-// reschedules it, dragging onto Unscheduled already unschedules it (handleDragEnd), so neither
-// button added anything a drag didn't already do. "Closed" stays (there's no drag equivalent,
-// and this card is now its only home — Board view dropped it) along with the expandable
-// breakdown/paying-back checkboxes, which only make sense on a card with room for them.
-const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onResetDate, onRemoveManualSell }) => {
-  const readOnly = useReadOnly();
-  const [open, setOpen] = useState(false);
-  // Draggable onto another day (dnd-kit) — each card calls useDraggable itself, same pattern
-  // as WhiteboardBillCard, since this hook can't be called from a parent's .map() loop.
-  const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id, disabled:readOnly});
-  const dragStyle = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
-  const dragHandleProps = readOnly ? {} : {...attributes, ...listeners};
-  const b = card.breakdown;
-  const togglePayingBack = (loanId, checked) => update(d => ({
-    ...d,
-    whiteboard: {
-      ...d.whiteboard,
-      payingBack: {
-        ...(d.whiteboard?.payingBack || {}),
-        [card.propId]: { ...(d.whiteboard?.payingBack?.[card.propId] || {}), [loanId]: checked },
-      },
-    },
-  }));
-  return (
-    <div ref={setNodeRef} style={dragStyle} {...dragHandleProps}
-      className={`${WB_PILL_SHAPE} p-2.5 mb-2 ${wbPillColor("in")} touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
-      <div className="flex items-center justify-between gap-1.5">
-        <span className="flex items-center gap-1 min-w-0">
-          {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
-          <button onClick={e => { e.stopPropagation(); navigate && navigate({ type: 'property', id: card.propId }); }}
-            className="font-semibold text-[12px] text-teal-700 dark:text-teal-400 hover:underline truncate text-left min-w-0">🏠 {card.address}</button>
-        </span>
-        <span className={`font-black tabular-nums shrink-0 ${wbPillAccent("in")}`}>+{h$(card.amount)}</span>
-      </div>
-      {!readOnly && (onMarkClosed || (b.dateSource==="manual" && onRemoveManualSell)) && (
-        <div className="flex justify-end gap-1 mt-0.5">
-          {b.dateSource==="manual" && onRemoveManualSell && (
-            <button onClick={e=>{e.stopPropagation();onRemoveManualSell();}} title="Remove from the sell list — this was added by hand" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-zinc-800/70 text-slate-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-700 dark:hover:text-red-400 transition-colors">Remove</button>
-          )}
-          {onMarkClosed && (
-            <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this sale closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-zinc-800/70 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>
-          )}
-        </div>
-      )}
-      <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
-        Sale {b.saleDate} ({b.dateSource === "sheet" ? "sheet" : b.dateSource === "manual" ? "manually added" : "REsimpli fallback"}) · auto
-      </div>
-      {card.pastDue && !card.manualDate && (
-        <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">⏰ closed {b.saleDate} — showing today since it hasn't hit the account yet</div>
-      )}
-      {card.manualDate && (
-        <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
-          <span>📌 Moved to {wbFmtDate(card.day)} (source says {wbFmtDate(card.sourceDate)})</span>
-          {onResetDate && <button onClick={e=>{e.stopPropagation();onResetDate();}} className="font-semibold hover:underline shrink-0">Reset</button>}
-        </div>
-      )}
-      {card.settleDay && card.settleDay !== card.day && (
-        <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Available {wbFmtDate(card.settleDay)}</div>
-      )}
-      <button onClick={() => setOpen(o => !o)} className="text-[10px] font-semibold text-teal-500 dark:text-teal-400 hover:underline mt-1">{open ? "Hide breakdown" : "Show breakdown"}</button>
-      {open && (
-        <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-700 space-y-0.5 text-[10px] text-slate-500 dark:text-zinc-400">
-          <div className="flex justify-between"><span>Purchase price</span><span className="tabular-nums">{h$(b.purchasePrice)}</span></div>
-          {b.hardLoans.map(l => (
-            <div key={l.id} className="flex justify-between"><span>− {l.lenderName} (hard)</span><span className="tabular-nums">−{h$(l.principal)}</span></div>
-          ))}
-          <div className="flex justify-between"><span>+ Hard-money interest paid</span><span className="tabular-nums">+{h$(b.hardInterestPaidTotal)}</span></div>
-          {b.privateLoans.length > 0 && (
-            <div className="pt-1 space-y-1">
-              <div className="text-[9px] uppercase tracking-widest text-slate-400 dark:text-zinc-500">Paying back at closing?</div>
-              {b.privateLoans.map(l => (
-                <label key={l.id} className="flex items-center justify-between gap-2 cursor-pointer">
-                  <span className="flex items-center gap-1.5 truncate">
-                    {!readOnly && <input type="checkbox" checked={!!l.checked} onChange={e => togglePayingBack(l.id, e.target.checked)} className="accent-teal-600"/>}
-                    <span className="truncate">{l.lenderName} ({h$(l.principal)})</span>
-                  </span>
-                  <span className="text-slate-300 dark:text-zinc-600">{l.checked ? "subtracted" : "assumed rolling"}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-1 italic">Sell · auto</div>
-    </div>
-  );
-};
-
-// Auto-generated, read-only buy card (a REsimpli lead under contract to buy). Shows both the
-// analytics and contract-question dates when they differ, so a mismatch between the two
-// sources is visible rather than silently resolved.
-const WhiteboardBuyCard = ({ card, h$, onMarkClosed, onResetDate }) => {
-  const readOnly = useReadOnly();
-  const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id, disabled:readOnly});
-  const dragStyle = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
-  const dragHandleProps = readOnly ? {} : {...attributes, ...listeners};
-  return (
-    <div ref={setNodeRef} style={dragStyle} {...dragHandleProps}
-      className={`${WB_PILL_SHAPE} p-2.5 mb-2 ${wbPillColor("out")} touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
-      <div className="flex items-center justify-between gap-1.5">
-        <div className="flex items-center gap-1 min-w-0">
-          {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
-          <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate min-w-0">🔑 {card.address}</div>
-        </div>
-        <span className={`font-black tabular-nums shrink-0 ${wbPillAccent("out")}`}>−{h$(card.amount)}</span>
-      </div>
-      {!readOnly && onMarkClosed && (
-        <div className="flex justify-end mt-0.5">
-          <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this purchase closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-zinc-800/70 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>
-        </div>
-      )}
-      {card.dateFromAnalytics && card.dateFromContract && card.dateFromAnalytics !== card.dateFromContract && (
-        <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Analytics {card.dateFromAnalytics} vs. contract {card.dateFromContract} — using {card.date}</div>
-      )}
-      {card.pastDue && !card.manualDate && (
-        <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">⏰ was due {card.date} — showing today since it hasn't hit the account yet</div>
-      )}
-      {card.manualDate && (
-        <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
-          <span>📌 Moved to {wbFmtDate(card.day)} (source says {wbFmtDate(card.sourceDate)})</span>
-          {onResetDate && <button onClick={e=>{e.stopPropagation();onResetDate();}} className="font-semibold hover:underline shrink-0">Reset</button>}
-        </div>
-      )}
-      <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Buy (REsimpli) · auto</div>
-    </div>
-  );
-};
-
 // "Closed, waiting to confirm" — Mark Closed on a sell/buy card moves it here and out of the
 // forecast entirely (cash in/out, running balance, shortfall cards all stop counting it)
 // until the real data confirms it (see WhiteboardPage's auto-clear effect) or Kyle undoes it
@@ -8429,18 +8162,6 @@ const WhiteboardClosedPanel = ({ items, h$, onUndo }) => {
     </div>
   );
 };
-
-// A "Set aside" entry WITH a date — money Kyle knows is already spoken for and will actually
-// leave Mercury on a specific day (vs. an undated one, which just lowers the headline
-// "available" figure instead of appearing as a dated card — see availableCash/
-// undatedSetAsideTotal in whiteboard-forecast.mjs).
-const WhiteboardSetAsideCard = ({ card, h$ }) => (
-  <div className="rounded-xl border border-violet-300 dark:border-violet-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm">
-    <div className="flex items-center gap-1.5 mb-0.5"><span className="text-[10px]">🔒</span><div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{card.label}</div></div>
-    <div className="text-lg font-black tabular-nums mt-0.5 text-red-600 dark:text-red-400">−{h$(card.amount)}</div>
-    <div className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">Set aside · auto</div>
-  </div>
-);
 
 // Add/edit one "Set aside" entry — label, amount, and an optional date it actually leaves.
 function WhiteboardSetAsideModal({ init, onSave, onClose }) {
@@ -8493,63 +8214,6 @@ function WhiteboardAddClosingModal({ properties, onAdd, onClose }) {
   );
 }
 
-// Bills/invoices with no due date — pay-ASAP, ranked by when they came in (default) or a
-// manual override via the up/down arrows, kept in their own queue instead of forced onto a
-// specific day since there isn't one yet. Also draggable onto a day, same as any other card —
-// once it has a day it leaves this queue and shows up there instead (see cardsFor).
-const WhiteboardBillCard = ({ card, h$, canMoveUp, canMoveDown, onMove, onEdit, onRemove }) => {
-  const readOnly = useReadOnly();
-  const {attributes,listeners,setNodeRef,transform,isDragging} = useDraggable({id:card.id});
-  const style = transform ? {transform:`translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex:10} : undefined;
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}
-      className={`rounded-xl border border-amber-300 dark:border-amber-700 p-3 mb-2 bg-white dark:bg-zinc-800 shadow-sm cursor-grab active:cursor-grabbing touch-none select-none ${isDragging?"opacity-30":""}`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold text-[13px] text-slate-800 dark:text-zinc-100 truncate">{card.address}</div>
-          {(card.amount||0)>0 ? (
-            <div className="text-lg font-black tabular-nums mt-0.5 text-red-600 dark:text-red-400">−{h$(card.amount)}</div>
-          ) : onEdit ? (
-            <button onClick={e=>{e.stopPropagation();onEdit(card);}} className="text-[11px] font-semibold text-teal-500 dark:text-teal-400 hover:underline mt-0.5">+ Add amount</button>
-          ) : (
-            <div className="text-[11px] text-slate-300 dark:text-zinc-600 mt-0.5 italic">No amount yet</div>
-          )}
-          <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">since {wbFmtDate(card.addedAt||TODAY)}</div>
-        </div>
-        <div className="flex flex-col gap-1 shrink-0 items-center">
-          {!readOnly && (<>
-          <button disabled={!canMoveUp} onClick={e=>{e.stopPropagation();onMove(card.id,-1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 disabled:opacity-20 text-[11px]">▲</button>
-          <button disabled={!canMoveDown} onClick={e=>{e.stopPropagation();onMove(card.id,1);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 disabled:opacity-20 text-[11px]">▼</button>
-          </>)}
-          {onEdit&&<button onClick={e=>{e.stopPropagation();onEdit(card);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-teal-500 dark:hover:text-teal-400 text-[11px]">✏️</button>}
-          {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(card.id);}} className="w-5 h-5 flex items-center justify-center rounded text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs">✕</button>}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Droppable, so a bill can be dragged straight onto a day (leaving this queue — see
-// cardsFor) and a dated bill can be dragged back here to clear its day again.
-const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove }) => {
-  const {setNodeRef,isOver} = useDroppable({id:"duenow"});
-  if (!bills.length) return null;
-  return (
-    <div ref={setNodeRef} className={`shrink-0 w-56 rounded-2xl p-2 transition-colors ${isOver?"bg-teal-50 dark:bg-teal-900/20 ring-2 ring-teal-300 dark:ring-teal-700":"bg-amber-50/70 dark:bg-amber-900/10"}`}>
-      <div className="px-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-zinc-700 flex items-baseline justify-between gap-2">
-        <div>
-          <div className="text-[11px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">🧾 Due Now</div>
-          <div className="text-[10px] text-slate-400 dark:text-zinc-500">No due date · oldest first</div>
-        </div>
-        {billsTotal>0&&<div className="text-xs font-bold tabular-nums shrink-0 text-red-600 dark:text-red-400">−{h$(billsTotal)}</div>}
-      </div>
-      <div className="min-h-[40px]">
-        {bills.map((c,i)=><WhiteboardBillCard key={c.id} card={c} h$={h$} canMoveUp={i>0} canMoveDown={i<bills.length-1} onMove={moveBill} onEdit={onEdit} onRemove={onRemove}/>)}
-      </div>
-    </div>
-  );
-};
-
 // ─── Board view — a running-balance ledger table (cash-flow-forecast best practice: sticky
 // header, a clear starting-balance row, a running balance column, the lowest point and every
 // shortfall day called out). Entirely display-only — every number it shows comes straight
@@ -8573,11 +8237,19 @@ const WhiteboardDueNowBox = ({ bills, billsTotal, h$, moveBill, onEdit, onRemove
 //    `WhiteboardBoardRow`) — showing the same number twice was exactly the "shit shown twice"
 //    complaint. A manually-moved date's ↺ undo also now lives on the pill itself (`onResetDate`),
 //    generalizing cleanly to 2+ entries a day the same way the amount editor did.
-const WhiteboardBoardEntry = ({ e, readOnly, onSetAmount, onResetAmount, onResetDate, h$ }) => {
+const WhiteboardBoardEntry = ({ e, readOnly, onSetAmount, onResetAmount, onResetDate, onTogglePayingBack, h$ }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: e.id, disabled: readOnly });
   const dragStyle = transform ? { transform:`translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
   const [editingAmount, setEditingAmount] = useState(false);
   const [amountDraft, setAmountDraft] = useState("");
+  // 11/21, Kyle: "for each pill get rid of the 'drag dots' Instead make the entire thing
+  // draggable, even if im over the arrows, and the only way to click stuff on the pill is a
+  // double click that still confirms before letting you like it already does" — the ⠿ icon is
+  // gone (the whole pill was already the drag surface; dnd-kit's own distance-based activation
+  // threshold already lets a plain click-without-moving reach a button underneath regardless),
+  // and every action below is now double-click-only. The ↺ undo buttons already confirmed via
+  // window.confirm — that stays exactly as-is, just reached by double-click now.
+  const [open, setOpen] = useState(false);
   const saveAmount = () => {
     const v = parseFloat(amountDraft);
     if (!isNaN(v) && v>=0 && v!==e.amount) onSetAmount(e.id, Math.round(v*100)/100);
@@ -8585,12 +8257,13 @@ const WhiteboardBoardEntry = ({ e, readOnly, onSetAmount, onResetAmount, onReset
   };
   const resetAmount = ev => { ev.stopPropagation(); if (window.confirm(`Reset the amount back to ${h$(e.originalAmount)}?`)) onResetAmount(e.id); };
   const resetDate = ev => { ev.stopPropagation(); if (window.confirm(`Reset the date back to ${e.sourceDate?wbFmtDate(e.sourceDate):"its original"}?`)) onResetDate(e.id); };
-  return (
+  const b = e.breakdown;
+  return (<>
     <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
+      onDoubleClick={b ? ev=>{ev.stopPropagation();setOpen(o=>!o);} : undefined}
       className={`shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} max-w-[220px] ${wbPillColor(e.direction)} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
-      {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
       {e.pastDue && !e.manualDate && <span title="Hasn't hit the account yet">⏰</span>}
-      {e.manualDate && onResetDate && <button onClick={resetDate} title="Dragged — click to undo" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
+      {e.manualDate && onResetDate && <button onDoubleClick={resetDate} title="Dragged — double-click to undo" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
       <span className="truncate min-w-0" title={e.fullLabel||e.label}>{e.label}</span>
       {editingAmount ? (
         <input type="number" step="0.01" autoFocus value={amountDraft} onClick={ev=>ev.stopPropagation()}
@@ -8600,19 +8273,47 @@ const WhiteboardBoardEntry = ({ e, readOnly, onSetAmount, onResetAmount, onReset
           className="w-14 shrink-0 text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
       ) : (
         <span className="shrink-0 inline-flex items-center gap-0.5 tabular-nums font-semibold">
-          {e.manualAmount && onResetAmount && <button onClick={resetAmount} title="Edited — click to undo" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
+          {e.manualAmount && onResetAmount && <button onDoubleClick={resetAmount} title="Edited — double-click to undo" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
           {!readOnly && onSetAmount ? (
-            <button onClick={ev=>{ev.stopPropagation();setAmountDraft(String(e.amount||""));setEditingAmount(true);}} className="hover:underline">
+            <button onDoubleClick={ev=>{ev.stopPropagation();setAmountDraft(String(e.amount||""));setEditingAmount(true);}} className="hover:underline">
               {e.direction==="in"?"+":"−"}{h$(e.amount)}
             </button>
           ) : <>{e.direction==="in"?"+":"−"}{h$(e.amount)}</>}
         </span>
       )}
     </div>
-  );
+    {/* Restores the "paying back at closing?" checkboxes Row view's own WhiteboardSellCard
+        used to own (deleted along with the rest of that view) — double-click the pill itself
+        (above) to expand, since this sell entry is otherwise the only way to flip whether a
+        checked private loan's principal is subtracted from the sell-cash estimate vs. assumed
+        rolling. Buy entries, and any sell entry with no breakdown data, have nothing to expand. */}
+    {open && b && (
+      <div className="w-full basis-full mt-0.5 ml-1 pl-1.5 border-l-2 border-emerald-200 dark:border-emerald-800 space-y-0.5 text-[9px] text-slate-500 dark:text-zinc-400">
+        <div className="flex justify-between gap-2"><span>Purchase price</span><span className="tabular-nums">{h$(b.purchasePrice)}</span></div>
+        {b.hardLoans.map(l => (
+          <div key={l.id} className="flex justify-between gap-2"><span>− {l.lenderName} (hard)</span><span className="tabular-nums">−{h$(l.principal)}</span></div>
+        ))}
+        <div className="flex justify-between gap-2"><span>+ Hard-money interest paid</span><span className="tabular-nums">+{h$(b.hardInterestPaidTotal)}</span></div>
+        {b.privateLoans.length > 0 && (
+          <div className="pt-0.5 space-y-0.5">
+            <div className="text-[8px] uppercase tracking-widest text-slate-400 dark:text-zinc-500">Paying back at closing?</div>
+            {b.privateLoans.map(l => (
+              <label key={l.id} className="flex items-center justify-between gap-2 cursor-pointer">
+                <span className="flex items-center gap-1 truncate">
+                  {!readOnly && <input type="checkbox" checked={!!l.checked} onChange={ev=>onTogglePayingBack?.(e.propId, l.id, ev.target.checked)} className="accent-teal-600"/>}
+                  <span className="truncate">{l.lenderName} ({h$(l.principal)})</span>
+                </span>
+                <span className="text-slate-300 dark:text-zinc-600 shrink-0">{l.checked ? "subtracted" : "assumed rolling"}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
+  </>);
 };
 
-const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, loanPaymentOverride, onSetLoanPaymentOverride, onResetLoanPaymentOverride }) => {
+const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance, onSetAmount, onResetAmount, onResetDate, onTogglePayingBack, onMarkClosed, onExcludeMany, loanPaymentOverride, onSetLoanPaymentOverride, onResetLoanPaymentOverride, onEditCard }) => {
   const short = row.balance < 0;
   const { loanPayments, other, loanTotal } = groupLoanPaymentEntries(row.entries);
   const [editingLoanTotal, setEditingLoanTotal] = useState(false);
@@ -8623,7 +8324,7 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
     if (!isNaN(v) && v>=0 && v!==displayedLoanTotal) onSetLoanPaymentOverride?.(row.day, Math.round(v*100)/100);
     setEditingLoanTotal(false);
   };
-  const resetLoanTotal = ev => { ev.stopPropagation(); if (window.confirm(`Reset the loan payment total back to ${h$(loanTotal)} (what the tracker computes)?`)) onResetLoanPaymentOverride?.(row.day); };
+  const resetLoanTotal = ev => { ev.stopPropagation(); if (window.confirm(`Reset the loan payment total back to ${h$(rOut(loanTotal))} (what the tracker computes)?`)) onResetLoanPaymentOverride?.(row.day); };
   // Round only the row's own AGGREGATE figures (balance/the grouped loan-payment subtotal) —
   // never an individual entry's real amount, which always stays exact.
   const rOut = v => roundMode ? roundUp5k(v) : v;
@@ -8654,11 +8355,18 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
       <td className={`${td9} font-semibold text-slate-500 dark:text-zinc-400`}>
         {wbFmtDate(row.day)} <span className="opacity-70">{wbWeekday(row.day)}</span>
       </td>
-      <td className={`${td} align-top text-[9px] text-slate-700 dark:text-zinc-200 overflow-hidden`}>
+      {/* 11/21, Kyle, re: TV Mode: "put the pills closer to the left where the dates are so
+          its easier to track what date it's on if Im looking from far away" — this column's
+          own left padding used to match the Date column's right padding, doubling the visual
+          gap between them; dropped to a sliver in compact/TV mode specifically (regular Board
+          view keeps its normal spacing — Kyle named "tv view"). */}
+      <td className={`${compact?"pl-0.5 pr-1.5 py-0.5":"px-3 py-1"} align-top text-[9px] text-slate-700 dark:text-zinc-200 overflow-hidden`}>
         {row.entries.length>0 && (
         <div className="flex items-center gap-2 overflow-hidden">
           {plainOther.map(e=>(
-            <span key={e.id} className="shrink-0 truncate max-w-[140px] flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60" title={e.fullLabel||e.label}>
+            <span key={e.id}
+              onDoubleClick={!readOnly && e.kind!=="setAside" && e.raw && onEditCard ? ev=>{ev.stopPropagation();onEditCard(e.raw);} : undefined}
+              className="shrink-0 truncate max-w-[140px] flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60" title={e.fullLabel||e.label}>
               {e.label} <span className="tabular-nums">{e.direction==="in"?"+":"−"}{h$(e.amount)}</span>
               {!readOnly && e.kind==="setAside" && onMarkClosed && (
                 <button onClick={()=>onMarkClosed(e)} title="Remove from timeline" className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>
@@ -8667,7 +8375,7 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
           ))}
           {sellBuyEntries.map(e=>(
             <WhiteboardBoardEntry key={e.id} e={e} readOnly={readOnly} h$={h$}
-              onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate}/>
+              onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate} onTogglePayingBack={onTogglePayingBack}/>
           ))}
           {loanPayments.length>0 && (
             <span className="shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
@@ -8680,9 +8388,9 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
                   className="w-14 text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
               ) : (
                 <span className="inline-flex items-center gap-0.5 tabular-nums text-red-600 dark:text-red-400">
-                  {loanPaymentOverride!=null && onResetLoanPaymentOverride && <button onClick={resetLoanTotal} title="Edited — click to reset to what the tracker shows" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
+                  {loanPaymentOverride!=null && onResetLoanPaymentOverride && <button onDoubleClick={resetLoanTotal} title="Edited — double-click to reset to what the tracker shows" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
                   {!readOnly && onSetLoanPaymentOverride ? (
-                    <button onClick={()=>{setLoanTotalDraft(String(displayedLoanTotal||""));setEditingLoanTotal(true);}} className="hover:underline">−{h$(rOut(displayedLoanTotal))}</button>
+                    <button onDoubleClick={()=>{setLoanTotalDraft(String(displayedLoanTotal||""));setEditingLoanTotal(true);}} className="hover:underline">−{h$(rOut(displayedLoanTotal))}</button>
                   ) : <>−{h$(rOut(displayedLoanTotal))}</>}
                 </span>
               )}
@@ -8713,15 +8421,21 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
 // The pill's visual content, separated from its drag registration so the SAME markup can be
 // reused, read-only and un-registered, inside a <DragOverlay> clone (registering a second
 // useSortable on the dragged id inside the overlay would fight dnd-kit's own clone).
-const WhiteboardNoDatePillContent = ({ n, readOnly, h$, fillingIn, setFillingIn, fillAmount, setFillAmount, fillDate, setFillDate, saveManualFill, setCardDay, restoreFromNoDate }) => {
+const WhiteboardNoDatePillContent = ({ n, readOnly, h$, fillingIn, setFillingIn, fillAmount, setFillAmount, fillDate, setFillDate, saveManualFill, setCardDay, restoreFromNoDate, onEditCard }) => {
   const isOnHold = n.kind==="onHoldSell"||n.kind==="onHoldBuy";
+  // A plain bill/unscheduled card has no action button left on it at all (drag-only, see the
+  // note just below) — double-clicking the pill itself opens WhiteboardCardModal to edit (or
+  // delete) it instead, restoring the ✏️/✕ Row/Month's own cards used to offer before those
+  // views were removed. Needs-Info/onHold pills aren't real whiteboard.cards yet, so this is a
+  // no-op for them (no `onEditCard` call at all — nothing to edit).
+  const editableCard = !isOnHold && !n.reason && n.raw;
   return (<>
-    <div className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} ${WB_PILL_NODATE} ${WB_PILL_NODATE_TEXT} max-w-[220px] ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
-      {!readOnly && <span className="opacity-50 shrink-0">⠿</span>}
+    <div onDoubleClick={editableCard && onEditCard ? ev=>{ev.stopPropagation();onEditCard(n.raw);} : undefined}
+      className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} ${WB_PILL_NODATE} ${WB_PILL_NODATE_TEXT} max-w-[220px] ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
       <span className="truncate min-w-0" title={n.label}>{n.label}{n.reason?` — ${n.reason}`:""}</span>
       {!n.reason && <span className="tabular-nums font-semibold shrink-0">{n.direction==="in"?"+":"−"}{h$(n.amount||0)}</span>}
       {!readOnly && isOnHold && (
-        <button onClick={ev=>{ev.stopPropagation();restoreFromNoDate(n.id);}} title={`Restore to ${wbFmtDate(n.restoreDay)}`} className="shrink-0 font-semibold hover:underline">↩</button>
+        <button onDoubleClick={ev=>{ev.stopPropagation();restoreFromNoDate(n.id);}} title={`Double-click to restore to ${wbFmtDate(n.restoreDay)}`} className="shrink-0 font-semibold hover:underline">↩</button>
       )}
       {/* Kyle, 11/21: "why's there still a date button on this bill? It should just be drag
           just like the rest. Get rid of it." A plain bill/unscheduled card now has NO action
@@ -8730,7 +8444,7 @@ const WhiteboardNoDatePillContent = ({ n, readOnly, h$, fillingIn, setFillingIn,
           pill's drag-to-reschedule. Needs-Info still keeps "Fill in" — there's no underlying
           card to drag onto a day until one's pencilled in. */}
       {!readOnly && !isOnHold && n.reason && (
-        <button onClick={ev=>{ev.stopPropagation(); if(fillingIn===n.id){setFillingIn(null);} else {setFillingIn(n.id);setFillAmount("");setFillDate("");}}}
+        <button onDoubleClick={ev=>{ev.stopPropagation(); if(fillingIn===n.id){setFillingIn(null);} else {setFillingIn(n.id);setFillAmount("");setFillDate("");}}}
           className="shrink-0 font-semibold hover:underline">{fillingIn===n.id?"Cancel":"Fill in"}</button>
       )}
     </div>
@@ -8739,7 +8453,7 @@ const WhiteboardNoDatePillContent = ({ n, readOnly, h$, fillingIn, setFillingIn,
         <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>
         <input type="date" value={fillDate} onClick={ev=>ev.stopPropagation()} onChange={e=>setFillDate(e.target.value)}
           className="text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
-        <button disabled={!fillAmount||!fillDate} onClick={ev=>{ev.stopPropagation();
+        <button disabled={!fillAmount||!fillDate} onDoubleClick={ev=>{ev.stopPropagation();
           saveManualFill(n.id, { kind:n.kind==="needsInfoSell"?"sell":"buy", key:n.raw.kind==="sell"?n.raw.id:n.raw.leadId, address:n.raw.address, amount: parseFloat(fillAmount)||0, date: fillDate });
           setFillingIn(null);
         }} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-600 text-white disabled:opacity-40">Save</button>
@@ -8764,7 +8478,7 @@ const WhiteboardNoDatePill = (props) => (
 // box already sits in (it checks whether `over` is another no-date pill vs. a real day row vs.
 // the Archive zone and branches accordingly) rather than a second, conflicting DndContext.
 const WhiteboardBoardNoDateZone = ({ compact, readOnly, h$, noDateSorted,
-  fillingIn, setFillingIn, fillAmount, setFillAmount, fillDate, setFillDate, saveManualFill, setCardDay, restoreFromNoDate }) => {
+  fillingIn, setFillingIn, fillAmount, setFillAmount, fillDate, setFillDate, saveManualFill, setCardDay, restoreFromNoDate, onEditCard }) => {
   const { setNodeRef, isOver } = useDroppable({ id: "board-nodate" });
   return (
     <div ref={setNodeRef}
@@ -8774,7 +8488,7 @@ const WhiteboardBoardNoDateZone = ({ compact, readOnly, h$, noDateSorted,
         <SortableContext items={noDateSorted.map(n=>n.id)} strategy={horizontalListSortingStrategy}>
           <div className="flex items-start gap-1.5 flex-wrap justify-center mt-1">
             {noDateSorted.map(n=>(
-              <WhiteboardNoDatePill key={n.id} n={n} readOnly={readOnly} h$={h$}
+              <WhiteboardNoDatePill key={n.id} n={n} readOnly={readOnly} h$={h$} onEditCard={onEditCard}
                 fillingIn={fillingIn} setFillingIn={setFillingIn} fillAmount={fillAmount} setFillAmount={setFillAmount}
                 fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={setCardDay} restoreFromNoDate={restoreFromNoDate}/>
             ))}
@@ -8793,10 +8507,9 @@ const WhiteboardArchivedPill = ({ e, readOnly, h$, onUndo }) => {
   return (
     <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
       className={`shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} max-w-[220px] ${WB_PILL_ARCHIVE} ${WB_PILL_ARCHIVE_TEXT} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
-      {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
       <span className="truncate min-w-0" title={e.fullLabel||e.label}>{e.label}</span>
       <span className="shrink-0 tabular-nums font-semibold">{e.direction==="in"?"+":"−"}{h$(e.amount)}</span>
-      {!readOnly && onUndo && <button onClick={ev=>{ev.stopPropagation();onUndo(e.id);}} title="Undo — put this back on the timeline" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
+      {!readOnly && onUndo && <button onDoubleClick={ev=>{ev.stopPropagation();onUndo(e.id);}} title="Double-click to undo — put this back on the timeline" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
     </div>
   );
 };
@@ -8828,13 +8541,13 @@ const WhiteboardBoardArchiveZone = ({ compact, readOnly, h$, closedEntries, onUn
   );
 };
 
-function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, readOnly, roundMode, firstNegative, forceTv,
+function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, readOnly, roundMode, safeToSend, forceTv,
   usingMercury, sbInput, onSbInputChange, onCommitStartingBalance, mercuryLoading, mercuryReason,
   undatedSetAsides, onEditSetAside, onAddSetAside, onDeleteSetAside,
-  onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate,
+  onPickDate, onSetAmount, onResetAmount, onResetDate, onTogglePayingBack, onMarkClosed, onExcludeMany, onSendToNoDate,
   loanPaymentOverrides, onSetLoanPaymentOverride, onResetLoanPaymentOverride,
   onHoldEntries, onRestoreToDate, closedEntries, onRestoreClosedToDate, onUndoClosed,
-  noDateSorted, onReorderNoDate, fillingIn, setFillingIn, fillAmount, setFillAmount, fillDate, setFillDate, saveManualFill, setCardDay, restoreFromNoDate }) {
+  noDateSorted, onReorderNoDate, fillingIn, setFillingIn, fillAmount, setFillAmount, fillDate, setFillDate, saveManualFill, setCardDay, restoreFromNoDate, onEditCard }) {
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
   const rBal = v => roundMode ? roundDown5k(v) : v;
@@ -8954,7 +8667,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
           <DndContext sensors={effReadOnly?[]:boardDragSensors} onDragStart={e=>setActiveEntryId(String(e.active.id))} onDragEnd={handleBoardDragEnd}>
             {!effReadOnly && <WhiteboardBoardNoDateZone compact={compact} readOnly={effReadOnly} h$={h$} noDateSorted={noDateSorted}
               fillingIn={fillingIn} setFillingIn={setFillingIn} fillAmount={fillAmount} setFillAmount={setFillAmount}
-              fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={setCardDay} restoreFromNoDate={restoreFromNoDate}/>}
+              fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={setCardDay} restoreFromNoDate={restoreFromNoDate} onEditCard={onEditCard}/>}
             {!effReadOnly && <WhiteboardBoardArchiveZone compact={compact} readOnly={effReadOnly} h$={h$} closedEntries={closedEntries} onUndoClosed={onUndoClosed}/>}
             <table className={`w-full border-collapse min-w-[560px] ${compact?"text-[10px]":""}`}>
               {/* 11/21, Kyle: "get rid of these headers completely" — the Date/Money Moves/
@@ -8971,14 +8684,26 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                           <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400">{mercuryLoading?"(checking Mercury…)":`(manual${mercuryReason?` — ${mercuryReason}`:""})`}</span>
                         )}
                       </span>
-                      {/* 11/21, Kyle: "get rid of both these boxes and add an integrated 'Days
-                          til negative' thing" — replaces the standalone "Under $10k"/"Goes
-                          Negative" stat tiles (removed outright) with one small fact folded
-                          right into the Current row, same integration pattern as Set Aside
-                          above. */}
-                      <span className={`shrink-0 text-[9px] font-semibold ${firstNegative?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>
-                        {firstNegative ? `⏳ ${daysBetween(TODAY,firstNegative.day)}d to negative` : "✓ never negative"}
-                      </span>
+                      {/* 11/21, Kyle: first asked for an integrated "Days til negative" line
+                          (replacing the removed "Under $10k"/"Goes Negative" tiles), then
+                          immediately corrected: "nevermind get rid of the days till negative.
+                          Thats a bad spot too. Instead I want you to show me how much money I
+                          could send out to make it through the next 30 60 and 90 days." —
+                          `safeToSend` ({d30,d60,d90}, computed in WhiteboardPage over a FIXED
+                          90-day window independent of whatever display range is picked) is the
+                          most that can be withdrawn TODAY while every day in that window still
+                          stays at/above $0 — exactly the lowest balance the window ever
+                          reaches, floored at 0. */}
+                      {safeToSend && (
+                        <span className="shrink-0 flex items-center gap-1.5 text-[9px]">
+                          <span className="text-slate-400 dark:text-zinc-500">Safe to send out:</span>
+                          {[["30d",safeToSend.d30],["60d",safeToSend.d60],["90d",safeToSend.d90]].map(([lbl,v])=>(
+                            <span key={lbl} className={`font-semibold ${v<=0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>
+                              {lbl} {h$(rBal(v))}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                       {/* Set Aside — undated entries only (a dated one already shows as its own
                           pill on the day it leaves). Kyle, 11/21: "the current balance is already
                           the top row in the board... let me edit it super integrated with pills." */}
@@ -9014,9 +8739,9 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                     very first row, the Current starting balance's) real balance. */}
                 {ledgerWeeks.flatMap(week=>week.rows).map((row,i,arr)=>
                   <WhiteboardBoardRow key={row.day} row={row} prevBalance={i===0?startingBalance:arr[i-1].balance} h$={h$} readOnly={effReadOnly} compact={compact} roundMode={roundMode}
-                    onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate}
+                    onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate} onTogglePayingBack={onTogglePayingBack}
                     onMarkClosed={onMarkClosed} onExcludeMany={onExcludeMany}
-                    loanPaymentOverride={loanPaymentOverrides?.[row.day]} onSetLoanPaymentOverride={onSetLoanPaymentOverride} onResetLoanPaymentOverride={onResetLoanPaymentOverride}/>)}
+                    loanPaymentOverride={loanPaymentOverrides?.[row.day]} onSetLoanPaymentOverride={onSetLoanPaymentOverride} onResetLoanPaymentOverride={onResetLoanPaymentOverride} onEditCard={onEditCard}/>)}
               </tbody>
             </table>
             <DragOverlay>
@@ -9031,81 +8756,6 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
     </div>
   );
 }
-
-// ─── Month view — a real wall-calendar grid (Kyle, 11/17): "boxes that you'd see on a
-// calendar" instead of the horizontally-scrolling day columns the existing Calendar/"Row"
-// view uses. Same dayCols/cardsFor/sellCardsFor/etc. WhiteboardPage already builds — this is
-// purely a different LAYOUT for the exact same data, same as Board is. Reuses the Calendar
-// view's own DndContext/handleDragEnd/dragSensors/activeId wholesale (see WhiteboardPage's
-// render) rather than a second drag implementation, so "drag a house to a different day,"
-// "drag a no-date card onto a day to schedule it," and "drag a dated card back to Unscheduled/
-// Due Now to pull its date off" all work identically whether Kyle's looking at the Row
-// scroller or this grid — the only new drag behavior (sell/buy dropped onto Unscheduled/Due
-// Now actually unscheduling it, via sendToNoDate, instead of being a no-op) was added to
-// handleDragEnd itself, so it benefits the Row view too, not just this one.
-//
-// A compact draggable "chip" for one card inside a Month box — deliberately smaller than the
-// full WhiteboardSellCard/WhiteboardBuyCard/WhiteboardCard used by Row view (a month box is a
-// fraction of a day-column's width), so editing actions (✏️/📅/Mark Closed/Fill In) live only
-// in Board/Row view; this is a fast way to MOVE dates by drag, not a second editor. Built from
-// the same shared WB_PILL_SHAPE/wbPillColor/wbPillAccent as Board's/Row's pills (11/21, Kyle:
-// "the month view does not look the exact same as board view") instead of its own one-off
-// `colorClass` — for a non-sell/buy manual card (no real "direction" meaning in/out the same
-// way), `inOrOut` still picks the right color, just without implying it's a REsimpli-driven
-// money move.
-const WhiteboardMonthChip = ({ id, label, amount, direction, h$, onClick, readOnly }) => {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id, disabled: readOnly });
-  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 20 } : undefined;
-  return (
-    <div ref={setNodeRef} style={style} {...(readOnly?{}:{...attributes,...listeners})} onClick={onClick}
-      title={label}
-      className={`flex items-center gap-0.5 text-[9px] leading-tight ${WB_PILL_SHAPE} px-1 py-0.5 mb-0.5 ${wbPillColor(direction)} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":onClick?"cursor-pointer":""}`}>
-      {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
-      <span className={`font-bold shrink-0 ${wbPillAccent(direction)}`}>{direction==="in"?"+":"−"}{h$(amount||0)}</span>
-      <span className="truncate">{label}</span>
-    </div>
-  );
-};
-
-// One box in the grid. `day` is a real "YYYY-MM-DD" or null (a padding cell before the 1st
-// box/after the last, so every week row is a full, aligned 7 columns like a real calendar).
-const WhiteboardMonthDay = ({ day, padKey, isToday, dayNum, showMonthLabel, h$, navigate, readOnly, balance,
-  manualCards, sellCards, buyCards, autoCards, setAsideCards, onEditCard }) => {
-  // A padding box (day===null, before the 1st real day in the window or after the last) still
-  // calls the hook unconditionally (never skipped) with a STABLE id (its own grid position,
-  // not a fresh random value every render) — disabled, so it's never a real drop target.
-  const { setNodeRef, isOver } = useDroppable({ id: day || `__pad-${padKey}`, disabled: !day });
-  if (!day) return <div className="border border-transparent"/>;
-  const short = balance!=null && balance<0;
-  return (
-    <div ref={setNodeRef} className={`min-h-[84px] border p-1 flex flex-col ${isOver?"ring-2 ring-inset ring-teal-400 bg-teal-50 dark:bg-teal-900/20":isToday?"bg-amber-50/70 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800":"border-slate-100 dark:border-zinc-800"}`}>
-      <div className="flex items-baseline justify-between mb-0.5">
-        <span className={`text-[10px] font-bold ${isToday?"text-amber-600 dark:text-amber-400":"text-slate-400 dark:text-zinc-500"}`}>{dayNum}</span>
-        {showMonthLabel && <span className="text-[8px] font-bold uppercase tracking-wide text-slate-400 dark:text-zinc-500 truncate ml-1">{wbMonthYearLabel(day)}</span>}
-      </div>
-      <div className="flex-1 overflow-y-auto space-y-0">
-        {sellCards.map(c=>(
-          <WhiteboardMonthChip key={c.id} id={c.id} label={displayAddr(c.address)} amount={c.amount} direction="in" h$={h$} readOnly={readOnly}
-            onClick={()=>navigate&&navigate({type:'property',id:c.propId})}/>
-        ))}
-        {buyCards.map(c=>(
-          <WhiteboardMonthChip key={c.id} id={c.id} label={displayAddr(c.address)} amount={c.amount} direction="out" h$={h$} readOnly={readOnly}/>
-        ))}
-        {manualCards.map(c=>(
-          <WhiteboardMonthChip key={c.id} id={c.id} label={c.kind==="property"?displayAddr(c.address):(c.address||"Card")} amount={c.amount} direction={c.direction} h$={h$} readOnly={readOnly}
-            onClick={()=>{ if(c.kind==="property"&&navigate) navigate({type:'property',id:c.propId}); else if(onEditCard) onEditCard(c); }}/>
-        ))}
-        {autoCards.length>0 && <div className="text-[8px] text-slate-400 dark:text-zinc-500 truncate">💸 {autoCards.length} loan pmt{autoCards.length>1?"s":""}</div>}
-        {setAsideCards.length>0 && <div className="text-[8px] text-violet-400 dark:text-violet-500 truncate">🔒 set aside</div>}
-      </div>
-      {balance!=null && (
-        <div className={`text-[8px] font-bold tabular-nums text-right mt-0.5 ${short?"text-red-500 dark:text-red-400":"text-slate-300 dark:text-zinc-600"}`}>{short?"−":""}{h$(Math.abs(balance))}</div>
-      )}
-    </div>
-  );
-};
-
-const MONTH_WEEKDAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
 // Survives not just WhiteboardPage remounting but a full page reload too (Kyle, 11/21, after
 // a first pass that only used an in-memory module variable: "it's still when I start the
@@ -9133,27 +8783,16 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const cards = data.whiteboard?.cards || [];
   const [addOpen,setAddOpen] = useState(false);
   const [editCard,setEditCard] = useState(null);
-  const [activeId,setActiveId] = useState(null);
   const [addingSetAside,setAddingSetAside] = useState(false);
   const [addingClosing,setAddingClosing] = useState(false);
   const [editingSetAside,setEditingSetAside] = useState(null);
-  const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
-  // Calendar (the existing day-column board) vs. Board (a running-balance ledger table) —
-  // purely a display choice, remembered per device/browser (not synced to Supabase, so it
-  // doesn't need to live in whiteboardOverrides). Board view computes nothing of its own; it
-  // reads the exact same dayCols/balances/cards this component already builds below.
-  const [boardView,setBoardView] = usePersistedState("nx-whiteboardView","calendar");
-  // The public TV page (publicMode) always shows Board, regardless of the real toggle's own
-  // persisted value — a plain local override, not a different default for the hook itself (so
-  // the normal, logged-in Tracker's own localStorage choice is completely untouched).
-  const effectiveBoardView = publicMode ? "board" : boardView;
-  // Conservative "round to nearest $5k" display toggle — same remembered-per-device pattern as
-  // boardView above (never written to data/whiteboardOverrides; purely how the headline
-  // figures are DISPLAYED, never the real stored amounts). rIn/rBal round down (assume less
-  // than the real number); rOut rounds up (assume it costs more) — see roundDown5k/roundUp5k
-  // in whiteboard-forecast.mjs for exactly why both directions use the same "be pessimistic"
-  // logic. Applied only to aggregate/headline totals (balances, Total In/Out, day net, week
-  // subtotals) — never to an individual card's own real amount, which always stays exact.
+  // Conservative "round to nearest $5k" display toggle — remembered per device/browser (never
+  // written to data/whiteboardOverrides; purely how the headline figures are DISPLAYED, never
+  // the real stored amounts). rIn/rBal round down (assume less than the real number); rOut
+  // rounds up (assume it costs more) — see roundDown5k/roundUp5k in whiteboard-forecast.mjs for
+  // exactly why both directions use the same "be pessimistic" logic. Applied only to
+  // aggregate/headline totals (balances, day net, week subtotals) — never to an individual
+  // card's own real amount, which always stays exact.
   const [roundMode,setRoundMode] = usePersistedState("nx-whiteboardRound", false);
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
@@ -9163,25 +8802,14 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const DAYS = windowDays;
   const dayCols = Array.from({length:DAYS},(_,i)=>wbAddDays(TODAY,i));
   const autoCards = upcomingLoanPayments(data, dayCols);
-  // Month view's own grid — dayCols padded with `null` boxes so every week row is a real,
-  // aligned 7-day week (Sun..Sat) like a wall calendar, not just "today plus N more days."
-  // Pure display grouping of the exact same dayCols array — adds no new days, computes
-  // nothing new, just rearranges what's already there into weeks.
-  const monthWeeks = useMemo(() => {
-    if (!dayCols.length) return [];
-    const padded = new Array(wbDow(dayCols[0])).fill(null).concat(dayCols);
-    while (padded.length % 7 !== 0) padded.push(null);
-    const weeks = [];
-    for (let i=0; i<padded.length; i+=7) weeks.push(padded.slice(i,i+7));
-    return weeks;
-  }, [dayCols.length, dayCols[0]]);
 
   // ─── Cash-flow forecast sources: Mercury starting cash, REsimpli sell dates (via the
   // Office Dashboard Sheet, with a REsimpli fallback), REsimpli buy leads under contract.
   // Each is fetched once on mount from its own read-only, auth-gated api/*.mjs function and
   // degrades to a manual/"not connected" state on failure — never a crash (see the Whiteboard
   // cash-flow forecast HARD RULES). Nothing here writes to nexus_data except the "paying
-  // back" checkbox (whiteboard.payingBack), toggled from WhiteboardSellCard.
+  // back" checkbox (whiteboard.payingBack), toggled via `togglePayingBack` from a sell
+  // entry's expandable breakdown on Board view's own WhiteboardBoardEntry.
   const [mercury,setMercury] = useState(() => loadWbCache().mercury || {loading:true});
   const [sellDatesResult,setSellDatesResult] = useState(() => loadWbCache().sellDates || {loading:true, rows:[]});
   const [buysResult,setBuysResult] = useState(() => loadWbCache().buys || {loading:true, rows:[], needsInfo:[]});
@@ -9225,6 +8853,20 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   }, [sellingPropsKey]);
 
   const payingBack = data.whiteboard?.payingBack || {};
+  // Restores the "paying back at closing?" checkbox Row view's own WhiteboardSellCard used to
+  // own directly (deleted along with the rest of that view, 11/21) — now a narrow callback
+  // like every other Board write, since WhiteboardBoardEntry/Row/View are forbidden from
+  // calling `update` directly (see the "never calls update() directly" test).
+  const togglePayingBack = (propId, loanId, checked) => update(d => ({
+    ...d,
+    whiteboard: {
+      ...d.whiteboard,
+      payingBack: {
+        ...(d.whiteboard?.payingBack || {}),
+        [propId]: { ...(d.whiteboard?.payingBack?.[propId] || {}), [loanId]: checked },
+      },
+    },
+  }));
   const sellDateById = {};
   (sellDatesResult.rows||[]).forEach(r => { sellDateById[r.id] = r; });
 
@@ -9457,11 +9099,29 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const startingBalance = availableCash(rawStartingBalance, setAsides);
   const netByDay = {};
   dayCols.forEach(day => { netByDay[day] = netFor(day); });
-  const { balances, firstShortfall, largestShortfall, positiveAgain } = computeForecastSummary(dayCols, netByDay, startingBalance);
+  const { balances } = computeForecastSummary(dayCols, netByDay, startingBalance);
+  // "Safe to send out" (11/21, Kyle: "show me how much money I could send out to make it
+  // through the next 30 60 and 90 days") — needs a FIXED 90-day lookahead regardless of
+  // whatever display range (30/45/90d) is currently picked, so the 90-day figure is always
+  // available even when Kyle's looking at a 30-day window. Reuses the exact same `netFor`/
+  // `computeForecastSummary` this page already runs for the real balances — just over a
+  // second, independently-sized day range — rather than a second running-balance
+  // implementation that could drift from the real one. Sending X today shifts every later
+  // day's balance down by the same X, so the most that can go out while every day in a
+  // window still stays at/above $0 is exactly that window's own lowest balance (floored at 0
+  // — a window already projected to go negative has nothing safe to send, not a negative
+  // "safe" amount).
+  const dayCols90 = Array.from({length:90},(_,i)=>wbAddDays(TODAY,i));
+  const netByDay90 = {};
+  dayCols90.forEach(day => { netByDay90[day] = netFor(day); });
+  const { balances: balances90 } = computeForecastSummary(dayCols90, netByDay90, startingBalance);
+  const safeToSendFor = days => Math.max(0, Math.min(...dayCols90.slice(0,days).map(d=>balances90[d])));
+  const safeToSend = { d30: safeToSendFor(30), d60: safeToSendFor(60), d90: safeToSendFor(90) };
   // A Needs Info row whose id already has a manualFill entry has a real (synthesized) card in
   // the forecast now (see allSellCardsInfo/allBuyCardsInfo above) — drop it from this list so
   // it isn't shown as both "excluded" and "in the forecast" at once; Kyle manages it from then
-  // on via the card itself (its own ✏️/📅/✕ in Calendar or Board), not this panel.
+  // on via the card itself (double-click to edit, or drag to reschedule/send to no-date),
+  // not this panel.
   const needsInfoAll = [
     ...needsInfoSell.map(n=>({...n, kind:"sell", cardId:`sell-${n.id}`})),
     ...(buysResult.needsInfo||[]).map(n=>({...n, kind:"buy", cardId:`buy-${n.leadId}`})),
@@ -9483,8 +9143,8 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     ...buyWithOverrides.filter(c=>noDateForced[c.id]).map(c=>({ id:c.id, kind:"buy", label:displayAddr(c.address), fullLabel:c.address, amount:c.amount||0, direction:"out", day:c.day, sourceDate:c.sourceDate })),
   ];
   const noDateAll = [
-    ...bills.map(c=>({ id:c.id, kind:"bill", label:displayAddr(c.address)||c.address||"Bill", amount:c.amount||0, direction:c.direction })),
-    ...unscheduled.map(c=>({ id:c.id, kind:"unscheduled", label:c.kind==="property"?displayAddr(c.address):(c.address||"Card"), amount:c.amount||0, direction:c.direction })),
+    ...bills.map(c=>({ id:c.id, kind:"bill", label:displayAddr(c.address)||c.address||"Bill", amount:c.amount||0, direction:c.direction, raw:c })),
+    ...unscheduled.map(c=>({ id:c.id, kind:"unscheduled", label:c.kind==="property"?displayAddr(c.address):(c.address||"Card"), amount:c.amount||0, direction:c.direction, raw:c })),
     ...needsInfoAll.map(n=>({ id:n.cardId, kind:n.kind==="sell"?"needsInfoSell":"needsInfoBuy", label:n.address, reason:n.reason, raw:n })),
     // "Move to No-Date" rows — a sell/buy card that already has a real date/amount, pulled off
     // the dated timeline on purpose (not because the data is missing anything). Shows the real
@@ -9525,20 +9185,9 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   };
   const setCardDay = (id,day) => update(d=>({...d, whiteboard:{...d.whiteboard, cards:(d.whiteboard?.cards||[]).map(c=>c.id===id?{...c,day}:c)}}));
   const setStartingBalance = v => update(d=>({...d, whiteboard:{...d.whiteboard, startingBalance:v}}));
-  const moveBill = (id,dir) => update(d=>{
-    const all = d.whiteboard?.cards||[];
-    const sorted = all.filter(c=>c.kind==="bill" && !c.day).sort((a,b)=>(a.order??0)-(b.order??0));
-    const idx = sorted.findIndex(c=>c.id===id);
-    const swapIdx = idx+dir;
-    if (idx<0||swapIdx<0||swapIdx>=sorted.length) return d;
-    const a=sorted[idx], b=sorted[swapIdx];
-    const aOrder=a.order??0, bOrder=b.order??0;
-    return {...d, whiteboard:{...d.whiteboard, cards: all.map(c=>{
-      if(c.id===a.id) return {...c,order:bOrder};
-      if(c.id===b.id) return {...c,order:aOrder};
-      return c;
-    })}};
-  });
+  // moveBill (the bill queue's own ▲▼ reorder, from the now-removed Row/Month "Due Now" box)
+  // is gone — the unified No-Date box's drag-to-reorder (noDateOrder) already re-ranks bills
+  // alongside everything else there, making that separate order field redundant.
 
   // Mark Closed / moved-date / Set Aside writers — all additive patches to
   // data.whiteboardOverrides, never touching properties/loans/lenders/REsimpli/the sheet.
@@ -9673,42 +9322,6 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // next render, making the whole drag-to-archive action appear to silently do nothing.
   const handleBoardMarkClosed = entry => markClosed(entry.id, entry.kind, entry.id.replace(/^(sell|buy)-/,""), entry.fullLabel||entry.address||entry.label, entry.amount);
 
-  const handleDragEnd = ({active,over}) => {
-    setActiveId(null);
-    if (!over) return;
-    const id = String(active.id);
-    if (id.startsWith("sell-") || id.startsWith("buy-")) {
-      // A sell/buy auto card dragged onto a day — moves it via the same override Set Aside
-      // and the tap-to-pick-date button use, never the manual-card path above. Dropped onto
-      // Unscheduled/Due Now instead — pull it off the dated timeline entirely (same as the
-      // 📋 "Move to No-Date" button), the drag equivalent of sendToNoDate.
-      if (over.id==="unscheduled"||over.id==="duenow") { sendToNoDate(id); return; }
-      const list = id.startsWith("sell-") ? activeSellCards : activeBuyCards;
-      const card = list.find(c=>c.id===id);
-      if (card) setMovedDate(id, over.id, card.sourceDate ?? card.day);
-      return;
-    }
-    setCardDay(active.id, (over.id==="unscheduled"||over.id==="duenow") ? null : over.id);
-  };
-
-  const activeCard = cards.find(c=>c.id===activeId);
-  const activeAutoCard = !activeCard && activeId
-    ? (String(activeId).startsWith("sell-") ? activeSellCards.find(c=>c.id===activeId) : String(activeId).startsWith("buy-") ? activeBuyCards.find(c=>c.id===activeId) : null)
-    : null;
-  // Cards still sitting in Unscheduled haven't been given a day yet, and bills still in Due
-  // Now have no day at all — neither feeds into any day's balance, so exclude both here too,
-  // or this total wouldn't match what the day columns actually add up to. A bill dragged onto
-  // a day counts here exactly like any other dated card. Due Now shows its own total on its
-  // own box for bills that haven't been given a day yet.
-  // Only count a card toward the totals when its actual settlement day (wbEffectiveDate for a
-  // manual card, settleDay for a sell card — the same day netFor/the running balance already
-  // use) falls inside the visible 45/90-day window — a card dated beyond it isn't part of this
-  // forecast and shouldn't inflate the headline In/Out figures. withinWindow (whiteboard-
-  // forecast.mjs) is the same pure filter used/tested for this, so the totals can't drift from
-  // what the day columns themselves add up to.
-  const scheduledCards = withinWindow(cards.filter(c=>c.day), dayCols, wbEffectiveDate);
-  const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0) + withinWindow(activeSellCards, dayCols, c=>c.settleDay).reduce((s,c)=>s+(c.amount||0),0);
-  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + dayCols.reduce((s,day)=>s+autoTotalFor(day),0) + withinWindow(activeBuyCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(setAsideCardsList, dayCols).reduce((s,c)=>s+(c.amount||0),0);
   const [sbInput,setSbInput] = useState(String(startingBalanceManual||""));
   useEffect(()=>{ setSbInput(String(startingBalanceManual||"")); }, [startingBalanceManual]);
 
@@ -9731,7 +9344,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     entriesByDay[day] = [
       ...cards.filter(c=>c.day && wbEffectiveDate(c)===day).map(c=>{
         const addr = c.kind==="property" ? c.address : null;
-        return { id:c.id, label: addr?displayAddr(addr):(c.address||(c.kind==="bill"?"Bill":"Card")), fullLabel:c.address||null, amount:c.amount||0, direction:c.direction, propId:c.kind==="property"?c.propId:null };
+        return { id:c.id, label: addr?displayAddr(addr):(c.address||(c.kind==="bill"?"Bill":"Card")), fullLabel:c.address||null, amount:c.amount||0, direction:c.direction, propId:c.kind==="property"?c.propId:null, raw:c };
       }),
       ...autoCardsFor(day).map(c=>({
         id:c.id, kind:"loanPayment", lenderName:c.lenderName||"Loan payment", address:c.address||null,
@@ -9739,7 +9352,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         fullLabel: c.lenderName ? (c.address?`${c.lenderName} — ${c.address}`:c.lenderName) : (c.address||"Loan payment"),
         amount:c.amount||0, direction:"out", propId:c.propId,
       })),
-      ...sellCardsFor(day).map(c=>({ id:c.id, kind:"sell", label:displayAddr(c.address), fullLabel:c.address, amount:c.amount||0, direction:"in", day:c.day, propId:c.propId, manualEntry:!!c.manualEntry, manualAmount:!!c.manualAmount, originalAmount:c.originalAmount, manualDate:!!c.manualDate, originalDate:c.originalDate, sourceDate:c.sourceDate, pastDue:!!c.pastDue })),
+      ...sellCardsFor(day).map(c=>({ id:c.id, kind:"sell", label:displayAddr(c.address), fullLabel:c.address, amount:c.amount||0, direction:"in", day:c.day, propId:c.propId, manualEntry:!!c.manualEntry, manualAmount:!!c.manualAmount, originalAmount:c.originalAmount, manualDate:!!c.manualDate, originalDate:c.originalDate, sourceDate:c.sourceDate, pastDue:!!c.pastDue, breakdown:c.breakdown })),
       ...buyCardsFor(day).map(c=>({ id:c.id, kind:"buy", label:displayAddr(c.address), fullLabel:c.address, amount:c.amount||0, direction:"out", day:c.day, manualEntry:!!c.manualEntry, manualAmount:!!c.manualAmount, originalAmount:c.originalAmount, manualDate:!!c.manualDate, originalDate:c.originalDate, sourceDate:c.sourceDate, pastDue:!!c.pastDue })),
       ...setAsideCardsFor(day).map(c=>({ id:c.id, kind:"setAside", label:c.label, amount:c.amount||0, direction:"out" })),
     ];
@@ -9759,11 +9372,6 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         {!publicMode && (
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
-            {[["calendar","Row"],["board","Board"],["month","Month"]].map(([v,label])=>(
-              <button key={v} onClick={()=>setBoardView(v)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${boardView===v?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{label}</button>
-            ))}
-          </div>
-          <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
             {[30,45,90].map(n=>(
               <button key={n} onClick={()=>setWindowDays(n)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${windowDays===n?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{n}d</button>
             ))}
@@ -9775,104 +9383,6 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         </div>
         )}
       </div>
-
-      <div className="flex gap-3 mb-4 flex-wrap">
-        {/* Board view shows/edits this same number inline on the ledger's own "Current" row
-            instead (Kyle, 11/21: "no need to show shit twice") — this card is for Row/Month,
-            which have no row of their own to fold it into. */}
-        {effectiveBoardView!=="board" && (
-        <div className="flex-1 min-w-[160px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Starting Cash</div>
-          {usingMercury ? (
-            <>
-              <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{h$(rBal(mercury.balance))}</div>
-              <div className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">{mercury.source}{mercury.asOf?` · ${new Date(mercury.asOf).toLocaleString()}`:""}</div>
-            </>
-          ) : (
-            <>
-              <div className="flex items-baseline gap-0.5">
-                <span className="text-lg font-black text-slate-700 dark:text-zinc-200">$</span>
-                {readOnly ? (
-                  <span className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{sbInput || "0"}</span>
-                ) : (
-                  <input type="text" inputMode="decimal" value={sbInput}
-                    onChange={e=>setSbInput(e.target.value)}
-                    onBlur={()=>setStartingBalance(parseFloat(sbInput)||0)}
-                    className="text-lg font-black tabular-nums bg-transparent w-full focus:outline-none text-slate-700 dark:text-zinc-200 min-w-0"/>
-                )}
-              </div>
-              <div className="text-[10px] text-amber-600 dark:text-amber-400 truncate">{mercury.loading?"Checking Mercury…":`Manual — Mercury not connected${mercury.reason?` (${mercury.reason})`:""}`}</div>
-            </>
-          )}
-        </div>
-        )}
-        {effectiveBoardView==="calendar" && (<>
-          {firstShortfall && (
-            <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-0.5">First Shortfall</div>
-              <div className="text-lg font-black tabular-nums text-red-600 dark:text-red-400">Need {h$(rOut(firstShortfall.amount))}</div>
-              <div className="text-[10px] text-slate-400 dark:text-zinc-500">by {wbFmtDate(firstShortfall.day)}</div>
-            </div>
-          )}
-          {largestShortfall && (
-            <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mb-0.5">Largest Shortfall</div>
-              <div className="text-lg font-black tabular-nums text-red-600 dark:text-red-400">{h$(rOut(largestShortfall.amount))}</div>
-              <div className="text-[10px] text-slate-400 dark:text-zinc-500">on {wbFmtDate(largestShortfall.day)}</div>
-            </div>
-          )}
-          {firstShortfall && (
-            <div className="flex-1 min-w-[150px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400 mb-0.5">Positive Again</div>
-              <div className="text-lg font-black tabular-nums text-slate-700 dark:text-zinc-200">{positiveAgain?wbFmtDate(positiveAgain):`Not within ${windowDays}d`}</div>
-            </div>
-          )}
-          {(cards.length>0||activeAutoCards.length>0||activeSellCards.length>0||activeBuyCards.length>0||setAsideCardsList.length>0)&&(<>
-            <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total In</div>
-              <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{h$(rIn(totalIn))}</div>
-            </div>
-            <div className="flex-1 min-w-[110px] bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-0.5">Total Out</div>
-              <div className="text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{h$(rOut(totalOut))}</div>
-            </div>
-          </>)}
-        </>)}
-      </div>
-
-      {/* Board view integrates this into its own "Current" row instead (11/21, Kyle: "the
-          current balance is already the top row in the board, so just keep it right there
-          and let me edit it super integrated with pills") — Row/Month still show this card,
-          since they have no row of their own to fold it into. */}
-      {effectiveBoardView!=="board" && (
-      <div className="mb-4 bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Set Aside</div>
-          {!readOnly && <button onClick={()=>setAddingSetAside(true)} className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline">+ Add</button>}
-        </div>
-        <div className="text-xs text-slate-500 dark:text-zinc-400 mb-2">
-          {usingMercury?"Mercury":"Manual"} {h$(rBal(rawStartingBalance))}, set aside {h$(rOut(setAsideTotal))}, available {h$(rBal(startingBalance))}
-        </div>
-        {setAsides.length===0 ? (
-          <div className="text-[11px] text-slate-300 dark:text-zinc-600 italic">Nothing set aside</div>
-        ) : (
-          <div className="space-y-1">
-            {setAsides.map(s=>(
-              <div key={s.id} className="flex items-center justify-between gap-2 text-[11px]">
-                <span className="truncate text-slate-600 dark:text-zinc-300">{s.label} {s.date?`— leaves ${s.date}`:"— no date, lowers available now"}</span>
-                <span className="flex items-center gap-2 shrink-0">
-                  <span className="font-semibold tabular-nums text-slate-700 dark:text-zinc-200">{h$(s.amount)}</span>
-                  {!readOnly && (<>
-                    <button onClick={()=>setEditingSetAside(s)} className="text-teal-500 dark:text-teal-400 hover:underline">Edit</button>
-                    <button onClick={()=>deleteSetAside(s.id)} className="text-red-500 dark:text-red-400 hover:underline">Delete</button>
-                  </>)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      )}
 
       {sellDatesResult.sheetConnected===false && (
         <div className="mb-4 rounded-xl px-3 py-2 text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
@@ -9886,122 +9396,39 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         </div>
       )}
 
-      {/* 11/21, Kyle: "get rid of this shit completely and show it all in the box only" —
-          this standalone No-Date panel (shared across Row/Board/Month) is gone; its contents
-          now live only inside Board view's own small No-Date drop zone
-          (WhiteboardBoardNoDateZone, rendered inside WhiteboardBoardView below). Row and Month
-          have no replacement — confirmed scope, "remove it everywhere," not Board-only. */}
+      {/* 11/21, Kyle: "completely get rid of Row and Month views. Forget about 'em" — Board is
+          now the only Whiteboard layout; every other view's own rendering code, and the dead
+          components only it used (WhiteboardColumn/WhiteboardCard(Visual)/WhiteboardSellCard/
+          WhiteboardBuyCard/WhiteboardPaymentCard/WhiteboardSetAsideCard/WhiteboardBillCard/
+          WhiteboardDueNowBox/WhiteboardMonthChip/WhiteboardMonthDay), are gone outright — see
+          the superseded notes on their original CLAUDE.md sections. The standalone Starting
+          Cash/Set Aside cards and the shortfall/Total In-Out tiles above the table were ALWAYS
+          `effectiveBoardView!=="board"`-gated (Board already folds Starting Cash/Set Aside into
+          its own "Current" row) — now permanently dead, removed too. */}
+      <WhiteboardClosedPanel items={closedItems.filter(c=>c.kind!=="sell"&&c.kind!=="buy")} h$={h$} onUndo={readOnly?undefined:undoClosed}/>
 
-      {/* Board view shows its sell/buy closed items as pills inside the Archive zone instead
-          (11/21, Kyle: "not somewhere else or above or whatever") — this panel still carries
-          loanPayment/setAside removals for Board (no drag home for those), and everything for
-          Row/Month. */}
-      <WhiteboardClosedPanel items={effectiveBoardView==="board" ? closedItems.filter(c=>c.kind!=="sell"&&c.kind!=="buy") : closedItems} h$={h$} onUndo={readOnly?undefined:undoClosed}/>
-
-      {effectiveBoardView==="board" && (
-        <WhiteboardBoardView startingBalance={startingBalance} startingLabel={usingMercury?`Mercury ${mercury.source||""}`.trim():"Manual balance"}
-          usingMercury={usingMercury} sbInput={sbInput} onSbInputChange={setSbInput} onCommitStartingBalance={()=>setStartingBalance(parseFloat(sbInput)||0)}
-          mercuryLoading={mercury.loading} mercuryReason={mercury.reason}
-          undatedSetAsides={setAsides.filter(s=>!s.date)} onEditSetAside={readOnly?undefined:setEditingSetAside} onAddSetAside={readOnly?undefined:()=>setAddingSetAside(true)} onDeleteSetAside={readOnly?undefined:deleteSetAside}
-          ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} readOnly={readOnly} roundMode={roundMode} forceTv={publicMode}
-          firstNegative={firstBelowThreshold(ledgerRows, 0)}
-          onPickDate={readOnly?undefined:handleBoardPickDate} onSetAmount={readOnly?undefined:setAmountOverride}
-          onResetAmount={readOnly?undefined:resetAmountOverride} onResetDate={readOnly?undefined:resetMovedDate}
-          onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}
-          onSendToNoDate={readOnly?undefined:sendToNoDate}
-          loanPaymentOverrides={loanPaymentOverrides} onSetLoanPaymentOverride={readOnly?undefined:setLoanPaymentOverride} onResetLoanPaymentOverride={readOnly?undefined:resetLoanPaymentOverride}
-          onHoldEntries={onHoldEntries} onRestoreToDate={readOnly?undefined:restoreToDate}
-          closedEntries={closedSellBuyEntries} onRestoreClosedToDate={readOnly?undefined:restoreClosedToDate} onUndoClosed={readOnly?undefined:undoClosed}
-          noDateSorted={noDateSorted} onReorderNoDate={readOnly?undefined:setNoDateOrder}
-          fillingIn={fillingIn} setFillingIn={setFillingIn} fillAmount={fillAmount} setFillAmount={setFillAmount}
-          fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={readOnly?undefined:setCardDay} restoreFromNoDate={readOnly?undefined:restoreFromNoDate}/>
-      )}
-
-      {effectiveBoardView==="calendar" && (cards.length===0&&activeAutoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
-        <div className="text-center py-16 text-slate-400 dark:text-zinc-500">
-          <div className="text-4xl mb-3">📌</div>
-          <p className="font-semibold">Nothing on the board yet</p>
-          <p className="text-xs mt-1 max-w-xs mx-auto">Add a card for a property you're closing on or one you expect to sell, then drag it onto the day it's happening.</p>
-        </div>
-      ):(
-        <DndContext sensors={readOnly?[]:dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
-          <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1">
-            <WhiteboardDueNowBox bills={bills} billsTotal={billsTotal} h$={h$} moveBill={readOnly?undefined:moveBill} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard}/>
-            <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
-              {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard} navigate={navigate}/>)}
-            </WhiteboardColumn>
-            {dayCols.map((day,i)=>(
-              <WhiteboardColumn key={day} id={day} h$={h$}
-                label={i===0?"Today":wbFmtDate(day)}
-                sub={i===0?wbFmtDate(day):wbWeekday(day)}
-                isToday={i===0} weekStart={i>0&&i%7===0} net={rBal(netFor(day))} balance={rBal(balances[day])} settledIn={settledInFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0&&sellCardsFor(day).length===0&&buyCardsFor(day).length===0&&setAsideCardsFor(day).length===0}>
-                {sellCardsFor(day).map(c=><WhiteboardSellCard key={c.id} card={c} h$={h$} update={update} navigate={navigate}
-                  onMarkClosed={readOnly?undefined:()=>markClosed(c.id,"sell",c.propId,c.address,c.amount)}
-                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}
-                  onRemoveManualSell={readOnly?undefined:()=>removeManualSellProp(c.propId)}/>)}
-                {buyCardsFor(day).map(c=><WhiteboardBuyCard key={c.id} card={c} h$={h$}
-                  onMarkClosed={readOnly?undefined:()=>markClosed(c.id,"buy",c.id.replace(/^buy-/,""),c.address,c.amount)}
-                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}/>)}
-                {autoCardsFor(day).map(c=><WhiteboardPaymentCard key={c.id} card={c} h$={h$} navigate={navigate}/>)}
-                {setAsideCardsFor(day).map(c=><WhiteboardSetAsideCard key={c.id} card={c} h$={h$}/>)}
-                {cardsFor(day).map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} availText={c.direction==="in"?wbFmtDate(wbEffectiveDate(c)):null} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard} navigate={navigate}/>)}
-              </WhiteboardColumn>
-            ))}
-          </div>
-          <DragOverlay>
-            {activeCard&&<div className="w-56"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
-            {activeAutoCard&&(
-              <div className="w-56 rounded-xl border border-slate-300 dark:border-zinc-600 p-3 bg-white dark:bg-zinc-800 shadow-lg">
-                <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{activeAutoCard.address}</div>
-                <div className="text-base font-black tabular-nums mt-0.5 text-slate-800 dark:text-zinc-100">{h$(activeAutoCard.amount)}</div>
-              </div>
-            )}
-          </DragOverlay>
-        </DndContext>
-      ))}
-
-      {effectiveBoardView==="month" && (
-        <DndContext sensors={readOnly?[]:dragSensors} onDragStart={e=>setActiveId(e.active.id)} onDragEnd={handleDragEnd}>
-          <div className="flex gap-3">
-            <div className="w-56 shrink-0 space-y-3">
-              <WhiteboardDueNowBox bills={bills} billsTotal={billsTotal} h$={h$} moveBill={readOnly?undefined:moveBill} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard}/>
-              <WhiteboardColumn id="unscheduled" label="Unscheduled" isUnscheduled h$={h$} empty={unscheduled.length===0}>
-                {unscheduled.map(c=><WhiteboardCard key={c.id} card={c} h$={h$} liens={c.kind==="property"?liensFor(c.propId):null} onEdit={readOnly?undefined:setEditCard} onRemove={readOnly?undefined:removeCard} navigate={navigate}/>)}
-              </WhiteboardColumn>
-            </div>
-            <div className="flex-1 min-w-0 overflow-x-auto">
-              <div className="min-w-[560px]">
-                <div className="grid grid-cols-7 gap-px mb-px">
-                  {MONTH_WEEKDAY_LABELS.map(w=><div key={w} className="text-center text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 py-1">{w}</div>)}
-                </div>
-                <div className="grid grid-cols-7 gap-px bg-slate-100 dark:bg-zinc-800">
-                  {monthWeeks.flatMap((week,wi)=>week.map((day,di)=>(
-                    <WhiteboardMonthDay key={day||`pad-${wi}-${di}`} day={day} padKey={`${wi}-${di}`} dayNum={day?wbDayNum(day):null}
-                      isToday={day===dayCols[0]} showMonthLabel={!!day && (wbDayNum(day)===1 || day===monthWeeks[0].find(d=>d))}
-                      h$={h$} navigate={navigate} readOnly={readOnly} balance={day?rBal(balances[day]):null}
-                      manualCards={day?cardsFor(day):[]} sellCards={day?sellCardsFor(day):[]} buyCards={day?buyCardsFor(day):[]}
-                      autoCards={day?autoCardsFor(day):[]} setAsideCards={day?setAsideCardsFor(day):[]}
-                      onEditCard={readOnly?undefined:setEditCard}/>
-                  )))}
-                </div>
-              </div>
-            </div>
-          </div>
-          <DragOverlay>
-            {activeCard&&<div className="w-56"><WhiteboardCardVisual card={activeCard} h$={h$} liens={activeCard.kind==="property"?liensFor(activeCard.propId):null}/></div>}
-            {activeAutoCard&&(
-              <div className="w-56 rounded-xl border border-slate-300 dark:border-zinc-600 p-3 bg-white dark:bg-zinc-800 shadow-lg">
-                <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate">{activeAutoCard.address}</div>
-                <div className="text-base font-black tabular-nums mt-0.5 text-slate-800 dark:text-zinc-100">{h$(activeAutoCard.amount)}</div>
-              </div>
-            )}
-          </DragOverlay>
-        </DndContext>
-      )}
+      <WhiteboardBoardView startingBalance={startingBalance} startingLabel={usingMercury?`Mercury ${mercury.source||""}`.trim():"Manual balance"}
+        usingMercury={usingMercury} sbInput={sbInput} onSbInputChange={setSbInput} onCommitStartingBalance={()=>setStartingBalance(parseFloat(sbInput)||0)}
+        mercuryLoading={mercury.loading} mercuryReason={mercury.reason}
+        undatedSetAsides={setAsides.filter(s=>!s.date)} onEditSetAside={readOnly?undefined:setEditingSetAside} onAddSetAside={readOnly?undefined:()=>setAddingSetAside(true)} onDeleteSetAside={readOnly?undefined:deleteSetAside}
+        ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} readOnly={readOnly} roundMode={roundMode} forceTv={publicMode}
+        safeToSend={safeToSend}
+        onPickDate={readOnly?undefined:handleBoardPickDate} onSetAmount={readOnly?undefined:setAmountOverride}
+        onResetAmount={readOnly?undefined:resetAmountOverride} onResetDate={readOnly?undefined:resetMovedDate} onTogglePayingBack={readOnly?undefined:togglePayingBack}
+        onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}
+        onSendToNoDate={readOnly?undefined:sendToNoDate}
+        loanPaymentOverrides={loanPaymentOverrides} onSetLoanPaymentOverride={readOnly?undefined:setLoanPaymentOverride} onResetLoanPaymentOverride={readOnly?undefined:resetLoanPaymentOverride}
+        onHoldEntries={onHoldEntries} onRestoreToDate={readOnly?undefined:restoreToDate}
+        closedEntries={closedSellBuyEntries} onRestoreClosedToDate={readOnly?undefined:restoreClosedToDate} onUndoClosed={readOnly?undefined:undoClosed}
+        noDateSorted={noDateSorted} onReorderNoDate={readOnly?undefined:setNoDateOrder}
+        fillingIn={fillingIn} setFillingIn={setFillingIn} fillAmount={fillAmount} setFillAmount={setFillAmount}
+        fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={readOnly?undefined:setCardDay} restoreFromNoDate={readOnly?undefined:restoreFromNoDate}
+        onEditCard={readOnly?undefined:setEditCard}/>
 
       {(addOpen||editCard)&&(
         <WhiteboardCardModal properties={data.properties} init={editCard}
           onSave={c=>{saveCard(c);setAddOpen(false);setEditCard(null);}}
+          onDelete={readOnly?undefined:id=>{removeCard(id);setAddOpen(false);setEditCard(null);}}
           onClose={()=>{setAddOpen(false);setEditCard(null);}}/>
       )}
 
