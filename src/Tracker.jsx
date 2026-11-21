@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "6";
+const APP_VERSION = "7";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -8261,19 +8261,19 @@ const WhiteboardBoardEntry = ({ e, readOnly, onSetAmount, onResetAmount, onReset
   return (<>
     <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
       onDoubleClick={b ? ev=>{ev.stopPropagation();setOpen(o=>!o);} : undefined}
-      className={`shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} max-w-[220px] ${wbPillColor(e.direction)} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
+      className={`shrink-0 flex items-center gap-1 text-[11px] sm:text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} max-w-[220px] ${wbPillColor(e.direction)} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
       {e.pastDue && !e.manualDate && <span title="Hasn't hit the account yet">⏰</span>}
-      {e.manualDate && onResetDate && <button onDoubleClick={resetDate} title="Dragged — double-click to undo" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
+      {e.manualDate && onResetDate && <button onDoubleClick={resetDate} title="Dragged — double-click to undo" className="text-[9px] sm:text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
       <span className="truncate min-w-0" title={e.fullLabel||e.label}>{e.label}</span>
       {editingAmount ? (
         <input type="number" step="0.01" autoFocus value={amountDraft} onClick={ev=>ev.stopPropagation()}
           onChange={ev=>setAmountDraft(ev.target.value)}
           onKeyDown={ev=>{ if(ev.key==="Enter") saveAmount(); if(ev.key==="Escape") setEditingAmount(false); }}
           onBlur={saveAmount}
-          className="w-14 shrink-0 text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+          className="w-14 shrink-0 text-[11px] sm:text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
       ) : (
         <span className="shrink-0 inline-flex items-center gap-0.5 tabular-nums font-semibold">
-          {e.manualAmount && onResetAmount && <button onDoubleClick={resetAmount} title="Edited — double-click to undo" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
+          {e.manualAmount && onResetAmount && <button onDoubleClick={resetAmount} title="Edited — double-click to undo" className="text-[9px] sm:text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
           {!readOnly && onSetAmount ? (
             <button onDoubleClick={ev=>{ev.stopPropagation();setAmountDraft(String(e.amount||""));setEditingAmount(true);}} className="hover:underline">
               {e.direction==="in"?"+":"−"}{h$(e.amount)}
@@ -8288,7 +8288,7 @@ const WhiteboardBoardEntry = ({ e, readOnly, onSetAmount, onResetAmount, onReset
         checked private loan's principal is subtracted from the sell-cash estimate vs. assumed
         rolling. Buy entries, and any sell entry with no breakdown data, have nothing to expand. */}
     {open && b && (
-      <div className="w-full basis-full mt-0.5 ml-1 pl-1.5 border-l-2 border-emerald-200 dark:border-emerald-800 space-y-0.5 text-[9px] text-slate-500 dark:text-zinc-400">
+      <div className="w-full basis-full mt-0.5 ml-1 pl-1.5 border-l-2 border-emerald-200 dark:border-emerald-800 space-y-0.5 text-[11px] sm:text-[9px] text-slate-500 dark:text-zinc-400">
         <div className="flex justify-between gap-2"><span>Purchase price</span><span className="tabular-nums">{h$(b.purchasePrice)}</span></div>
         {b.hardLoans.map(l => (
           <div key={l.id} className="flex justify-between gap-2"><span>− {l.lenderName} (hard)</span><span className="tabular-nums">−{h$(l.principal)}</span></div>
@@ -8296,7 +8296,7 @@ const WhiteboardBoardEntry = ({ e, readOnly, onSetAmount, onResetAmount, onReset
         <div className="flex justify-between gap-2"><span>+ Hard-money interest paid</span><span className="tabular-nums">+{h$(b.hardInterestPaidTotal)}</span></div>
         {b.privateLoans.length > 0 && (
           <div className="pt-0.5 space-y-0.5">
-            <div className="text-[8px] uppercase tracking-widest text-slate-400 dark:text-zinc-500">Paying back at closing?</div>
+            <div className="text-[10px] sm:text-[8px] uppercase tracking-widest text-slate-400 dark:text-zinc-500">Paying back at closing?</div>
             {b.privateLoans.map(l => (
               <label key={l.id} className="flex items-center justify-between gap-2 cursor-pointer">
                 <span className="flex items-center gap-1 truncate">
@@ -8342,14 +8342,14 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
   // plain/transparent otherwise.
   const rowBg = short ? "bg-red-50 dark:bg-red-900/15" : "";
   // 11/21: "make the dates with money moves the same thickness as the ones with nothing" — a
-  // populated row is built from the EXACT SAME single-line, text-[9px] shape as an empty day
+  // populated row is built from the EXACT SAME single-line, text-[11px] sm:text-[9px] shape as an empty day
   // (same whitespace-nowrap date cell, same plain balance cell) — a day with several things
   // happening lists them side by side on that one line (`flex ... overflow-hidden`, clipped
   // rather than wrapped) instead of stacking each on its own line, so row height never depends
   // on content. The Amount column is gone entirely — every entry now carries its own amount
   // right on its own pill (see WhiteboardBoardEntry), so a dedicated column just repeated the
   // same number a second time once that was true for every entry kind.
-  const td9 = `${td} align-top whitespace-nowrap text-[9px]`;
+  const td9 = `${td} align-top whitespace-nowrap text-[11px] sm:text-[9px]`;
   return (
     <tr ref={setRowDropRef} className={`${rowBg} ${isOver?"ring-2 ring-inset ring-teal-400":""}`}>
       <td className={`${td9} font-semibold text-slate-500 dark:text-zinc-400`}>
@@ -8360,13 +8360,13 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
           own left padding used to match the Date column's right padding, doubling the visual
           gap between them; dropped to a sliver in compact/TV mode specifically (regular Board
           view keeps its normal spacing — Kyle named "tv view"). */}
-      <td className={`${compact?"pl-0.5 pr-1.5 py-0.5":"px-3 py-1"} align-top text-[9px] text-slate-700 dark:text-zinc-200 overflow-hidden`}>
+      <td className={`${compact?"pl-0.5 pr-1.5 py-0.5":"px-3 py-1"} align-top text-[11px] sm:text-[9px] text-slate-700 dark:text-zinc-200 overflow-hidden`}>
         {row.entries.length>0 && (
         <div className="flex items-center gap-2 overflow-hidden">
           {plainOther.map(e=>(
             <span key={e.id}
               onDoubleClick={!readOnly && e.kind!=="setAside" && e.raw && onEditCard ? ev=>{ev.stopPropagation();onEditCard(e.raw);} : undefined}
-              className="shrink-0 truncate max-w-[140px] flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60" title={e.fullLabel||e.label}>
+              className="shrink-0 truncate max-w-[140px] flex items-center gap-0.5 text-[11px] sm:text-[9px] px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60" title={e.fullLabel||e.label}>
               {e.label} <span className="tabular-nums">{e.direction==="in"?"+":"−"}{h$(e.amount)}</span>
               {!readOnly && e.kind==="setAside" && onMarkClosed && (
                 <button onClick={()=>onMarkClosed(e)} title="Remove from timeline" className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>
@@ -8378,17 +8378,17 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
               onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate} onTogglePayingBack={onTogglePayingBack}/>
           ))}
           {loanPayments.length>0 && (
-            <span className="shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
+            <span className="shrink-0 flex items-center gap-1 text-[11px] sm:text-[9px] px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
               {loanPayments.length} loan pmt{loanPayments.length>1?"s":""}
               {editingLoanTotal ? (
                 <input type="number" step="0.01" autoFocus value={loanTotalDraft} onClick={ev=>ev.stopPropagation()}
                   onChange={ev=>setLoanTotalDraft(ev.target.value)}
                   onKeyDown={ev=>{ if(ev.key==="Enter") saveLoanTotal(); if(ev.key==="Escape") setEditingLoanTotal(false); }}
                   onBlur={saveLoanTotal}
-                  className="w-14 text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+                  className="w-14 text-[11px] sm:text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
               ) : (
                 <span className="inline-flex items-center gap-0.5 tabular-nums text-red-600 dark:text-red-400">
-                  {loanPaymentOverride!=null && onResetLoanPaymentOverride && <button onDoubleClick={resetLoanTotal} title="Edited — double-click to reset to what the tracker shows" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
+                  {loanPaymentOverride!=null && onResetLoanPaymentOverride && <button onDoubleClick={resetLoanTotal} title="Edited — double-click to reset to what the tracker shows" className="text-[9px] sm:text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
                   {!readOnly && onSetLoanPaymentOverride ? (
                     <button onDoubleClick={()=>{setLoanTotalDraft(String(displayedLoanTotal||""));setEditingLoanTotal(true);}} className="hover:underline">−{h$(rOut(displayedLoanTotal))}</button>
                   ) : <>−{h$(rOut(displayedLoanTotal))}</>}
@@ -8431,7 +8431,7 @@ const WhiteboardNoDatePillContent = ({ n, readOnly, h$, fillingIn, setFillingIn,
   const editableCard = !isOnHold && !n.reason && n.raw;
   return (<>
     <div onDoubleClick={editableCard && onEditCard ? ev=>{ev.stopPropagation();onEditCard(n.raw);} : undefined}
-      className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} ${WB_PILL_NODATE} ${WB_PILL_NODATE_TEXT} max-w-[220px] ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
+      className={`flex items-center gap-1 text-[11px] sm:text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} ${WB_PILL_NODATE} ${WB_PILL_NODATE_TEXT} max-w-[220px] ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
       <span className="truncate min-w-0" title={n.label}>{n.label}{n.reason?` — ${n.reason}`:""}</span>
       {!n.reason && <span className="tabular-nums font-semibold shrink-0">{n.direction==="in"?"+":"−"}{h$(n.amount||0)}</span>}
       {!readOnly && isOnHold && (
@@ -8452,11 +8452,11 @@ const WhiteboardNoDatePillContent = ({ n, readOnly, h$, fillingIn, setFillingIn,
       <div className="flex items-center gap-1 mt-0.5 px-1.5">
         <MoneyField value={fillAmount} onChange={setFillAmount} placeholder="Amount"/>
         <input type="date" value={fillDate} onClick={ev=>ev.stopPropagation()} onChange={e=>setFillDate(e.target.value)}
-          className="text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+          className="text-[11px] sm:text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-1 py-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
         <button disabled={!fillAmount||!fillDate} onDoubleClick={ev=>{ev.stopPropagation();
           saveManualFill(n.id, { kind:n.kind==="needsInfoSell"?"sell":"buy", key:n.raw.kind==="sell"?n.raw.id:n.raw.leadId, address:n.raw.address, amount: parseFloat(fillAmount)||0, date: fillDate });
           setFillingIn(null);
-        }} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-600 text-white disabled:opacity-40">Save</button>
+        }} className="text-[11px] sm:text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-600 text-white disabled:opacity-40">Save</button>
       </div>
     )}
   </>);
@@ -8483,7 +8483,7 @@ const WhiteboardBoardNoDateZone = ({ compact, readOnly, h$, noDateSorted,
   return (
     <div ref={setNodeRef}
       className={`border-b-2 border-dashed transition-colors ${compact?"py-1 px-1.5":"py-1.5 px-2"} ${isOver?"bg-amber-100 dark:bg-amber-900/30 border-amber-400":"bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"}`}>
-      <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[10px]"} text-amber-700 dark:text-amber-300`}>No Date</div>
+      <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[12px] sm:text-[10px]"} text-amber-700 dark:text-amber-300`}>No Date</div>
       {noDateSorted && noDateSorted.length>0 && (
         <SortableContext items={noDateSorted.map(n=>n.id)} strategy={horizontalListSortingStrategy}>
           <div className="flex items-start gap-1.5 flex-wrap justify-center mt-1">
@@ -8506,10 +8506,10 @@ const WhiteboardArchivedPill = ({ e, readOnly, h$, onUndo }) => {
   const dragStyle = transform ? { transform:`translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
   return (
     <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
-      className={`shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} max-w-[220px] ${WB_PILL_ARCHIVE} ${WB_PILL_ARCHIVE_TEXT} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
+      className={`shrink-0 flex items-center gap-1 text-[11px] sm:text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} max-w-[220px] ${WB_PILL_ARCHIVE} ${WB_PILL_ARCHIVE_TEXT} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
       <span className="truncate min-w-0" title={e.fullLabel||e.label}>{e.label}</span>
       <span className="shrink-0 tabular-nums font-semibold">{e.direction==="in"?"+":"−"}{h$(e.amount)}</span>
-      {!readOnly && onUndo && <button onDoubleClick={ev=>{ev.stopPropagation();onUndo(e.id);}} title="Double-click to undo — put this back on the timeline" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
+      {!readOnly && onUndo && <button onDoubleClick={ev=>{ev.stopPropagation();onUndo(e.id);}} title="Double-click to undo — put this back on the timeline" className="text-[9px] sm:text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
     </div>
   );
 };
@@ -8531,7 +8531,7 @@ const WhiteboardBoardArchiveZone = ({ compact, readOnly, h$, closedEntries, onUn
   return (
     <div ref={setNodeRef}
       className={`border-b-2 border-dashed transition-colors ${compact?"py-1 px-1.5":"py-1.5 px-2"} ${isOver?"bg-teal-100 dark:bg-teal-900/30 border-teal-400":"bg-slate-50 dark:bg-zinc-800/60 border-slate-200 dark:border-zinc-700"}`}>
-      <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[10px]"} text-slate-400 dark:text-zinc-500`}>📦 Drag here once it's hit the real account</div>
+      <div className={`font-semibold text-center ${compact?"text-[9px]":"text-[12px] sm:text-[10px]"} text-slate-400 dark:text-zinc-500`}>📦 Drag here once it's hit the real account</div>
       {closedEntries && closedEntries.length>0 && (
         <div className="flex items-center gap-1.5 flex-wrap justify-center mt-1">
           {closedEntries.map(e=><WhiteboardArchivedPill key={e.id} e={e} readOnly={readOnly} h$={h$} onUndo={onUndoClosed}/>)}
@@ -8669,7 +8669,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
               fillingIn={fillingIn} setFillingIn={setFillingIn} fillAmount={fillAmount} setFillAmount={setFillAmount}
               fillDate={fillDate} setFillDate={setFillDate} saveManualFill={saveManualFill} setCardDay={setCardDay} restoreFromNoDate={restoreFromNoDate} onEditCard={onEditCard}/>}
             {!effReadOnly && <WhiteboardBoardArchiveZone compact={compact} readOnly={effReadOnly} h$={h$} closedEntries={closedEntries} onUndoClosed={onUndoClosed}/>}
-            <table className={`w-full border-collapse min-w-[560px] ${compact?"text-[10px]":""}`}>
+            <table className={`w-full border-collapse min-w-[480px] sm:min-w-[560px] ${compact?"text-[10px]":""}`}>
               {/* 11/21, Kyle: "get rid of these headers completely" — the Date/Money Moves/
                   Balance column header row is gone; the Current row (always the first row)
                   already orients a new viewer without it. */}
@@ -8681,7 +8681,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                       <span>
                         {startingLabel}
                         {!usingMercury && !effReadOnly && (
-                          <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400">{mercuryLoading?"(checking Mercury…)":`(manual${mercuryReason?` — ${mercuryReason}`:""})`}</span>
+                          <span className="ml-1 text-[11px] sm:text-[9px] text-amber-600 dark:text-amber-400">{mercuryLoading?"(checking Mercury…)":`(manual${mercuryReason?` — ${mercuryReason}`:""})`}</span>
                         )}
                       </span>
                       {/* 11/21, Kyle: first asked for an integrated "Days til negative" line
@@ -8695,7 +8695,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                           stays at/above $0 — exactly the lowest balance the window ever
                           reaches, floored at 0. */}
                       {safeToSend && (
-                        <span className="shrink-0 flex items-center gap-1.5 text-[9px]">
+                        <span className="shrink-0 flex items-center gap-1.5 text-[11px] sm:text-[9px]">
                           <span className="text-slate-400 dark:text-zinc-500">Safe to send out:</span>
                           {[["30d",safeToSend.d30],["60d",safeToSend.d60],["90d",safeToSend.d90]].map(([lbl,v])=>(
                             <span key={lbl} className={`font-semibold ${v<=0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>
@@ -8709,7 +8709,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                           the top row in the board... let me edit it super integrated with pills." */}
                       {(undatedSetAsides||[]).map(s=>(
                         <span key={s.id} onClick={()=>!effReadOnly && onEditSetAside?.(s)} title="No date — lowers Available now. Click to edit."
-                          className={`shrink-0 truncate max-w-[140px] flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} border-violet-200 dark:border-violet-800 bg-violet-50/70 dark:bg-violet-900/20 ${!effReadOnly?"cursor-pointer":""}`}>
+                          className={`shrink-0 truncate max-w-[140px] flex items-center gap-1 text-[11px] sm:text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} border-violet-200 dark:border-violet-800 bg-violet-50/70 dark:bg-violet-900/20 ${!effReadOnly?"cursor-pointer":""}`}>
                           🔒 {s.label} <span className="tabular-nums font-semibold text-violet-600 dark:text-violet-400">−{h$(s.amount)}</span>
                           {!effReadOnly && onDeleteSetAside && (
                             <button onClick={e=>{e.stopPropagation();onDeleteSetAside(s.id);}} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>
@@ -8717,7 +8717,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                         </span>
                       ))}
                       {!effReadOnly && onAddSetAside && (
-                        <button onClick={onAddSetAside} className="shrink-0 text-[9px] font-semibold text-teal-600 dark:text-teal-400 hover:underline">+ Set Aside</button>
+                        <button onClick={onAddSetAside} className="shrink-0 text-[11px] sm:text-[9px] font-semibold text-teal-600 dark:text-teal-400 hover:underline">+ Set Aside</button>
                       )}
                     </div>
                   </td>
@@ -9363,14 +9363,21 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-3 mb-4">
+      {/* Phone: "it's all messed up and not clean at all" — a `justify-between` row squeezed
+          the title and a 4-group toolbar (day range, round toggle, 2 buttons) side by side,
+          which had nowhere to go on a narrow screen but wrap awkwardly mid-row. Now stacks
+          into two full-width rows below `sm` (≥640px), each gets its own `flex-wrap` so a
+          phone that's STILL too narrow for one full toolbar row wraps cleanly onto a 2nd line
+          instead of crowding the title. Unchanged at `sm:` and up (still one row, same as
+          before). */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
         {!publicMode && (
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
         </div>
         )}
         {!publicMode && (
-        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+        <div className="flex items-center gap-2 flex-wrap sm:justify-end">
           <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 gap-1">
             {[30,45,90].map(n=>(
               <button key={n} onClick={()=>setWindowDays(n)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${windowDays===n?"bg-white dark:bg-zinc-700 text-slate-800 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500"}`}>{n}d</button>
@@ -9385,12 +9392,12 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
       </div>
 
       {sellDatesResult.sheetConnected===false && (
-        <div className="mb-4 rounded-xl px-3 py-2 text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+        <div className="mb-4 rounded-xl px-3 py-2 text-[13px] sm:text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
           ⚠️ Sell-dates sheet not connected (server env var <code className="font-mono">GOOGLE_SERVICE_ACCOUNT_JSON</code> missing or invalid{sellDatesResult.sheetError?`: ${sellDatesResult.sheetError}`:""}) — using REsimpli fallback dates only.
         </div>
       )}
       {sellDatesResult.lastRefresh && (
-        <div className={`mb-4 rounded-xl px-3 py-2 text-[11px] font-semibold ${sellDatesResult.isStale?"bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800":"text-slate-400 dark:text-zinc-500"}`}>
+        <div className={`mb-4 rounded-xl px-3 py-2 text-[13px] sm:text-[11px] font-semibold ${sellDatesResult.isStale?"bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800":"text-slate-400 dark:text-zinc-500"}`}>
           {sellDatesResult.isStale?"⚠️ ":""}Sell-dates sheet last checked {new Date(sellDatesResult.lastRefresh).toLocaleString()}
           {" "}({Math.round((Date.now()-new Date(sellDatesResult.lastRefresh).getTime())/36e5)}h ago){sellDatesResult.isStale?" — more than 26h old, sell dates may be out of date":""}
         </div>

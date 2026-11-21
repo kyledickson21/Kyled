@@ -1747,6 +1747,28 @@ the no date, and same gray color when it's in the 'hit account' box."
   "integrated days-to-negative line" mentioned above was itself replaced the same day — see
   "Safe to send out" below.)
 
+### Mobile responsiveness pass (11/21)
+Kyle: "when opening it in my phone it's all messed up and not clean at all." The Board layout
+had no phone-specific handling at all — a `justify-between` header crammed the title and a
+4-group toolbar (day range, Round $5k, 2 buttons) onto one row with nowhere to wrap cleanly,
+every ledger row/pill's text was a flat, unconditional pixel size tuned for a desktop screen,
+and the table's `min-w-[560px]` left little room on a ~375-414px phone viewport.
+- **Header**: `flex-col sm:flex-row` — stacks the title above its own full-width, `flex-wrap`
+  toolbar row below `sm` (≥640px), unchanged at `sm:` and up.
+- **Text sizes**: every hardcoded `text-[Npx]` across the Board component block (entries,
+  rows, the No-Date/Archive zones, the Current row) got a responsive pair — a larger BASE size
+  (the one that applies below `sm`, i.e. on a phone) with an `sm:text-[Npx]` override restoring
+  the original, tighter desktop size at ≥640px. **Exception**: anywhere already branching on
+  `compact` (TV Mode) kept its compact-branch size a PLAIN, non-responsive pixel value — TV
+  Mode runs on a kiosk/fullscreen display, never an actual phone viewport, so giving it a
+  mobile breakpoint doesn't mean anything there; only the normal (non-compact) branch got the
+  phone/desktop pair.
+- **Table width**: `min-w-[480px] sm:min-w-[560px]` — a little more breathing room below `sm`,
+  full desktop width restored above it.
+- Still unverified against a real phone/browser — this is a code-level pass based on the
+  concrete classes involved (stacking, oversized pixel text, forced width), not a visual check
+  from an actual device. Flag anything that still looks off.
+
 ### Row and Month views removed — Board is the only Whiteboard layout now (11/21)
 Kyle: "Also completely get rid of month and row views. Forget about em." Everything described
 in the "Row view," "Month view," and the original "Board view — a running-balance ledger
