@@ -1401,6 +1401,25 @@ values (no migration needed for existing `localStorage` choices), labeled "Row"/
   covered by the same manual-testing expectation as the rest of the drag system (dnd-kit
   interactions aren't unit-tested anywhere in this suite).
 
+### Row view: pill-style sell/buy cards, day columns color by balance (11/21)
+Kyle: "do that same thing for the calendar view... you just drag the property pill to a new
+date. And the full date box turns red or green if current balance is positive or negative" —
+the same pill philosophy from the Board redesign below, applied to Row (Calendar) view.
+- `WhiteboardSellCard`/`WhiteboardBuyCard`'s header is now one pill line — address and amount
+  together, tinted by direction (emerald/red) — instead of an icon-button row above a separate
+  big amount line. The 📅 tap-to-pick-date and 📋 move-to-no-date buttons are gone: dragging
+  onto another day column (or onto Unscheduled) already does both via the existing
+  `handleDragEnd`, so neither button added anything the drag didn't already cover. "Closed"
+  stays — there's no drag equivalent, and this card is its only home now that Board view
+  dropped it — along with the sell card's expandable breakdown/paying-back checkboxes, which
+  only make sense on a card with room for them (Board's own minimal pill never had them).
+- **`WhiteboardColumn`** (the day box itself) now tints its WHOLE background red or green by
+  that day's `balance` sign, not just the small balance figure's text color inside it — the
+  previous "today" amber background is gone in favor of this (today still reads as distinct
+  via its amber label text, kept as-is).
+- Month view's chips/boxes were intentionally left untouched this round — Kyle's ask named
+  "the calendar view" specifically.
+
 ### Board view redesign — drag-only, card-style entries (11/21)
 A same-day string of direct feedback replaced most of 11/19's Board design above (the combined
 Amount column, the per-entry 📅/✏️/📋/✕ icon row, the click-to-edit date, the week-subtotal/

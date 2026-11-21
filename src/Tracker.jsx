@@ -7886,6 +7886,17 @@ const wbAddDays = (dateStr,n) => {
   const dt = new Date(y,m-1,d+n);
   return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
 };
+// Shared pill shape/colors for a single money-move entry (sell/buy) — used by Row view's
+// WhiteboardSellCard/WhiteboardBuyCard AND Board view's WhiteboardBoardEntry, so the two
+// views' core visual language can't drift apart (Kyle, 11/21: "make the calendar view look
+// exactly like the board view... keep this consistent to any future changes" — one shared
+// source of truth for the shape/color instead of two copies to keep in sync by hand).
+const WB_PILL_SHAPE = "rounded-md border shadow-sm";
+const wbPillColor = direction => direction==="in"
+  ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/20"
+  : "border-red-200 dark:border-red-800 bg-red-50/70 dark:bg-red-900/20";
+const wbPillAccent = direction => direction==="in" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+
 const wbFmtDate = dateStr => {
   const [y,m,d] = dateStr.split('-').map(Number);
   return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'short',day:'numeric'});
@@ -8199,7 +8210,7 @@ const WhiteboardPaymentCard = ({ card, h$, navigate }) => (
 // button added anything a drag didn't already do. "Closed" stays (there's no drag equivalent,
 // and this card is now its only home — Board view dropped it) along with the expandable
 // breakdown/paying-back checkboxes, which only make sense on a card with room for them.
-const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onResetDate }) => {
+const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onResetDate, onRemoveManualSell }) => {
   const readOnly = useReadOnly();
   const [open, setOpen] = useState(false);
   // Draggable onto another day (dnd-kit) — each card calls useDraggable itself, same pattern
@@ -8220,15 +8231,23 @@ const WhiteboardSellCard = ({ card, h$, update, navigate, onMarkClosed, onResetD
   }));
   return (
     <div ref={setNodeRef} style={dragStyle} {...dragHandleProps}
-      className={`rounded-xl border border-emerald-300 dark:border-emerald-700 p-2.5 mb-2 bg-emerald-50/70 dark:bg-emerald-900/20 shadow-sm touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
+      className={`${WB_PILL_SHAPE} p-2.5 mb-2 ${wbPillColor("in")} touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
       <div className="flex items-center justify-between gap-1.5">
-        <button onClick={e => { e.stopPropagation(); navigate && navigate({ type: 'property', id: card.propId }); }}
-          className="font-semibold text-[12px] text-teal-700 dark:text-teal-400 hover:underline truncate text-left min-w-0">🏠 {card.address}</button>
-        <span className="font-black tabular-nums text-emerald-600 dark:text-emerald-400 shrink-0">+{h$(card.amount)}</span>
+        <span className="flex items-center gap-1 min-w-0">
+          {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
+          <button onClick={e => { e.stopPropagation(); navigate && navigate({ type: 'property', id: card.propId }); }}
+            className="font-semibold text-[12px] text-teal-700 dark:text-teal-400 hover:underline truncate text-left min-w-0">🏠 {card.address}</button>
+        </span>
+        <span className={`font-black tabular-nums shrink-0 ${wbPillAccent("in")}`}>+{h$(card.amount)}</span>
       </div>
-      {!readOnly && onMarkClosed && (
-        <div className="flex justify-end mt-0.5">
-          <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this sale closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-zinc-800/70 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>
+      {!readOnly && (onMarkClosed || (b.dateSource==="manual" && onRemoveManualSell)) && (
+        <div className="flex justify-end gap-1 mt-0.5">
+          {b.dateSource==="manual" && onRemoveManualSell && (
+            <button onClick={e=>{e.stopPropagation();onRemoveManualSell();}} title="Remove from the sell list — this was added by hand" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-zinc-800/70 text-slate-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-700 dark:hover:text-red-400 transition-colors">Remove</button>
+          )}
+          {onMarkClosed && (
+            <button onClick={e=>{e.stopPropagation();onMarkClosed();}} title="Mark this sale closed" className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-zinc-800/70 text-slate-500 dark:text-zinc-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors">Closed</button>
+          )}
         </div>
       )}
       <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
@@ -8285,10 +8304,13 @@ const WhiteboardBuyCard = ({ card, h$, onMarkClosed, onResetDate }) => {
   const dragHandleProps = readOnly ? {} : {...attributes, ...listeners};
   return (
     <div ref={setNodeRef} style={dragStyle} {...dragHandleProps}
-      className={`rounded-xl border border-red-300 dark:border-red-700 p-2.5 mb-2 bg-red-50/70 dark:bg-red-900/20 shadow-sm touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
+      className={`${WB_PILL_SHAPE} p-2.5 mb-2 ${wbPillColor("out")} touch-none ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing":""}`}>
       <div className="flex items-center justify-between gap-1.5">
-        <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate min-w-0">🔑 {card.address}</div>
-        <span className="font-black tabular-nums text-red-600 dark:text-red-400 shrink-0">−{h$(card.amount)}</span>
+        <div className="flex items-center gap-1 min-w-0">
+          {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
+          <div className="font-semibold text-[12px] text-slate-700 dark:text-zinc-200 truncate min-w-0">🔑 {card.address}</div>
+        </div>
+        <span className={`font-black tabular-nums shrink-0 ${wbPillAccent("out")}`}>−{h$(card.amount)}</span>
       </div>
       {!readOnly && onMarkClosed && (
         <div className="flex justify-end mt-0.5">
@@ -8361,6 +8383,35 @@ function WhiteboardSetAsideModal({ init, onSave, onClose }) {
         <div className="flex gap-2 pt-1">
           <Btn color={canSave ? "blue" : "ghost"} disabled={!canSave} full
             onClick={() => canSave && onSave({ id: init?.id || uid(), label: label.trim(), amount: parseFloat(amount) || 0, date: date || null })}>Save</Btn>
+          <Btn color="ghost" onClick={onClose}>Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Add a property to the sell list by hand (11/21, Kyle: "allow me to add a property closing
+// that isn't pulled from resimpli yet... it can fill in the amounts for me the same way it
+// does the others") — Kyle only ever supplies the PROPERTY and a DATE; the amount is always
+// computed live from the property's real loan data, exactly like a REsimpli-detected sale
+// (see `manualSellDates`/`addManualSellProp` in WhiteboardPage) — never typed by hand.
+function WhiteboardAddClosingModal({ properties, onAdd, onClose }) {
+  const [propId, setPropId] = useState(properties[0]?.id || "");
+  const [date, setDate] = useState(TODAY);
+  const canAdd = propId && date;
+  return (
+    <Modal title="Add a Property Closing" onClose={onClose}>
+      <div className="space-y-3">
+        {properties.length === 0 ? (
+          <p className="text-sm text-slate-400 dark:text-zinc-500">Every active property is already on the sell list or marked sold.</p>
+        ) : (
+          <>
+            <Sel label="Property" value={propId} onChange={setPropId} options={properties.map(p=>[p.id,p.address])}/>
+            <DateInp label="Expected closing date" value={date} onChange={setDate} helpText="The amount — purchase price minus loan principals, plus hard-money interest paid — is computed automatically from this property's real numbers, same as a REsimpli-detected sale. You only need to give it a date."/>
+          </>
+        )}
+        <div className="flex gap-2 pt-1">
+          <Btn color={canAdd?"blue":"ghost"} disabled={!canAdd} full onClick={()=>canAdd&&onAdd(propId,date)}>Add</Btn>
           <Btn color="ghost" onClick={onClose}>Cancel</Btn>
         </div>
       </div>
@@ -8462,7 +8513,8 @@ const WhiteboardBoardEntry = ({ e, readOnly, onSetAmount, onResetAmount, onReset
   const resetDate = ev => { ev.stopPropagation(); if (window.confirm(`Reset the date back to ${e.sourceDate?wbFmtDate(e.sourceDate):"its original"}?`)) onResetDate(e.id); };
   return (
     <div ref={setNodeRef} style={dragStyle} {...(readOnly?{}:{...attributes,...listeners})}
-      className={`shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md border shadow-sm max-w-[220px] ${e.direction==="in"?"border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/20":"border-red-200 dark:border-red-800 bg-red-50/70 dark:bg-red-900/20"} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
+      className={`shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} max-w-[220px] ${wbPillColor(e.direction)} ${isDragging?"opacity-30":""} ${!readOnly?"cursor-grab active:cursor-grabbing touch-none":""}`}>
+      {!readOnly && <span className="text-slate-300 dark:text-zinc-600 shrink-0">⠿</span>}
       {e.pastDue && !e.manualDate && <span title="Hasn't hit the account yet">⏰</span>}
       {e.manualDate && onResetDate && <button onClick={resetDate} title="Dragged — click to undo" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
       <span className="truncate min-w-0" title={e.fullLabel||e.label}>{e.label}</span>
@@ -8486,9 +8538,18 @@ const WhiteboardBoardEntry = ({ e, readOnly, onSetAmount, onResetAmount, onReset
   );
 };
 
-const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany }) => {
+const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, loanPaymentOverride, onSetLoanPaymentOverride, onResetLoanPaymentOverride }) => {
   const short = row.balance < 0;
   const { loanPayments, other, loanTotal } = groupLoanPaymentEntries(row.entries);
+  const [editingLoanTotal, setEditingLoanTotal] = useState(false);
+  const [loanTotalDraft, setLoanTotalDraft] = useState("");
+  const displayedLoanTotal = loanPaymentOverride ?? loanTotal;
+  const saveLoanTotal = () => {
+    const v = parseFloat(loanTotalDraft);
+    if (!isNaN(v) && v>=0 && v!==displayedLoanTotal) onSetLoanPaymentOverride?.(row.day, Math.round(v*100)/100);
+    setEditingLoanTotal(false);
+  };
+  const resetLoanTotal = ev => { ev.stopPropagation(); if (window.confirm(`Reset the loan payment total back to ${h$(loanTotal)} (what the tracker computes)?`)) onResetLoanPaymentOverride?.(row.day); };
   // Round only the row's own AGGREGATE figures (balance/the grouped loan-payment subtotal) —
   // never an individual entry's real amount, which always stays exact.
   const rOut = v => roundMode ? roundUp5k(v) : v;
@@ -8500,15 +8561,11 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
   const plainOther = other.filter(e=>e.kind!=="sell"&&e.kind!=="buy");
   const { setNodeRef: setRowDropRef, isOver } = useDroppable({ id: row.day });
   const td = compact ? "px-1.5 py-0.5" : "px-3 py-1";
-  // 11/21, Kyle: "the full date box turns red or green if current balance is positive or
-  // negative" — the whole row, not just the balance figure's own text color.
-  // 11/21: "still show the weekend rows a tiny bit darker" — layered on top of the red/green
-  // balance tint (a slightly darker shade of whichever color already applies), not a
-  // separate competing background.
-  const isWeekend = wbIsWeekend(row.day);
-  const rowBg = short
-    ? (isWeekend ? "bg-red-100 dark:bg-red-900/25" : "bg-red-50 dark:bg-red-900/15")
-    : (isWeekend ? "bg-emerald-100/60 dark:bg-emerald-900/20" : "bg-emerald-50/40 dark:bg-emerald-900/10");
+  // 11/21: the full-row red/green tint and weekend shading (tried right after this) both got
+  // reverted the same day — Kyle: "actually get rid of the dark weekend and full box color
+  // changes. It was easier to read before." Back to: red background on a shortfall day only,
+  // plain/transparent otherwise.
+  const rowBg = short ? "bg-red-50 dark:bg-red-900/15" : "";
   // 11/21: "make the dates with money moves the same thickness as the ones with nothing" — a
   // populated row is built from the EXACT SAME single-line, text-[9px] shape as an empty day
   // (same whitespace-nowrap date cell, same plain balance cell) — a day with several things
@@ -8539,9 +8596,22 @@ const WhiteboardBoardRow = ({ row, h$, readOnly, compact, roundMode, prevBalance
               onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate}/>
           ))}
           {loanPayments.length>0 && (
-            <span className="shrink-0 flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
-              {loanPayments.length} loan pmt{loanPayments.length>1?"s":""} <span className="tabular-nums text-red-600 dark:text-red-400">−{h$(rOut(loanTotal))}</span>
-              {!readOnly && onExcludeMany && <button onClick={()=>onExcludeMany(loanPayments)} title="Take all of these off the timeline" className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>}
+            <span className="shrink-0 flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-slate-500 dark:text-zinc-400">
+              {loanPayments.length} loan pmt{loanPayments.length>1?"s":""}
+              {editingLoanTotal ? (
+                <input type="number" step="0.01" autoFocus value={loanTotalDraft} onClick={ev=>ev.stopPropagation()}
+                  onChange={ev=>setLoanTotalDraft(ev.target.value)}
+                  onKeyDown={ev=>{ if(ev.key==="Enter") saveLoanTotal(); if(ev.key==="Escape") setEditingLoanTotal(false); }}
+                  onBlur={saveLoanTotal}
+                  className="w-14 text-[9px] border border-slate-200 dark:border-zinc-700 rounded px-0.5 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-teal-500"/>
+              ) : (
+                <span className="inline-flex items-center gap-0.5 tabular-nums text-red-600 dark:text-red-400">
+                  {loanPaymentOverride!=null && onResetLoanPaymentOverride && <button onClick={resetLoanTotal} title="Edited — click to reset to what the tracker shows" className="text-[7px] text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300">↺</button>}
+                  {!readOnly && onSetLoanPaymentOverride ? (
+                    <button onClick={()=>{setLoanTotalDraft(String(displayedLoanTotal||""));setEditingLoanTotal(true);}} className="hover:underline">−{h$(rOut(displayedLoanTotal))}</button>
+                  ) : <>−{h$(rOut(displayedLoanTotal))}</>}
+                </span>
+              )}
             </span>
           )}
         </div>
@@ -8566,9 +8636,30 @@ const WhiteboardBoardNoDateZone = ({ compact }) => {
   );
 };
 
+// A second persistent drop target (11/21, Kyle: "add an archive thing to drag into for the
+// 'mark as reflected' in balance... the stuff just stays there viewable in the archive until
+// it's reflected in resimpli where the system would've taken it out automatically like it does
+// already") — drag a sell/buy entry here once Kyle's personally confirmed the money actually
+// hit/left the real account, even though REsimpli hasn't caught up yet. This is just a drag
+// entry point onto the EXISTING Mark Closed mechanism (`onMarkClosed`/`closedOverrides`) —
+// `WhiteboardClosedPanel` already shows it in "✅ Closed, waiting to confirm" with an Undo
+// button, and the existing auto-clear effect already removes it the moment the real data
+// (REsimpli/the Sheet) confirms it, exactly the behavior asked for, with no new state needed.
+const WhiteboardBoardArchiveZone = ({ compact }) => {
+  const { setNodeRef, isOver } = useDroppable({ id: "board-archive" });
+  return (
+    <div ref={setNodeRef}
+      className={`text-center border-b-2 border-dashed font-semibold transition-colors ${compact?"py-1 text-[9px]":"py-1.5 text-[10px]"} ${isOver?"bg-teal-100 dark:bg-teal-900/30 border-teal-400 text-teal-700 dark:text-teal-300":"bg-slate-50 dark:bg-zinc-800/60 border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500"}`}>
+      📦 Drag here once it's hit the real account
+    </div>
+  );
+};
+
 function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledgerSum, h$, readOnly, roundMode, firstBelow10k, firstNegative, forceTv,
   usingMercury, sbInput, onSbInputChange, onCommitStartingBalance, mercuryLoading, mercuryReason,
-  onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate }) {
+  undatedSetAsides, onEditSetAside, onAddSetAside, onDeleteSetAside,
+  onPickDate, onSetAmount, onResetAmount, onResetDate, onMarkClosed, onExcludeMany, onSendToNoDate,
+  loanPaymentOverrides, onSetLoanPaymentOverride, onResetLoanPaymentOverride }) {
   const rIn = v => roundMode ? roundDown5k(v) : v;
   const rOut = v => roundMode ? roundUp5k(v) : v;
   const rBal = v => roundMode ? roundDown5k(v) : v;
@@ -8613,7 +8704,11 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
     for (const week of ledgerWeeks) {
       for (const row of week.rows) {
         const found = row.entries.find(en => en.id === id && (en.kind==="sell"||en.kind==="buy"));
-        if (found) { onPickDate?.(found, String(over.id)); return; }
+        if (found) {
+          if (over.id === "board-archive") { onMarkClosed?.(found); return; }
+          onPickDate?.(found, String(over.id));
+          return;
+        }
       }
     }
   };
@@ -8666,6 +8761,7 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
         <div className={compact ? "flex-1 overflow-auto" : "overflow-x-auto"}>
           <DndContext sensors={effReadOnly?[]:boardDragSensors} onDragStart={e=>setActiveEntryId(String(e.active.id))} onDragEnd={handleBoardDragEnd}>
             {!effReadOnly && <WhiteboardBoardNoDateZone compact={compact}/>}
+            {!effReadOnly && <WhiteboardBoardArchiveZone compact={compact}/>}
             <table className={`w-full border-collapse min-w-[560px] ${compact?"text-[10px]":""}`}>
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-50 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
@@ -8678,10 +8774,29 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                 <tr className="bg-slate-50/70 dark:bg-zinc-800/50">
                   <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} ${compact?"text-[10px]":"text-xs"} font-bold text-slate-500 dark:text-zinc-400`}>Current</td>
                   <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} ${compact?"text-[10px]":"text-xs"} text-slate-400 dark:text-zinc-500`}>
-                    {startingLabel}
-                    {!usingMercury && !effReadOnly && (
-                      <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400">{mercuryLoading?"(checking Mercury…)":`(manual${mercuryReason?` — ${mercuryReason}`:""})`}</span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>
+                        {startingLabel}
+                        {!usingMercury && !effReadOnly && (
+                          <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400">{mercuryLoading?"(checking Mercury…)":`(manual${mercuryReason?` — ${mercuryReason}`:""})`}</span>
+                        )}
+                      </span>
+                      {/* Set Aside — undated entries only (a dated one already shows as its own
+                          pill on the day it leaves). Kyle, 11/21: "the current balance is already
+                          the top row in the board... let me edit it super integrated with pills." */}
+                      {(undatedSetAsides||[]).map(s=>(
+                        <span key={s.id} onClick={()=>!effReadOnly && onEditSetAside?.(s)} title="No date — lowers Available now. Click to edit."
+                          className={`shrink-0 truncate max-w-[140px] flex items-center gap-1 text-[9px] px-1.5 py-0.5 ${WB_PILL_SHAPE} border-violet-200 dark:border-violet-800 bg-violet-50/70 dark:bg-violet-900/20 ${!effReadOnly?"cursor-pointer":""}`}>
+                          🔒 {s.label} <span className="tabular-nums font-semibold text-violet-600 dark:text-violet-400">−{h$(s.amount)}</span>
+                          {!effReadOnly && onDeleteSetAside && (
+                            <button onClick={e=>{e.stopPropagation();onDeleteSetAside(s.id);}} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400">✕</button>
+                          )}
+                        </span>
+                      ))}
+                      {!effReadOnly && onAddSetAside && (
+                        <button onClick={onAddSetAside} className="shrink-0 text-[9px] font-semibold text-teal-600 dark:text-teal-400 hover:underline">+ Set Aside</button>
+                      )}
+                    </div>
                   </td>
                   <td className={`${compact?"px-1.5 py-1":"px-3 py-2"} text-right ${compact?"text-xs":"text-sm"} font-black tabular-nums ${rBal(startingBalance)<0?"text-red-600 dark:text-red-400":"text-emerald-600 dark:text-emerald-400"}`}>
                     {!usingMercury && !effReadOnly ? (
@@ -8702,7 +8817,8 @@ function WhiteboardBoardView({ startingBalance, startingLabel, ledgerWeeks, ledg
                 {ledgerWeeks.flatMap(week=>week.rows).map((row,i,arr)=>
                   <WhiteboardBoardRow key={row.day} row={row} prevBalance={i===0?startingBalance:arr[i-1].balance} h$={h$} readOnly={effReadOnly} compact={compact} roundMode={roundMode}
                     onSetAmount={onSetAmount} onResetAmount={onResetAmount} onResetDate={onResetDate}
-                    onMarkClosed={onMarkClosed} onExcludeMany={onExcludeMany}/>)}
+                    onMarkClosed={onMarkClosed} onExcludeMany={onExcludeMany}
+                    loanPaymentOverride={loanPaymentOverrides?.[row.day]} onSetLoanPaymentOverride={onSetLoanPaymentOverride} onResetLoanPaymentOverride={onResetLoanPaymentOverride}/>)}
               </tbody>
             </table>
             <DragOverlay>
@@ -8786,16 +8902,18 @@ const WhiteboardMonthDay = ({ day, padKey, isToday, dayNum, showMonthLabel, h$, 
 
 const MONTH_WEEKDAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-// Survives WhiteboardPage unmounting/remounting (switching tabs away and back resets its local
-// useState, which otherwise means every single visit re-shows a momentary "loading" placeholder
-// — sell/buy cards briefly computed with no dates, landing in Needs Info — before snapping to
-// their real dates once the fetch resolves. Kyle, 11/21: "make it just hold the previous way it
-// was so it doesn't look like it's glitched out until the updated one loads in." A plain
-// module-level cache (not persisted past a hard page reload, which is fine — that's a genuinely
-// fresh load) used as each useState's initial value instead of {loading:true}, updated only on
-// a SUCCESSFUL fetch — a background refetch that fails just keeps showing the last good value
-// rather than flipping to an error state the user never asked to see.
-let wbForecastCache = { mercury: null, sellDates: null, buys: null };
+// Survives not just WhiteboardPage remounting but a full page reload too (Kyle, 11/21, after
+// a first pass that only used an in-memory module variable: "it's still when I start the
+// whiteboard, there's a bunch of stuff not showing for a few seconds... can it just show what
+// it showed previously so it doesn't scare people... instead of everything looking like it's
+// gone?") — a hard reload re-executes every module from scratch, wiping a plain JS variable,
+// so the cache needs to live in localStorage instead: read synchronously on first render
+// (no network round-trip, no flash of "loading" before it), written back only on a
+// SUCCESSFUL fetch. A background refetch that fails just keeps showing the last good cached
+// value rather than flipping to an error state nobody asked to see.
+const WB_CACHE_KEY = "nx-whiteboardForecastCache";
+const loadWbCache = () => { try { return JSON.parse(localStorage.getItem(WB_CACHE_KEY)) || {}; } catch { return {}; } };
+const saveWbCache = partial => { try { localStorage.setItem(WB_CACHE_KEY, JSON.stringify({ ...loadWbCache(), ...partial })); } catch {} };
 
 function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const readOnly = useReadOnly();
@@ -8812,6 +8930,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const [editCard,setEditCard] = useState(null);
   const [activeId,setActiveId] = useState(null);
   const [addingSetAside,setAddingSetAside] = useState(false);
+  const [addingClosing,setAddingClosing] = useState(false);
   const [editingSetAside,setEditingSetAside] = useState(null);
   const dragSensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}));
   // Calendar (the existing day-column board) vs. Board (a running-balance ledger table) —
@@ -8858,9 +8977,9 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // degrades to a manual/"not connected" state on failure — never a crash (see the Whiteboard
   // cash-flow forecast HARD RULES). Nothing here writes to nexus_data except the "paying
   // back" checkbox (whiteboard.payingBack), toggled from WhiteboardSellCard.
-  const [mercury,setMercury] = useState(wbForecastCache.mercury || {loading:true});
-  const [sellDatesResult,setSellDatesResult] = useState(wbForecastCache.sellDates || {loading:true, rows:[]});
-  const [buysResult,setBuysResult] = useState(wbForecastCache.buys || {loading:true, rows:[], needsInfo:[]});
+  const [mercury,setMercury] = useState(() => loadWbCache().mercury || {loading:true});
+  const [sellDatesResult,setSellDatesResult] = useState(() => loadWbCache().sellDates || {loading:true, rows:[]});
+  const [buysResult,setBuysResult] = useState(() => loadWbCache().buys || {loading:true, rows:[], needsInfo:[]});
 
   // Which tracker properties are selling: resimpli stage Under Contract on the sell side
   // (Inventory pipeline specifically — not the sort/grouping-folded rental mapping). Live data
@@ -8869,26 +8988,33 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // resimpli.url containing "/inventory/" is also treated as inventory, since REsimpli's own
   // inventory record links always carry that in the path.
   const isInventoryResimpli = p => p.resimpli?.recordType==="inventory" || (p.resimpli?.url||"").includes("/inventory/");
+  // `manualSellDates` (11/21, Kyle: "allow me to add a property closing that isn't pulled
+  // from resimpli yet... it can fill in the amounts for me the same way it does the others")
+  // — {[propId]: "YYYY-MM-DD"}, Kyle's own pencilled-in closing date for a property REsimpli
+  // hasn't (yet) flagged Under Contract. Its mere presence is both "add this property to the
+  // sell list" and the date to use — read early (same pattern as `payingBack` below) since
+  // `sellingProps` needs it before the main overrides block further down is defined.
+  const manualSellDates = data.whiteboardOverrides?.manualSellDates || {};
   const sellingProps = useMemo(() => (data.properties||[]).filter(p =>
-    !p.dateSold && isInventoryResimpli(p) && p.resimpli?.stage==="Under Contract"
-  ), [data.properties]);
+    !p.dateSold && ((isInventoryResimpli(p) && p.resimpli?.stage==="Under Contract") || !!manualSellDates[p.id])
+  ), [data.properties, data.whiteboardOverrides?.manualSellDates]);
   const sellingPropsKey = sellingProps.map(p=>p.id).join(",");
 
   useEffect(() => {
     let cancelled = false;
-    fetchMercuryBalance(tvKey).then(r=>{ if(!cancelled) { setMercury(r); wbForecastCache.mercury = r; } })
-      .catch(e=>{ if(!cancelled && !wbForecastCache.mercury) setMercury({ok:false, reason:e.message}); });
-    fetchUpcomingBuys(tvKey).then(r=>{ if(!cancelled) { setBuysResult(r); wbForecastCache.buys = r; } })
-      .catch(e=>{ if(!cancelled && !wbForecastCache.buys) setBuysResult({ok:false, reason:e.message, rows:[], needsInfo:[]}); });
+    fetchMercuryBalance(tvKey).then(r=>{ if(!cancelled) { setMercury(r); saveWbCache({mercury:r}); } })
+      .catch(e=>{ if(!cancelled && !loadWbCache().mercury) setMercury({ok:false, reason:e.message}); });
+    fetchUpcomingBuys(tvKey).then(r=>{ if(!cancelled) { setBuysResult(r); saveWbCache({buys:r}); } })
+      .catch(e=>{ if(!cancelled && !loadWbCache().buys) setBuysResult({ok:false, reason:e.message, rows:[], needsInfo:[]}); });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    if (sellingProps.length===0) { const v={ok:true, rows:[]}; setSellDatesResult(v); wbForecastCache.sellDates = v; return; }
+    if (sellingProps.length===0) { const v={ok:true, rows:[]}; setSellDatesResult(v); saveWbCache({sellDates:v}); return; }
     fetchSellDates(sellingProps.map(p=>({id:p.id, address:p.address, leadId:p.resimpli?.leadId||null})), tvKey)
-      .then(r=>{ if(!cancelled) { setSellDatesResult(r); wbForecastCache.sellDates = r; } })
-      .catch(e=>{ if(!cancelled && !wbForecastCache.sellDates) setSellDatesResult({ok:false, reason:e.message, rows:[]}); });
+      .then(r=>{ if(!cancelled) { setSellDatesResult(r); saveWbCache({sellDates:r}); } })
+      .catch(e=>{ if(!cancelled && !loadWbCache().sellDates) setSellDatesResult({ok:false, reason:e.message, rows:[]}); });
     return () => { cancelled = true; };
   }, [sellingPropsKey]);
 
@@ -8903,7 +9029,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const sellCardsInfo = [];
   const needsInfoSell = [];
   sellingProps.forEach(prop => {
-    const dateInfo = sellDateById[prop.id];
+    const dateInfo = sellDateById[prop.id] || (manualSellDates[prop.id] ? { date: manualSellDates[prop.id], source: "manual" } : null);
     if (!dateInfo || !dateInfo.date) {
       needsInfoSell.push({ id: prop.id, address: prop.address, reason: dateInfo?.reason || "Sell date lookup hasn't returned yet" });
       return;
@@ -9032,22 +9158,43 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     });
     const fill = data.whiteboardOverrides?.manualFill || {};
     const staleFillKeys = Object.keys(fill).filter(id => realSellIds.has(id) || realBuyIds.has(id));
-    if (!staleClosedKeys.length && !staleFillKeys.length) return;
+    // A manually-added-to-sell-list property: stale once it's sold for real, or no longer
+    // exists (deleted) — kept around otherwise even after REsimpli itself picks it up, since
+    // the real REsimpli/Sheet date just takes precedence over it at that point (see the
+    // `sellDateById[prop.id] || manualSellDates[...]` fallback above) rather than needing to
+    // be cleared.
+    const manualSell = data.whiteboardOverrides?.manualSellDates || {};
+    const staleManualSellKeys = Object.keys(manualSell).filter(propId => {
+      const prop = (data.properties||[]).find(p=>p.id===propId);
+      return !prop || prop.dateSold;
+    });
+    if (!staleClosedKeys.length && !staleFillKeys.length && !staleManualSellKeys.length) return;
     update(d => {
       const nextClosed = { ...(d.whiteboardOverrides?.closed||{}) };
       staleClosedKeys.forEach(k => delete nextClosed[k]);
       const nextFill = { ...(d.whiteboardOverrides?.manualFill||{}) };
       staleFillKeys.forEach(k => delete nextFill[k]);
-      return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, closed: nextClosed, manualFill: nextFill } };
+      const nextManualSell = { ...(d.whiteboardOverrides?.manualSellDates||{}) };
+      staleManualSellKeys.forEach(k => delete nextManualSell[k]);
+      return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, closed: nextClosed, manualFill: nextFill, manualSellDates: nextManualSell } };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sellingPropsKey, buysResult, data.properties, data.whiteboardOverrides?.closed, data.whiteboardOverrides?.manualFill]);
+  }, [sellingPropsKey, buysResult, data.properties, data.whiteboardOverrides?.closed, data.whiteboardOverrides?.manualFill, data.whiteboardOverrides?.manualSellDates]);
 
   // A bill counts as "in the Due Now queue" only while it has no day — drag it onto a day and
   // it shows up there like any other card instead (still excluded from Unscheduled, since a
   // dayless bill belongs in Due Now, not that column).
   const cardsFor = day => cards.filter(c=>(c.day||null)===day && (day!=null || c.kind!=="bill"));
   const autoCardsFor = day => activeAutoCards.filter(c=>c.day===day);
+  // Manual override of a day's TOTAL loan-payment amount (11/21, Kyle: "I should be able to
+  // adjust the full amount on the loan payments same as the properties and can also reset it
+  // the same way") — same amountOverrides pattern as a sell/buy card, just keyed by day
+  // instead of by card id (a day's loan payments are shown/edited as one grouped total, not
+  // individually, so there's no single card id to key this to). Affects the real balance via
+  // `autoTotalFor` below, the one place every balance-affecting use of the day's loan-payment
+  // total reads through.
+  const loanPaymentOverrides = data.whiteboardOverrides?.loanPaymentOverrides || {};
+  const autoTotalFor = day => loanPaymentOverrides[day] ?? autoCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
   const unscheduled = cardsFor(null);
   const bills = cards.filter(c=>c.kind==="bill" && !c.day).sort((a,b)=>(a.order??0)-(b.order??0));
   const billsTotal = bills.reduce((s,c)=>s+(c.amount||0),0);
@@ -9061,7 +9208,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   const netFor = day => cards
     .filter(c=>c.day && wbEffectiveDate(c)===day)
     .reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):-(c.amount||0)),0)
-    - autoCardsFor(day).reduce((s,c)=>s+(c.amount||0),0)
+    - autoTotalFor(day)
     + activeSellCards.filter(c=>c.settleDay===day).reduce((s,c)=>s+(c.amount||0),0)
     - buyCardsFor(day).reduce((s,c)=>s+(c.amount||0),0)
     - setAsideCardsFor(day).reduce((s,c)=>s+(c.amount||0),0);
@@ -9261,6 +9408,26 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
     delete next[cardId];
     return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, manualFill: next } };
   });
+  // Add/remove a property from the sell list by hand (11/21) — see `manualSellDates` above.
+  const addManualSellProp = (propId, date) => update(d => ({
+    ...d,
+    whiteboardOverrides: { ...d.whiteboardOverrides, manualSellDates: { ...(d.whiteboardOverrides?.manualSellDates||{}), [propId]: date } },
+  }));
+  const removeManualSellProp = propId => update(d => {
+    const next = { ...(d.whiteboardOverrides?.manualSellDates||{}) };
+    delete next[propId];
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, manualSellDates: next } };
+  });
+  // Manual override of a day's TOTAL loan-payment amount (11/21) — see `autoTotalFor` above.
+  const setLoanPaymentOverride = (day, amount) => update(d => ({
+    ...d,
+    whiteboardOverrides: { ...d.whiteboardOverrides, loanPaymentOverrides: { ...(d.whiteboardOverrides?.loanPaymentOverrides||{}), [day]: amount } },
+  }));
+  const resetLoanPaymentOverride = day => update(d => {
+    const next = { ...(d.whiteboardOverrides?.loanPaymentOverrides||{}) };
+    delete next[day];
+    return { ...d, whiteboardOverrides: { ...d.whiteboardOverrides, loanPaymentOverrides: next } };
+  });
   // Board view wrappers — its rows pass back the same entriesByDay-shaped objects (id, kind,
   // amount, address/fullLabel/label, sourceDate/day), not a raw card, so these adapt that
   // shape onto the same setMovedDate/markClosed calls the Calendar cards already use directly.
@@ -9302,7 +9469,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
   // what the day columns themselves add up to.
   const scheduledCards = withinWindow(cards.filter(c=>c.day), dayCols, wbEffectiveDate);
   const totalIn = scheduledCards.reduce((s,c)=>s+(c.direction==="in"?(c.amount||0):0),0) + withinWindow(activeSellCards, dayCols, c=>c.settleDay).reduce((s,c)=>s+(c.amount||0),0);
-  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + withinWindow(activeAutoCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(activeBuyCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(setAsideCardsList, dayCols).reduce((s,c)=>s+(c.amount||0),0);
+  const totalOut = scheduledCards.reduce((s,c)=>s+(c.direction==="out"?(c.amount||0):0),0) + dayCols.reduce((s,day)=>s+autoTotalFor(day),0) + withinWindow(activeBuyCards, dayCols).reduce((s,c)=>s+(c.amount||0),0) + withinWindow(setAsideCardsList, dayCols).reduce((s,c)=>s+(c.amount||0),0);
   const [sbInput,setSbInput] = useState(String(startingBalanceManual||""));
   useEffect(()=>{ setSbInput(String(startingBalanceManual||"")); }, [startingBalanceManual]);
 
@@ -9348,7 +9515,6 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         {!publicMode && (
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Whiteboard</h2>
-          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5 max-w-md">A manual planning board — drag cards onto a day to plan upcoming money in and out. Incoming money takes 1 business day to clear; loan payments, upcoming sales, and upcoming buys are pulled in automatically; bills with no due date live in the Due Now queue on the left.</p>
         </div>
         )}
         {!publicMode && (
@@ -9365,6 +9531,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
           </div>
           <button onClick={()=>setRoundMode(m=>!m)} title="Round headline totals to the nearest $5k, conservatively — balances/money in round down, money out rounds up"
             className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all ${roundMode?"bg-teal-600 text-white shadow-sm":"bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500"}`}>↕ Round $5k</button>
+          {!readOnly && <Btn onClick={()=>setAddingClosing(true)} color="ghost">+ Add Closing</Btn>}
           {!readOnly && <Btn onClick={()=>setAddOpen(true)} color="blue">+ Add Card</Btn>}
         </div>
         )}
@@ -9434,6 +9601,11 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         </>)}
       </div>
 
+      {/* Board view integrates this into its own "Current" row instead (11/21, Kyle: "the
+          current balance is already the top row in the board, so just keep it right there
+          and let me edit it super integrated with pills") — Row/Month still show this card,
+          since they have no row of their own to fold it into. */}
+      {effectiveBoardView!=="board" && (
       <div className="mb-4 bg-white dark:bg-[#1C1F2B] rounded-2xl p-3 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
         <div className="flex items-center justify-between mb-1.5">
           <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Set Aside</div>
@@ -9461,6 +9633,7 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
           </div>
         )}
       </div>
+      )}
 
       {sellDatesResult.sheetConnected===false && (
         <div className="mb-4 rounded-xl px-3 py-2 text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
@@ -9545,12 +9718,14 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         <WhiteboardBoardView startingBalance={startingBalance} startingLabel={usingMercury?`Mercury ${mercury.source||""}`.trim():"Manual balance"}
           usingMercury={usingMercury} sbInput={sbInput} onSbInputChange={setSbInput} onCommitStartingBalance={()=>setStartingBalance(parseFloat(sbInput)||0)}
           mercuryLoading={mercury.loading} mercuryReason={mercury.reason}
+          undatedSetAsides={setAsides.filter(s=>!s.date)} onEditSetAside={readOnly?undefined:setEditingSetAside} onAddSetAside={readOnly?undefined:()=>setAddingSetAside(true)} onDeleteSetAside={readOnly?undefined:deleteSetAside}
           ledgerWeeks={ledgerWeeks} ledgerSum={ledgerSum} h$={h$} readOnly={readOnly} roundMode={roundMode} forceTv={publicMode}
           firstBelow10k={firstBelowThreshold(ledgerRows, 10000)} firstNegative={firstBelowThreshold(ledgerRows, 0)}
           onPickDate={readOnly?undefined:handleBoardPickDate} onSetAmount={readOnly?undefined:setAmountOverride}
           onResetAmount={readOnly?undefined:resetAmountOverride} onResetDate={readOnly?undefined:resetMovedDate}
           onMarkClosed={readOnly?undefined:handleBoardMarkClosed} onExcludeMany={readOnly?undefined:excludeMany}
-          onSendToNoDate={readOnly?undefined:sendToNoDate}/>
+          onSendToNoDate={readOnly?undefined:sendToNoDate}
+          loanPaymentOverrides={loanPaymentOverrides} onSetLoanPaymentOverride={readOnly?undefined:setLoanPaymentOverride} onResetLoanPaymentOverride={readOnly?undefined:resetLoanPaymentOverride}/>
       )}
 
       {effectiveBoardView==="calendar" && (cards.length===0&&activeAutoCards.length===0&&activeSellCards.length===0&&activeBuyCards.length===0&&setAsideCardsList.length===0?(
@@ -9573,7 +9748,8 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
                 isToday={i===0} weekStart={i>0&&i%7===0} net={rBal(netFor(day))} balance={rBal(balances[day])} settledIn={settledInFor(day)} empty={cardsFor(day).length===0&&autoCardsFor(day).length===0&&sellCardsFor(day).length===0&&buyCardsFor(day).length===0&&setAsideCardsFor(day).length===0}>
                 {sellCardsFor(day).map(c=><WhiteboardSellCard key={c.id} card={c} h$={h$} update={update} navigate={navigate}
                   onMarkClosed={readOnly?undefined:()=>markClosed(c.id,"sell",c.propId,c.address,c.amount)}
-                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}/>)}
+                  onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}
+                  onRemoveManualSell={readOnly?undefined:()=>removeManualSellProp(c.propId)}/>)}
                 {buyCardsFor(day).map(c=><WhiteboardBuyCard key={c.id} card={c} h$={h$}
                   onMarkClosed={readOnly?undefined:()=>markClosed(c.id,"buy",c.id.replace(/^buy-/,""),c.address,c.amount)}
                   onResetDate={readOnly||!c.manualDate?undefined:()=>resetMovedDate(c.id)}/>)}
@@ -9644,6 +9820,13 @@ function WhiteboardPage({ data, update, publicMode, tvKey }) {
         <WhiteboardSetAsideModal init={editingSetAside}
           onSave={entry=>{saveSetAside(entry);setAddingSetAside(false);setEditingSetAside(null);}}
           onClose={()=>{setAddingSetAside(false);setEditingSetAside(null);}}/>
+      )}
+
+      {addingClosing && (
+        <WhiteboardAddClosingModal
+          properties={(data.properties||[]).filter(p=>!p.dateSold && !sellingProps.some(sp=>sp.id===p.id))}
+          onAdd={(propId,date)=>{addManualSellProp(propId,date);setAddingClosing(false);}}
+          onClose={()=>setAddingClosing(false)}/>
       )}
     </div>
   );
