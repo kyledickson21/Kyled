@@ -430,6 +430,41 @@ Amount, for lenders that take a fee off a specific draw (e.g. an inspection fee)
   `EditClosingModal` (editing an already-closed deal) keeps using the real saved `lenderFees`
   value rather than re-deriving it, but shows the same hint for reference.
 
+## Draw Tracker — Advance vs. Regular Draws (11/23)
+Kyle: flag any house whose first draw landed within 2 days of acquiring the property as an
+"advance" (the lender fronting money at/right after closing, not a real mid-rehab construction
+draw) so he can see and filter the two apart on the Draw Tracker tab. Display/filter only —
+nothing here touches `drawGross`/`drawRemaining`/any funded-money math, closing data, or
+interest accrual; a property's classification is purely derived at render time from dates
+already on file.
+- **`isAdvance`** (`DrawsPage`, computed per property in the `allRows` map alongside the
+  existing `lastDrawDate`/`daysSinceEvent` derivations): `firstDrawDate` is the earliest date
+  across every draw-facility loan's `drawFacility.draws` for that property; `isAdvance =
+  p.purchaseDate && firstDrawDate && daysBetween(p.purchaseDate, firstDrawDate) <= 2`. A
+  property missing either a purchase date or any draw at all can't be classified and falls
+  back to "Regular" rather than guessing. `daysBetween` (from `loan-schedule-shared.mjs`, not
+  a new helper) floors a draw dated *before* the purchase date to 0 days — also "Advance",
+  since fronting funds right at closing is the same case whichever side of midnight the two
+  dates fall on.
+- **Filter**: a 3-way segmented control ("All (N)" / "⚡ Advance (N)" / "Regular (N)") next to
+  the existing sort controls, `usePersistedState("nx-drawKindFilter","all")` — a per-device
+  remembered choice, same pattern as `nx-drawSort`/`nx-drawsViewMode`, never written to
+  `data`. Filtering happens on `allRows` (every active property with a draw facility) before
+  the existing sort runs, so "Highest Chance"/"Most Overdue"/etc. all still work unchanged
+  within whichever bucket is selected. When a filter empties the list, a dedicated "No
+  {advance|regular} draws" message with a one-click "Show all" replaces the view instead of
+  falling through to the unrelated "No active draw facilities" empty state (that one is now
+  gated on the *unfiltered* `allRows.length`, so switching the filter to an empty bucket never
+  claims there are no draw facilities at all).
+- **Display**: a small badge — "⚡ Advance" (amber) or "Regular" (neutral slate) — shown in all
+  three Draw Tracker view modes: its own "Type" column in Condensed, next to the existing
+  urgency badge under the address in Grid, and the same spot (plus, in Expanded only, a
+  one-line "First draw \<date\> (Nd after purchase)" detail for an Advance property, since
+  Expanded has the room for it) in Expanded.
+- **Tests**: none added — this is a pure derived display/filter classification over two dates
+  already on file (`purchaseDate`, a draw's own `date`), using the existing, already-tested
+  `daysBetween` helper verbatim, not new calculation logic.
+
 ## Hard Money Rate Comparison (`HardMoneyComparePage`)
 A what-if calculator reached via Settings → "Rate Comparison" (hidden from bookkeepers). Kyle
 types in a hypothetical lender's rate/points/day-count basis; the tool shows what every

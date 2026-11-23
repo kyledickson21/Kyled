@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "10";
+const APP_VERSION = "11";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -7645,9 +7645,10 @@ function DrawsPage({ data }) {
   const [drawSort,setDrawSort]=usePersistedState("nx-drawSort","chance");
   const [drawSortDir,setDrawSortDir]=usePersistedState("nx-drawSortDir","desc");
   const [viewMode,setViewMode]=usePersistedState("nx-drawsViewMode","grid");
+  const [drawKindFilter,setDrawKindFilter]=usePersistedState("nx-drawKindFilter","all");
 
   // Collect all active properties that have at least one draw-facility loan
-  const rows = (data.properties||[])
+  const allRows = (data.properties||[])
     .filter(p => !p.dateSold && (!drawSearch||p.address?.toLowerCase().includes(drawSearch.toLowerCase())))
     .map(p => {
       const drawLoans = (p.loans||[]).filter(l => !l.endDate && l.drawFacility);
@@ -7665,6 +7666,14 @@ function DrawsPage({ data }) {
       const lastDrawDate = drawDates.length ? drawDates[drawDates.length-1] : null;
       const daysSinceDraw = lastDrawDate ? daysBetween(lastDrawDate, TODAY) : null;
 
+      // First draw across all loans, compared to the property's own purchase date — a draw
+      // taken within 2 days of acquiring the property reads as the lender fronting money at
+      // closing (an "advance") rather than a real mid-rehab construction draw. A purchase
+      // date or a draw date either one missing can't be classified, so it falls back to the
+      // normal "regular" bucket rather than guessing.
+      const firstDrawDate = drawDates.length ? drawDates[0] : null;
+      const isAdvance = !!(p.purchaseDate && firstDrawDate && daysBetween(p.purchaseDate, firstDrawDate) <= 2);
+
       // "Last event" = later of last draw or purchase date (both count for 14-day window)
       const lastEventDate = [lastDrawDate, p.purchaseDate].filter(Boolean).sort().pop() ?? null;
       const daysSinceEvent = lastEventDate ? daysBetween(lastEventDate, TODAY) : null;
@@ -7673,9 +7682,12 @@ function DrawsPage({ data }) {
       // how long it's been since the last draw or purchase.
       const eligible = !fullyDrawn && (!lastEventDate || daysSinceEvent >= 14);
 
-      return { prop: p, drawLoans, totalCommitted, totalDrawn, totalAvailable, fullyDrawn, lastDrawDate, daysSinceDraw, lastEventDate, daysSinceEvent, eligible, allDraws };
+      return { prop: p, drawLoans, totalCommitted, totalDrawn, totalAvailable, fullyDrawn, lastDrawDate, daysSinceDraw, firstDrawDate, isAdvance, lastEventDate, daysSinceEvent, eligible, allDraws };
     })
-    .filter(Boolean)
+    .filter(Boolean);
+  const advanceCount = allRows.filter(r=>r.isAdvance).length;
+  const rows = allRows
+    .filter(r => drawKindFilter==="all" || (drawKindFilter==="advance"?r.isAdvance:!r.isAdvance))
     .sort((a, b) => {
       const d = drawSortDir==="asc" ? 1 : -1;
       if(drawSort==="available") return d*(a.totalAvailable-b.totalAvailable);
@@ -7693,7 +7705,7 @@ function DrawsPage({ data }) {
       return d*(ea-eb);
     });
 
-  if (!rows.length) return (
+  if (!allRows.length) return (
     <div className="flex flex-col items-center justify-center py-20 gap-3">
       <div className="text-4xl">🏗️</div>
       <div className="text-slate-400 dark:text-zinc-500 text-sm font-medium">No active draw facilities</div>
@@ -7725,7 +7737,11 @@ function DrawsPage({ data }) {
       : r.lastDrawDate ? `Last draw ${r.lastDrawDate}`
       : r.prop.purchaseDate ? `Purchased ${r.prop.purchaseDate}`
       : null;
-    return { pct_drawn, urgencyColor, eventLabel, eventSub };
+    const kindLabel = r.isAdvance ? "⚡ Advance" : "Regular";
+    const kindColor = r.isAdvance
+      ? "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30"
+      : "text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800";
+    return { pct_drawn, urgencyColor, eventLabel, eventSub, kindLabel, kindColor };
   };
 
   return (
@@ -7748,6 +7764,14 @@ function DrawsPage({ data }) {
           className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all shrink-0 border border-slate-200 dark:border-zinc-700">
           {drawSortDir==="asc"?"↑ Asc":"↓ Desc"}
         </button>
+        <div className="flex bg-slate-100 dark:bg-zinc-800 rounded-lg p-0.5 gap-0.5 shrink-0">
+          {[["all",`All (${allRows.length})`],["advance",`⚡ Advance (${advanceCount})`],["regular",`Regular (${allRows.length-advanceCount})`]].map(([v,label])=>(
+            <button key={v} onClick={()=>setDrawKindFilter(v)} title="Advance = first draw within 2 days of acquiring the property"
+              className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap ${drawKindFilter===v?"bg-white dark:bg-zinc-700 text-slate-900 dark:text-zinc-100 shadow-sm":"text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <input type="text" value={drawSearch} onChange={e=>setDrawSearch(e.target.value)}
           placeholder="Search by address…" className={SEARCH_CLS}/>
       </div>
@@ -7763,14 +7787,23 @@ function DrawsPage({ data }) {
         </div>
       </div>
 
+      {!rows.length && (
+        <div className="flex flex-col items-center justify-center py-16 gap-2">
+          <div className="text-3xl">🔍</div>
+          <div className="text-slate-400 dark:text-zinc-500 text-sm font-medium">No {drawKindFilter} draws</div>
+          <button onClick={()=>setDrawKindFilter("all")} className="text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:underline">Show all</button>
+        </div>
+      )}
+
       {/* ── Condensed: sortable-look table, one row per property ── */}
-      {viewMode==="condensed"&&(
+      {!!rows.length && viewMode==="condensed"&&(
         <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#1C1F2B] shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-none">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-[#F9F9FB] dark:bg-black/20 text-slate-400 dark:text-zinc-500 font-semibold uppercase tracking-wider text-[10px] border-b border-black/[0.05] dark:border-white/[0.05]">
                   <th className="py-2.5 px-4 text-left">Address</th>
+                  <th className="py-2.5 px-4 text-left">Type</th>
                   <th className="py-2.5 px-4 text-right">Available</th>
                   <th className="py-2.5 px-4 text-right">Drawn / Committed</th>
                   <th className="py-2.5 px-4 text-right">% Drawn</th>
@@ -7779,10 +7812,13 @@ function DrawsPage({ data }) {
               </thead>
               <tbody className="bg-white dark:bg-[#1C1F2B] divide-y divide-black/[0.04] dark:divide-white/[0.05]">
                 {rows.map(r=>{
-                  const {pct_drawn,urgencyColor,eventLabel}=rowMeta(r);
+                  const {pct_drawn,urgencyColor,eventLabel,kindLabel,kindColor}=rowMeta(r);
                   return (
                     <tr key={r.prop.id} className={`hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors ${!r.eligible?"opacity-50":""}`}>
                       <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-zinc-100 max-w-[220px] truncate">{r.prop.address||"Unnamed"}</td>
+                      <td className="py-2.5 px-4">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap ${kindColor}`}>{kindLabel}</span>
+                      </td>
                       <td className={`py-2.5 px-4 text-right tabular-nums font-semibold ${r.totalAvailable>0?"text-emerald-600 dark:text-emerald-400":"text-slate-300 dark:text-zinc-600"}`}>{h$(r.totalAvailable)}</td>
                       <td className="py-2.5 px-4 text-right tabular-nums text-slate-500 dark:text-zinc-400">{h$(r.totalDrawn)} / {h$(r.totalCommitted)}</td>
                       <td className="py-2.5 px-4 text-right tabular-nums text-slate-400 dark:text-zinc-500">{pct_drawn}%</td>
@@ -7799,11 +7835,11 @@ function DrawsPage({ data }) {
       )}
 
       {/* ── Grid: condensed 2-column cards ── */}
-      {viewMode==="grid"&&(
+      {!!rows.length && viewMode==="grid"&&(
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {rows.map(r=>{
           const { prop, drawLoans, totalCommitted, totalDrawn, totalAvailable, eligible } = r;
-          const {pct_drawn,urgencyColor,eventLabel,eventSub}=rowMeta(r);
+          const {pct_drawn,urgencyColor,eventLabel,eventSub,kindLabel,kindColor}=rowMeta(r);
           return (
             <div key={prop.id} className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${!eligible?"opacity-60":""}`}>
               {/* Property header */}
@@ -7814,9 +7850,12 @@ function DrawsPage({ data }) {
                     {eventLabel}
                   </div>
                 </div>
-                {eventSub && (
-                  <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">{eventSub}</div>
-                )}
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap ${kindColor}`}>{kindLabel}</span>
+                  {eventSub && (
+                    <div className="text-[10px] text-slate-400 dark:text-zinc-500">{eventSub}</div>
+                  )}
+                </div>
               </div>
 
               {/* Available amount */}
@@ -7865,11 +7904,11 @@ function DrawsPage({ data }) {
       )}
 
       {/* ── Expanded: full-detail, one property per row ── */}
-      {viewMode==="expanded"&&(
+      {!!rows.length && viewMode==="expanded"&&(
         <div className="space-y-3">
         {rows.map(r=>{
           const { prop, drawLoans, totalCommitted, totalDrawn, totalAvailable, eligible } = r;
-          const {pct_drawn,urgencyColor,eventLabel,eventSub}=rowMeta(r);
+          const {pct_drawn,urgencyColor,eventLabel,eventSub,kindLabel,kindColor}=rowMeta(r);
           return (
             <div key={prop.id} className={`bg-white dark:bg-[#1C1F2B] rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.07)] overflow-hidden ${!eligible?"opacity-60":""}`}>
               {/* Property header */}
@@ -7880,9 +7919,15 @@ function DrawsPage({ data }) {
                     {eventLabel}
                   </div>
                 </div>
-                {eventSub && (
-                  <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{eventSub}</div>
-                )}
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${kindColor}`}>{kindLabel}</span>
+                  {r.isAdvance && r.firstDrawDate && (
+                    <span className="text-[11px] text-slate-400 dark:text-zinc-500">First draw {r.firstDrawDate} ({daysBetween(prop.purchaseDate, r.firstDrawDate)}d after purchase)</span>
+                  )}
+                  {!r.isAdvance && eventSub && (
+                    <span className="text-[11px] text-slate-400 dark:text-zinc-500">{eventSub}</span>
+                  )}
+                </div>
               </div>
 
               {/* Available amount */}
