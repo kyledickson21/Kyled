@@ -465,6 +465,33 @@ already on file.
   already on file (`purchaseDate`, a draw's own `date`), using the existing, already-tested
   `daysBetween` helper verbatim, not new calculation logic.
 
+## Cost to Buy — "Cash Due From Borrower" can go negative (11/25)
+Mark Boot (via text, relayed by Kyle): money came back from title after closing on E Stanton,
+and typing a negative number into the property form's "Cash Due From Borrower ($)" field
+wouldn't take it. Root cause: `parseHudNumber` (near `HUD_KEYS`, top of `Tracker.jsx`) — the
+shared parser behind every Cost-to-Buy HUD line in `PropertyForm` — required the whole
+cleaned string to match `/^\d+(\.\d+)?$/`, with no allowance for a leading `-`, so a typed
+`-500` failed `isValidHudValue`, showed the field red, and blocked `hudFieldValid`/
+`allConfirmed` from ever letting the lock close or the property save.
+- **Fix**: the regex is now `/^-?\d+(\.\d+)?$/` — a negative dollar amount is just as valid as
+  a positive one on any of the 6 HUD lines (`cashFromBorrower`, `depositEarnest`,
+  `loanToTitle`, `rehabHoldback`, `loanPointsFees`, `prepaidInterest`), not special-cased to
+  `cashFromBorrower` alone, since all six are typed free-text off the same HUD and a credit/
+  correction can land on any of them. `sumHudEntries`/`purchasePriceFromClosingBuy` already did
+  plain arithmetic on the parsed number, so a negative entry nets out correctly with zero
+  further changes there.
+- **Display**: the per-line multi-entry Subtotal and the overall "Cost to Buy" total (both in
+  `PropertyForm`) switched from `$$p` to `$$ps` — `$$p` always `Math.abs()`s its input, so a
+  negative subtotal would have rendered identically to a positive one (silently hiding the
+  sign Kyle specifically needs to see here); `$$ps` shows the real `+`/`−`.
+- **Scope**: `PropertyForm`'s Cost-to-Buy section only — `cashFromBorrower` doesn't appear
+  anywhere else in the file (checked). No other money field in the app was reported broken,
+  and this fix doesn't touch any input besides `parseHudNumber`'s own regex and the two display
+  spots above.
+- **Tests**: none added — `parseHudNumber` is a `Tracker.jsx`-local helper with no existing
+  test coverage (it isn't part of any of the `.mjs` shared modules under `tests/`); this is a
+  one-character regex relaxation, not new calculation logic.
+
 ## Hard Money Rate Comparison (`HardMoneyComparePage`)
 A what-if calculator reached via Settings → "Rate Comparison" (hidden from bookkeepers). Kyle
 types in a hypothetical lender's rate/points/day-count basis; the tool shows what every

@@ -28,7 +28,7 @@ const save = saveData
 // actually landed (11/21: "put a tiny 'version x' thing when clicking on settings... each
 // time tell me what the new version is"). Shown in both the desktop sidebar's Settings
 // dropdown and the mobile nav drawer's settings section.
-const APP_VERSION = "11";
+const APP_VERSION = "12";
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 // Penny-precise everywhere — so a number on screen always matches the bank statement or
@@ -2936,7 +2936,7 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
                 <button type="button" onClick={()=>addHudEntry(key)} className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline">+ Add another</button>
                 {multi&&(
                   <div className="flex justify-between text-[11px] font-semibold text-slate-500 dark:text-zinc-400 mt-1.5">
-                    <span>Subtotal</span><span className="tabular-nums">{$$p(sumHudEntries(entries))}</span>
+                    <span>Subtotal</span><span className="tabular-nums">{$$ps(sumHudEntries(entries))}</span>
                   </div>
                 )}
                 <p className={`text-[11px] mt-1.5 ${!fieldValid?"text-red-500 dark:text-red-400":"text-slate-400 dark:text-zinc-500"}`}>
@@ -2948,7 +2948,7 @@ function PropertyForm({ init, lenders, onSave, onClose, onDirtyChange }) {
         })}
         <div className="flex justify-between items-center pt-2 mt-1 border-t border-slate-200 dark:border-zinc-700">
           <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Cost to Buy</span>
-          <span className="text-base font-black text-slate-900 dark:text-zinc-100 tabular-nums">{$$p(purchase)}</span>
+          <span className="text-base font-black text-slate-900 dark:text-zinc-100 tabular-nums">{$$ps(purchase)}</span>
         </div>
       </div>
 
@@ -3202,11 +3202,13 @@ const routeLoanDrafts = (data, loanDrafts, defaultPropId) => {
 const HUD_KEYS = ["cashFromBorrower","depositEarnest","loanToTitle","rehabHoldback","loanPointsFees","prepaidInterest"];
 // A plain parseFloat silently reads "1,500" as 1 (stops at the comma) and "150000abc" as
 // 150000 (ignores the trailing garbage) — strip thousands-commas first, then insist the
-// WHOLE string is a clean non-negative number, so typos surface as invalid instead of
-// silently turning into the wrong dollar amount.
+// WHOLE string is a clean number (an optional leading "-" allowed — e.g. "Cash Due From
+// Borrower" can go negative when money came back from title after the fact, netting against
+// what was originally wired), so typos surface as invalid instead of silently turning into
+// the wrong dollar amount.
 const parseHudNumber = v => {
   const cleaned = (v||"").trim().replace(/,/g,"");
-  if (!/^\d+(\.\d+)?$/.test(cleaned)) return null;
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
   return parseFloat(cleaned);
 };
 const isHudNA = v => /^n\/?a$/i.test((v||"").trim()); // N/A, n/a, NA, na — any case, with or without the slash
